@@ -6,7 +6,7 @@ import requests
 import os
 import threading
 import math
-import random  # For future use if needed
+import random
 from flask import Flask
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -26,6 +26,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
+bot.last_message_id = {}  # Store last message IDs for threaded replies
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -41,6 +42,16 @@ def run_server():
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
+# Optional: Add another threaded task
+def check_for_updates():
+    while True:
+        print("[Background] Checking for updates...")
+        time.sleep(300)  # Every 5 minutes
+
+update_thread = threading.Thread(target=check_for_updates)
+update_thread.daemon = True
+update_thread.start()
+
 # ===========================
 # MongoDB Setup (with SSL Fix)
 # ===========================
@@ -49,11 +60,9 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
-
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
-
 except Exception as e:
     print(f"[!] Failed to connect to MongoDB: {e}")
     client = None
@@ -102,11 +111,12 @@ if reminders_collection:
 # AI Commands
 # ===========================
 
-# /ask - Chat with Llama 3 via Together AI
+# /ask - Chat with Llama 3 via Together AI with threaded replies
 @bot.tree.command(name="ask", description="Chat with an AI assistant using Llama 3")
 @app_commands.describe(prompt="What would you like to ask?")
 async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
+    channel_id = interaction.channel.id
     await interaction.response.defer()
 
     # Rate limit: 5 messages/user/minute
@@ -114,7 +124,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
-
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
@@ -127,7 +136,8 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = discord.utils.utcnow()
-                await interaction.followup.send(embed=embed)
+                msg = await interaction.followup.send(embed=embed)
+                bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
 
             # Load conversation history from MongoDB (if available)
@@ -161,26 +171,44 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
-
             response = requests.post(
                 "https://api.together.xyz/v1/completions",
                 headers=headers,
                 json=payload
             )
             data = response.json()
-
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
-
             ai_response = data["choices"][0]["text"].strip()
+
+            # Determine if we should reply to a previous message
+            target_message_id = bot.last_message_id.get((user_id, channel_id))
+
+            # Send the AI response
+            embed = discord.Embed(description=ai_response, color=discord.Color.blue())
+            embed.set_footer(text="Neroniel AI")
+            embed.timestamp = discord.utils.utcnow()
+
+            if target_message_id:
+                try:
+                    msg = await interaction.channel.fetch_message(target_message_id)
+                    reply = await msg.reply(embed=embed)
+                except discord.NotFound:
+                    msg = await interaction.followup.send(embed=embed)
+                    reply = msg
+            else:
+                msg = await interaction.followup.send(embed=embed)
+                reply = msg
+
+            # Update the last message ID for future replies
+            bot.last_message_id[(user_id, channel_id)] = reply.id
 
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
             })
-
             if conversations_collection:
                 conversations_collection.insert_one({
                     "user_id": user_id,
@@ -188,12 +216,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.utcnow()
                 })
-
-            # Send response embed
-            embed = discord.Embed(description=ai_response, color=discord.Color.blue())
-            embed.set_footer(text="Neroniel AI")
-            embed.timestamp = discord.utils.utcnow()
-            await interaction.followup.send(embed=embed)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
@@ -220,48 +242,35 @@ async def clearhistory(interaction: discord.Interaction):
 async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
     if member is None:
         member = interaction.user
-
     # Account creation date
     created_at = member.created_at.strftime("%B %d, %Y • %I:%M %p UTC")
-
     # Join date
     joined_at = member.joined_at.strftime("%B %d, %Y • %I:%M %p UTC") if member.joined_at else "Unknown"
-
     # Roles
     roles = [role.mention for role in member.roles if not role.is_default()]
     roles_str = ", ".join(roles) if roles else "No roles"
-
     # Boosting status
     boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC") if member.premium_since else "Not boosting"
-
     embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
-
     # Basic Info
     embed.add_field(name="Username", value=f"{member.mention}", inline=False)
     embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
     embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
-
     # Dates
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
-
     # Roles
     embed.add_field(name="Roles", value=roles_str, inline=False)
-
     # Boosting
     embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
-
     # Optional: Show if the user is a bot
     if member.bot:
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
-
     # Set thumbnail to user's avatar
     embed.set_thumbnail(url=member.display_avatar.url)
-
     # Footer and timestamp
     embed.set_footer(text="Neroniel AI")
     embed.timestamp = discord.utils.utcnow()
-
     await interaction.response.send_message(embed=embed)
 
 # ===========================
@@ -586,7 +595,6 @@ async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
-
     group_id = 5838002
     while True:
         try:
@@ -609,7 +617,6 @@ async def on_ready():
 async def on_message(message):
     if message.author == bot.user:
         return
-
     content = message.content.lower()
     if content == "hobie":
         await message.channel.send("mapanghe")
@@ -625,7 +632,6 @@ async def on_message(message):
             "kaya wag na lang. thanks nalang sa hi mo"
         )
         await message.channel.send(reply)
-
     auto_react_channels = [
         1225294057371074760,
         1107600826664501258,
@@ -634,7 +640,6 @@ async def on_message(message):
     ]
     if message.channel.id in auto_react_channels:
         await message.add_reaction("🎀")
-
     if message.channel.id == 1107281584337461321:
         await message.add_reaction("<:1cy_heart:1258694384346468362>")
 
