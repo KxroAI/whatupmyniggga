@@ -187,8 +187,8 @@ async def clearhistory(interaction: discord.Interaction):
         conversations_collection.delete_many({"user_id": user_id})
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
 
-# /generateimage - Generate images using Craiyon (Unofficial API)
-@bot.tree.command(name="generateimage", description="Generate an image from a text prompt (Free via Craiyon)")
+# /generateimage - Generate images using Pollinations AI (Free Tier)
+@bot.tree.command(name="generateimage", description="Generate an image from a text prompt (Free Tier)")
 @app_commands.describe(
     prompt="Describe the image you want to generate",
     size="Choose resolution (optional)"
@@ -213,36 +213,40 @@ async def generateimage(interaction: discord.Interaction, prompt: str, size: app
 
     async with interaction.channel.typing():
         try:
-            # Ignore size since Craiyon doesn't support it
-            craiyon_url = "https://craiyon.com/api/generate"
+            # Set default size if none provided
+            if size is None:
+                width, height = 1024, 1024
+            else:
+                width, height = map(int, size.value.split('x'))
 
-            payload = {
-                "prompt": prompt
-            }
+            encoded_prompt = prompt.replace(" ", "%20").replace("#", "sharp")
+            image_api_url = f"https://image.pollinations.ai/{encoded_prompt}?width={width}&height={height}&json=true"
 
-            response = requests.post(craiyon_url, json=payload)
-
+            response = requests.get(image_api_url)
             if response.status_code != 200:
-                await interaction.followup.send("❌ Failed to request image generation from Craiyon.")
+                await interaction.followup.send("❌ Failed to fetch image URL from Pollinations.")
                 return
 
             data = response.json()
-            if not data.get("images"):
-                await interaction.followup.send("❌ No image returned from Craiyon.")
+            image_url = data.get("url")
+            if not image_url:
+                await interaction.followup.send("❌ No image returned from Pollinations.")
                 return
-
-            image_data = data["images"][0]
-            image_url = f"data:image/png;base64,{image_data}"  # Base64-encoded PNG
 
             # Create clean embed
             embed = discord.Embed(title="🎨 Generated Image", color=discord.Color.green())
             embed.set_image(url=image_url)
-            embed.set_footer(text="Neroniel AI | Powered by Craiyon")
+            embed.set_footer(text="Neroniel AI | Powered by Pollinations")
             embed.timestamp = discord.utils.utcnow()
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error generating image: {str(e)}")
+
+# [All other commands: payout, gift, poll, remindme, calculator, groupinfo, etc.] 
+# REMAIN UNCHANGED — FULL CODE BELOW
+
+# Paste all remaining commands here from your original file (or use the full version below)
 
 # ===========================
 # Conversion Commands
