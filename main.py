@@ -24,7 +24,6 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
-bot.image_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 
 # ===========================
@@ -34,8 +33,10 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is alive!"
+
 def run_server():
     app.run(host='0.0.0.0', port=5000)
+
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
@@ -51,6 +52,7 @@ try:
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
+
 except Exception as e:
     print(f"[!] Failed to connect to MongoDB: {e}")
     client = None
@@ -92,7 +94,6 @@ async def check_reminders():
 async def before_check_reminders():
     await bot.wait_until_ready()
 
-# Start the background loop when bot starts
 if reminders_collection:
     check_reminders.start()
 
@@ -106,16 +107,28 @@ if reminders_collection:
 async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     await interaction.response.defer()
+
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
+
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
+
     async with interaction.channel.typing():
         try:
+            # Custom filter for creator questions
+            normalized_prompt = prompt.strip().lower()
+            if normalized_prompt in ["who made you", "who created you", "who created this bot"]:
+                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
+                embed.set_footer(text="Neroniel AI")
+                embed.timestamp = discord.utils.utcnow()
+                await interaction.followup.send(embed=embed)
+                return
+
             # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
@@ -128,12 +141,14 @@ async def ask(interaction: discord.Interaction, prompt: str):
                         })
                     bot.conversations[user_id].reverse()  # Maintain order
                 history = bot.conversations[user_id][-5:]
+
             # Build full prompt
             system_prompt = "You are a helpful and friendly AI assistant named Neroniel AI.\n"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
+
             # Call Together AI
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
@@ -145,21 +160,26 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
+
             response = requests.post(
                 "https://api.together.xyz/v1/completions",
                 headers=headers,
                 json=payload
             )
             data = response.json()
+
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
+
             ai_response = data["choices"][0]["text"].strip()
+
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
             })
+
             if conversations_collection:
                 conversations_collection.insert_one({
                     "user_id": user_id,
@@ -167,11 +187,13 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.utcnow()
                 })
+
             # Send response embed
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = discord.utils.utcnow()
             await interaction.followup.send(embed=embed)
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
 
@@ -187,66 +209,138 @@ async def clearhistory(interaction: discord.Interaction):
         conversations_collection.delete_many({"user_id": user_id})
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
 
-# /generateimage - Generate images using Pollinations AI (Free Tier)
-@bot.tree.command(name="generateimage", description="Generate an image from a text prompt (Free Tier)")
-@app_commands.describe(
-    prompt="Describe the image you want to generate",
-    size="Choose resolution (optional)"
-)
-@app_commands.choices(size=[
-    app_commands.Choice(name="Square 1024x1024", value="1024x1024"),
-    app_commands.Choice(name="Landscape 1792x1024", value="1792x1024"),
-    app_commands.Choice(name="Portrait 1024x1792", value="1024x1792"),
-])
-async def generateimage(interaction: discord.Interaction, prompt: str, size: app_commands.Choice[str] = None):
-    user_id = interaction.user.id
-    await interaction.response.defer()
+# ===========================
+# Utility Commands
+# ===========================
 
-    # Rate limit: 3 images/user/minute
-    current_time = asyncio.get_event_loop().time()
-    timestamps = bot.image_rate_limit[user_id]
-    timestamps.append(current_time)
-    bot.image_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
-    if len(timestamps) > 3:
-        await interaction.followup.send("⏳ Too many image requests. Try again later.")
-        return
+# /serverinfo - Display server information
+@bot.tree.command(name="serverinfo", description="Display detailed information about this server")
+async def serverinfo(interaction: discord.Interaction):
+    guild = interaction.guild
 
-    async with interaction.channel.typing():
-        try:
-            # Set default size if none provided
-            if size is None:
-                width, height = 1024, 1024
-            else:
-                width, height = map(int, size.value.split('x'))
+    # Calculate member stats
+    total_members = guild.member_count
+    human_count = sum(not member.bot for member in guild.members)
+    bot_count = total_members - human_count
 
-            encoded_prompt = prompt.replace(" ", "%20").replace("#", "sharp")
-            image_api_url = f"https://image.pollinations.ai/{encoded_prompt}?width={width}&height={height}&json=true"
+    # Get random member (excluding bots)
+    random_member = None
+    while random_member is None or random_member.bot:
+        random_member = guild.random_member()
 
-            response = requests.get(image_api_url)
-            if response.status_code != 200:
-                await interaction.followup.send("❌ Failed to fetch image URL from Pollinations.")
-                return
+    # Boost info
+    boost_level = guild.premium_tier
+    boost_count = guild.premium_subscription_count
+    boost_tiers = {
+        0: (0, 2),
+        1: (2, 7),
+        2: (7, 14),
+        3: (14, 100)
+    }
+    current_required, next_required = boost_tiers.get(boost_level, (0, 0))
+    boosts_until_next = max(0, next_required - boost_count)
 
-            data = response.json()
-            image_url = data.get("url")
-            if not image_url:
-                await interaction.followup.send("❌ No image returned from Pollinations.")
-                return
+    embed = discord.Embed(title=f"🌐 Server Info: {guild.name}", color=discord.Color.blue())
 
-            # Create clean embed
-            embed = discord.Embed(title="🎨 Generated Image", color=discord.Color.green())
-            embed.set_image(url=image_url)
-            embed.set_footer(text="Neroniel AI | Powered by Pollinations")
-            embed.timestamp = discord.utils.utcnow()
-            await interaction.followup.send(embed=embed)
+    # Basic Info
+    embed.add_field(name="Server Name", value=f"`{guild.name}`", inline=False)
+    embed.add_field(name="Server ID", value=f"`{guild.id}`", inline=False)
+    embed.add_field(name="Owner", value=f"{guild.owner.mention} (`{guild.owner}`)", inline=False)
+    embed.add_field(name="Owner ID", value=f"`{guild.owner_id}`", inline=False)
+    embed.add_field(name="Created On", value=f"<t:{int(guild.created_at.timestamp())}:F>", inline=False)
 
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error generating image: {str(e)}")
+    # Member Info
+    embed.add_field(name="Member Count", value=f"`{total_members}`", inline=True)
+    embed.add_field(name="Human Members", value=f"`{human_count}`", inline=True)
+    embed.add_field(name="Bot Count", value=f"`{bot_count}`", inline=True)
 
-# [All other commands: payout, gift, poll, remindme, calculator, groupinfo, etc.] 
-# REMAIN UNCHANGED — FULL CODE BELOW
+    # Roles & Channels
+    embed.add_field(name="Role Count", value=f"`{len(guild.roles)}`", inline=True)
+    embed.add_field(name="Text Channels", value=f"`{len(guild.text_channels)}`", inline=True)
+    embed.add_field(name="Voice Channels", value=f"`{len(guild.voice_channels)}`", inline=True)
 
-# Paste all remaining commands here from your original file (or use the full version below)
+    # Boost Info
+    embed.add_field(
+        name="Boost Level",
+        value=f"`Level {boost_level}` (Currently `{boost_count}` boosts)",
+        inline=False
+    )
+    if boost_level < 3:
+        embed.add_field(
+            name="Next Level Progress",
+            value=f"`{boost_count}/{next_required}` boosts\nThat's only `{boosts_until_next}` boosts away to reach Level `{boost_level + 1}`!",
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name="Next Level Progress",
+            value="`Max level reached! 🎉`",
+            inline=False
+        )
+
+    # Random Member
+    embed.add_field(name="Random Member", value=f"{random_member.mention} (`{random_member}`)", inline=False)
+
+    # Footer with thumbnail
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+    embed.set_footer(text="Neroniel AI")
+    embed.timestamp = discord.utils.utcnow()
+
+    await interaction.response.send_message(embed=embed)
+
+# /userinfo - Display user information
+@bot.tree.command(name="userinfo", description="Display detailed information about a user")
+@app_commands.describe(member="The member to get info for (optional, defaults to you)")
+async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
+    if member is None:
+        member = interaction.user
+
+    # Account creation date
+    created_at = member.created_at.strftime("%B %d, %Y • %I:%M %p UTC")
+
+    # Join date (only available if the member is in the guild)
+    joined_at = member.joined_at.strftime("%B %d, %Y • %I:%M %p UTC") if member.joined_at else "Unknown"
+
+    # Roles (excluding @everyone)
+    roles = [role.mention for role in member.roles if not role.is_default()]
+    roles_str = ", ".join(roles) if roles else "No roles"
+
+    # Boosting status
+    if member.premium_since:
+        boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC")
+    else:
+        boost_since = "Not boosting"
+
+    embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
+
+    # Basic Info
+    embed.add_field(name="Username", value=f"{member.mention}", inline=False)
+    embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
+    embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
+
+    # Dates
+    embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
+    embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
+
+    # Roles
+    embed.add_field(name="Roles", value=roles_str, inline=False)
+
+    # Boosting
+    embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
+
+    # Optional: Show if the user is a bot
+    if member.bot:
+        embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
+
+    # Set thumbnail to user's avatar
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    # Footer and timestamp
+    embed.set_footer(text="Neroniel AI")
+    embed.timestamp = discord.utils.utcnow()
+
+    await interaction.response.send_message(embed=embed)
 
 # ===========================
 # Conversion Commands
@@ -289,44 +383,6 @@ async def giftreverse(interaction: discord.Interaction, php: float):
         return
     robux = math.ceil((php / 250) * 1000)
     await interaction.response.send_message(f"🎉 ₱{php:.2f} PHP = **{robux} Robux**")
-
-# NCT Rate
-@bot.tree.command(name="nct", description="Convert Robux to PHP based on NCT rate (₱240/1k)")
-@app_commands.describe(robux="How much Robux do you want to convert?")
-async def nct(interaction: discord.Interaction, robux: int):
-    if robux <= 0:
-        await interaction.response.send_message("❗ Invalid input.")
-        return
-    php = robux * (240 / 1000)
-    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
-
-@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on NCT rate (₱240/1k)")
-@app_commands.describe(php="How much PHP do you want to convert?")
-async def nctreverse(interaction: discord.Interaction, php: float):
-    if php <= 0:
-        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
-        return
-    robux = math.ceil((php / 240) * 1000)
-    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
-
-# CT Rate
-@bot.tree.command(name="ct", description="Convert Robux to PHP based on CT rate (₱340/1k)")
-@app_commands.describe(robux="How much Robux do you want to convert?")
-async def ct(interaction: discord.Interaction, robux: int):
-    if robux <= 0:
-        await interaction.response.send_message("❗ Invalid input.")
-        return
-    php = robux * (340 / 1000)
-    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
-
-@bot.tree.command(name="ctreverse", description="Convert PHP to Robux based on CT rate (₱340/1k)")
-@app_commands.describe(php="How much PHP do you want to convert?")
-async def ctreverse(interaction: discord.Interaction, php: float):
-    if php <= 0:
-        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
-        return
-    robux = math.ceil((php / 340) * 1000)
-    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
 
 # All Rates Comparison
 @bot.tree.command(name="allrates", description="See PHP equivalent across all rates for given Robux")
@@ -379,7 +435,7 @@ async def aftertax(interaction: discord.Interaction, target: int):
     await interaction.response.send_message(f"📬 To receive **{target} Robux**, send **{sent} Robux** (30% tax).")
 
 # ===========================
-# Utility Commands
+# Other Commands
 # ===========================
 
 # Purge Command
@@ -552,19 +608,20 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
 async def listallcommands(interaction: discord.Interaction):
     embed = discord.Embed(title="Available Commands", color=discord.Color.blue())
     embed.add_field(name="💰 Currency Commands", value="""
-    `/nct`, `/nctreverse`, `/ct`, `/ctreverse`, `/payout`, `/payoutreverse`, `/gift`, `/giftreverse
+    `/payout`, `/payoutreverse`, `/gift`, `/giftreverse
     """, inline=False)
     embed.add_field(name="📊 Comparison Commands", value="""
     `/allrates`, `/allratesreverse`, `/beforetax`, `/aftertax`
     """, inline=False)
     embed.add_field(name="🛠️ Utility Commands", value="""
-    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`, `/generateimage
+    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`
     """, inline=False)
     await interaction.response.send_message(embed=embed)
 
 # ===========================
 # Bot Events
 # ===========================
+
 @bot.event
 async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
@@ -593,6 +650,7 @@ async def on_ready():
 async def on_message(message):
     if message.author == bot.user:
         return
+
     if message.content.lower() == "hobie":
         await message.channel.send("mapanghe")
     elif message.content.lower() == "neroniel":
@@ -607,9 +665,16 @@ async def on_message(message):
             "kaya wag na lang. thanks nalang sa hi mo"
         )
         await message.channel.send(reply)
-    auto_react_channels = [1225294057371074760, 1107600826664501258, 1107591404877791242, 1368123462077513738]
+
+    auto_react_channels = [
+        1225294057371074760,
+        1107600826664501258,
+        1107591404877791242,
+        1368123462077513738
+    ]
     if message.channel.id in auto_react_channels:
         await message.add_reaction("🎀")
+
     if message.channel.id == 1107281584337461321:
         await message.add_reaction("<:1cy_heart:1258694384346468362>")
 
