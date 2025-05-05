@@ -6,7 +6,7 @@ import requests
 import os
 import threading
 import math
-import random  # For random member selection
+import random  # For future use if needed
 from flask import Flask
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -214,84 +214,6 @@ async def clearhistory(interaction: discord.Interaction):
 # Utility Commands
 # ===========================
 
-# /serverinfo - Display server information
-@bot.tree.command(name="serverinfo", description="Display detailed information about this server")
-async def serverinfo(interaction: discord.Interaction):
-    guild = interaction.guild
-
-    # Calculate member stats
-    total_members = guild.member_count
-    human_count = sum(not member.bot for member in guild.members)
-    bot_count = total_members - human_count
-
-    # Get random member (excluding bots)
-    valid_members = [member for member in guild.members if not member.bot]
-    random_member = random.choice(valid_members) if valid_members else None
-
-    # Boost info
-    boost_level = guild.premium_tier
-    boost_count = guild.premium_subscription_count
-    boost_tiers = {
-        0: (0, 2),
-        1: (2, 7),
-        2: (7, 14),
-        3: (14, 100)
-    }
-    current_required, next_required = boost_tiers.get(boost_level, (0, 0))
-    boosts_until_next = max(0, next_required - boost_count)
-
-    embed = discord.Embed(title=f"🌐 Server Info: {guild.name}", color=discord.Color.blue())
-
-    # Basic Info
-    embed.add_field(name="Server Name", value=f"`{guild.name}`", inline=False)
-    embed.add_field(name="Server ID", value=f"`{guild.id}`", inline=False)
-    embed.add_field(name="Owner", value=f"{guild.owner.mention} (`{guild.owner}`)", inline=False)
-    embed.add_field(name="Owner ID", value=f"`{guild.owner_id}`", inline=False)
-    embed.add_field(name="Created On", value=f"<t:{int(guild.created_at.timestamp())}:F>", inline=False)
-
-    # Member Info
-    embed.add_field(name="Member Count", value=f"`{total_members}`", inline=True)
-    embed.add_field(name="Human Members", value=f"`{human_count}`", inline=True)
-    embed.add_field(name="Bot Count", value=f"`{bot_count}`", inline=True)
-
-    # Roles & Channels
-    embed.add_field(name="Role Count", value=f"`{len(guild.roles)}`", inline=True)
-    embed.add_field(name="Text Channels", value=f"`{len(guild.text_channels)}`", inline=True)
-    embed.add_field(name="Voice Channels", value=f"`{len(guild.voice_channels)}`", inline=True)
-
-    # Boost Info
-    embed.add_field(
-        name="Boost Level",
-        value=f"`Level {boost_level}` (Currently `{boost_count}` boosts)",
-        inline=False
-    )
-    if boost_level < 3:
-        embed.add_field(
-            name="Next Level Progress",
-            value=f"`{boost_count}/{next_required}` boosts\nThat's only `{boosts_until_next}` boosts away to reach Level `{boost_level + 1}`!",
-            inline=False
-        )
-    else:
-        embed.add_field(
-            name="Next Level Progress",
-            value="`Max level reached! 🎉`",
-            inline=False
-        )
-
-    # Random Member
-    if random_member:
-        embed.add_field(name="Random Member", value=f"{random_member.mention} (`{random_member}`)", inline=False)
-    else:
-        embed.add_field(name="Random Member", value="❌ Could not find a valid member.", inline=False)
-
-    # Footer with thumbnail
-    if guild.icon:
-        embed.set_thumbnail(url=guild.icon.url)
-    embed.set_footer(text="Neroniel AI")
-    embed.timestamp = discord.utils.utcnow()
-
-    await interaction.response.send_message(embed=embed)
-
 # /userinfo - Display user information
 @bot.tree.command(name="userinfo", description="Display detailed information about a user")
 @app_commands.describe(member="The member to get info for (optional, defaults to you)")
@@ -383,6 +305,44 @@ async def giftreverse(interaction: discord.Interaction, php: float):
         return
     robux = math.ceil((php / 250) * 1000)
     await interaction.response.send_message(f"🎉 ₱{php:.2f} PHP = **{robux} Robux**")
+
+# NCT Rate
+@bot.tree.command(name="nct", description="Convert Robux to PHP based on NCT rate (₱240/1k)")
+@app_commands.describe(robux="How much Robux do you want to convert?")
+async def nct(interaction: discord.Interaction, robux: int):
+    if robux <= 0:
+        await interaction.response.send_message("❗ Invalid input.")
+        return
+    php = robux * (240 / 1000)
+    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
+
+@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on NCT rate (₱240/1k)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def nctreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 240) * 1000)
+    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
+
+# CT Rate
+@bot.tree.command(name="ct", description="Convert Robux to PHP based on CT rate (₱340/1k)")
+@app_commands.describe(robux="How much Robux do you want to convert?")
+async def ct(interaction: discord.Interaction, robux: int):
+    if robux <= 0:
+        await interaction.response.send_message("❗ Invalid input.")
+        return
+    php = robux * (340 / 1000)
+    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
+
+@bot.tree.command(name="ctreverse", description="Convert PHP to Robux based on CT rate (₱340/1k)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def ctreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 340) * 1000)
+    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
 
 # All Rates Comparison
 @bot.tree.command(name="allrates", description="See PHP equivalent across all rates for given Robux")
@@ -607,13 +567,13 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
 async def listallcommands(interaction: discord.Interaction):
     embed = discord.Embed(title="Available Commands", color=discord.Color.blue())
     embed.add_field(name="💰 Currency Commands", value="""
-    `/payout`, `/payoutreverse`, `/gift`, `/giftreverse
+    `/payout`, `/payoutreverse`, `/gift`, `/giftreverse`
     """, inline=False)
     embed.add_field(name="📊 Comparison Commands", value="""
     `/allrates`, `/allratesreverse`, `/beforetax`, `/aftertax`
     """, inline=False)
     embed.add_field(name="🛠️ Utility Commands", value="""
-    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`, `/userinfo`, `/serverinfo`
+    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`, `/userinfo`
     """, inline=False)
     await interaction.response.send_message(embed=embed)
 
@@ -660,7 +620,7 @@ async def on_message(message):
             "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? "
             "tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? "
             "liligawan mo ko? sasagutin naman kita. paplanuhin natin yung pangarap natin sa isa't isa "
-            "tapos ano? may makikita kang iba. magsasawa ka na, iiwan mo na ako. tapos ano? magmamakaawa ako sayo "
+            "tapos ano? may makikita kang iba. magsasawa ka na, iiwan mo ako. tapos ano? magmamakaawa ako sayo "
             "kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak while begging you to stay. "
             "kaya wag na lang. thanks nalang sa hi mo"
         )
