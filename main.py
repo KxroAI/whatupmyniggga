@@ -11,6 +11,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -69,24 +70,19 @@ async def check_reminders():
             guild_id = reminder["guild_id"]
             channel_id = reminder["channel_id"]
             note = reminder["note"]
-
             user = bot.get_user(user_id)
             if not user:
                 user = await bot.fetch_user(user_id)
-
             guild = bot.get_guild(guild_id)
             if not guild:
                 continue
-
             channel = guild.get_channel(channel_id)
             if not channel:
                 continue
-
             try:
                 await channel.send(f"🔔 {user.mention}, reminder: {note}")
             except discord.Forbidden:
                 print(f"[!] Cannot send reminder to {user} in #{channel.name}")
-
             # Delete reminder after sending
             reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
@@ -110,7 +106,6 @@ if reminders_collection:
 async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     await interaction.response.defer()
-
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
@@ -119,7 +114,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
-
     async with interaction.channel.typing():
         try:
             # Load conversation history from MongoDB (if available)
@@ -133,16 +127,13 @@ async def ask(interaction: discord.Interaction, prompt: str):
                             "assistant": doc["response"]
                         })
                     bot.conversations[user_id].reverse()  # Maintain order
-
                 history = bot.conversations[user_id][-5:]
-
             # Build full prompt
-            system_prompt = "You are a helpful and friendly AI assistant named Neroniel AI.\n\n"
+            system_prompt = "You are a helpful and friendly AI assistant named Neroniel AI.\n"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
-
             # Call Together AI
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
@@ -164,13 +155,11 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
             ai_response = data["choices"][0]["text"].strip()
-
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
             })
-
             if conversations_collection:
                 conversations_collection.insert_one({
                     "user_id": user_id,
@@ -178,13 +167,11 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.utcnow()
                 })
-
             # Send response embed
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = discord.utils.utcnow()
             await interaction.followup.send(embed=embed)
-
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
 
@@ -192,19 +179,16 @@ async def ask(interaction: discord.Interaction, prompt: str):
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
     user_id = interaction.user.id
-
     # Clear local memory
     if user_id in bot.conversations:
         bot.conversations[user_id].clear()
-
     # Clear MongoDB history
     if conversations_collection:
         conversations_collection.delete_many({"user_id": user_id})
-
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
 
-# /generateimage - Generate images using Pollinations AI (Free Tier)
-@bot.tree.command(name="generateimage", description="Generate an image from a text prompt (Free Tier)")
+# /generateimage - Generate images using Craiyon (Unofficial API)
+@bot.tree.command(name="generateimage", description="Generate an image from a text prompt (Free via Craiyon)")
 @app_commands.describe(
     prompt="Describe the image you want to generate",
     size="Choose resolution (optional)"
@@ -229,29 +213,34 @@ async def generateimage(interaction: discord.Interaction, prompt: str, size: app
 
     async with interaction.channel.typing():
         try:
-            # Set default size if none provided
-            if size is None:
-                width, height = 1024, 1024
-            else:
-                width, height = map(int, size.value.split('x'))
-            encoded_prompt = prompt.replace(" ", "%20").replace("#", "sharp")
-            image_api_url = f"https://image.pollinations.ai/{encoded_prompt}?width={width}&height={height}&json=true"
-            response = requests.get(image_api_url)
+            # Ignore size since Craiyon doesn't support it
+            craiyon_url = "https://craiyon.com/api/generate"
+
+            payload = {
+                "prompt": prompt
+            }
+
+            response = requests.post(craiyon_url, json=payload)
+
             if response.status_code != 200:
-                await interaction.followup.send("❌ Failed to fetch image URL from Pollinations.")
+                await interaction.followup.send("❌ Failed to request image generation from Craiyon.")
                 return
+
             data = response.json()
-            image_url = data.get("url")
-            if not image_url:
-                await interaction.followup.send("❌ No image returned from Pollinations.")
+            if not data.get("images"):
+                await interaction.followup.send("❌ No image returned from Craiyon.")
                 return
+
+            image_data = data["images"][0]
+            image_url = f"data:image/png;base64,{image_data}"  # Base64-encoded PNG
 
             # Create clean embed
             embed = discord.Embed(title="🎨 Generated Image", color=discord.Color.green())
             embed.set_image(url=image_url)
-            embed.set_footer(text="Neroniel AI")
+            embed.set_footer(text="Neroniel AI | Powered by Craiyon")
             embed.timestamp = discord.utils.utcnow()
             await interaction.followup.send(embed=embed)
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error generating image: {str(e)}")
 
@@ -487,7 +476,6 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
         await interaction.response.send_message("❗ Please enter a positive number of minutes.", ephemeral=True)
         return
     reminder_time = datetime.utcnow() + timedelta(minutes=minutes)
-
     # Save to MongoDB
     if reminders_collection:
         reminders_collection.insert_one({
@@ -497,7 +485,6 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
             "note": note,
             "reminder_time": reminder_time
         })
-
     await interaction.response.send_message(
         f"⏰ I'll remind you in `{minutes}` minutes: `{note}`",
         ephemeral=True
@@ -579,6 +566,7 @@ async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
+
     group_id = 5838002
     while True:
         try:
