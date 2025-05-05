@@ -225,12 +225,8 @@ async def serverinfo(interaction: discord.Interaction):
     bot_count = total_members - human_count
 
     # Get random member (excluding bots)
-    random_member = None
-    while random_member is None or random_member.bot:
-        try:
-            random_member = random.choice(guild.members)
-        except IndexError:
-            break
+    valid_members = [member for member in guild.members if not member.bot]
+    random_member = random.choice(valid_members) if valid_members else None
 
     # Boost info
     boost_level = guild.premium_tier
@@ -540,7 +536,6 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
         await interaction.response.send_message("❗ Please enter a positive number of minutes.", ephemeral=True)
         return
     reminder_time = datetime.utcnow() + timedelta(minutes=minutes)
-    # Save to MongoDB
     if reminders_collection:
         reminders_collection.insert_one({
             "user_id": interaction.user.id,
@@ -618,7 +613,7 @@ async def listallcommands(interaction: discord.Interaction):
     `/allrates`, `/allratesreverse`, `/beforetax`, `/aftertax`
     """, inline=False)
     embed.add_field(name="🛠️ Utility Commands", value="""
-    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`
+    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`, `/userinfo`, `/serverinfo`
     """, inline=False)
     await interaction.response.send_message(embed=embed)
 
