@@ -6,6 +6,7 @@ import requests
 import os
 import threading
 import math
+import random  # For random member selection
 from flask import Flask
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -226,7 +227,10 @@ async def serverinfo(interaction: discord.Interaction):
     # Get random member (excluding bots)
     random_member = None
     while random_member is None or random_member.bot:
-        random_member = guild.random_member()
+        try:
+            random_member = random.choice(guild.members)
+        except IndexError:
+            break
 
     # Boost info
     boost_level = guild.premium_tier
@@ -279,7 +283,10 @@ async def serverinfo(interaction: discord.Interaction):
         )
 
     # Random Member
-    embed.add_field(name="Random Member", value=f"{random_member.mention} (`{random_member}`)", inline=False)
+    if random_member:
+        embed.add_field(name="Random Member", value=f"{random_member.mention} (`{random_member}`)", inline=False)
+    else:
+        embed.add_field(name="Random Member", value="❌ Could not find a valid member.", inline=False)
 
     # Footer with thumbnail
     if guild.icon:
@@ -299,18 +306,15 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     # Account creation date
     created_at = member.created_at.strftime("%B %d, %Y • %I:%M %p UTC")
 
-    # Join date (only available if the member is in the guild)
+    # Join date
     joined_at = member.joined_at.strftime("%B %d, %Y • %I:%M %p UTC") if member.joined_at else "Unknown"
 
-    # Roles (excluding @everyone)
+    # Roles
     roles = [role.mention for role in member.roles if not role.is_default()]
     roles_str = ", ".join(roles) if roles else "No roles"
 
     # Boosting status
-    if member.premium_since:
-        boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC")
-    else:
-        boost_since = "Not boosting"
+    boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC") if member.premium_since else "Not boosting"
 
     embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
 
@@ -651,11 +655,12 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    if message.content.lower() == "hobie":
+    content = message.content.lower()
+    if content == "hobie":
         await message.channel.send("mapanghe")
-    elif message.content.lower() == "neroniel":
+    elif content == "neroniel":
         await message.channel.send("masarap")
-    elif message.content.lower() == "hi":
+    elif content == "hi":
         reply = (
             "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? "
             "tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? "
