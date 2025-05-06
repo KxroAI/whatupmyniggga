@@ -4,3 +4,4 @@ certifi>=2023.01.00
 requests>=2.0.0
 python-dotenv>=1.0.0
 flask>=2.0.0
+pytz==2023.3.post1
