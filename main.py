@@ -60,6 +60,7 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
+
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
@@ -118,7 +119,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
-
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
@@ -127,7 +127,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
-
     async with interaction.channel.typing():
         try:
             # Custom filter for creator questions
@@ -139,7 +138,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 msg = await interaction.followup.send(embed=embed)
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
-
             # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
@@ -152,14 +150,12 @@ async def ask(interaction: discord.Interaction, prompt: str):
                         })
                     bot.conversations[user_id].reverse()  # Maintain order
                 history = bot.conversations[user_id][-5:]
-
             # Build full prompt
             system_prompt = "You are a helpful and friendly AI assistant named Neroniel AI.\n"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
-
             # Call Together AI
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
@@ -181,15 +177,12 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
             ai_response = data["choices"][0]["text"].strip()
-
             # Determine if we should reply to a previous message
             target_message_id = bot.last_message_id.get((user_id, channel_id))
-
             # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = discord.utils.utcnow()
-
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -200,10 +193,8 @@ async def ask(interaction: discord.Interaction, prompt: str):
             else:
                 msg = await interaction.followup.send(embed=embed)
                 reply = msg
-
             # Update the last message ID for future replies
             bot.last_message_id[(user_id, channel_id)] = reply.id
-
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
@@ -216,9 +207,9 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.utcnow()
                 })
-
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
+
 
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
@@ -231,6 +222,7 @@ async def clearhistory(interaction: discord.Interaction):
     if conversations_collection:
         conversations_collection.delete_many({"user_id": user_id})
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
+
 
 # ===========================
 # Utility Commands
@@ -272,6 +264,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     embed.set_footer(text="Neroniel AI")
     embed.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=embed)
+
 
 # ===========================
 # Conversion Commands
@@ -571,25 +564,86 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
     except Exception as e:
         await interaction.response.send_message(f"⚠️ An error occurred: {str(e)}")
 
-# List Commands
+# List All Commands
 @bot.tree.command(name="listallcommands", description="List all available slash commands")
 async def listallcommands(interaction: discord.Interaction):
-    embed = discord.Embed(title="Available Commands", color=discord.Color.blue())
-    embed.add_field(name="💰 Currency Commands", value="""
-    `/payout`, `/payoutreverse`, `/gift`, `/giftreverse`
-    """, inline=False)
-    embed.add_field(name="📊 Comparison Commands", value="""
-    `/allrates`, `/allratesreverse`, `/beforetax`, `/aftertax`
-    """, inline=False)
-    embed.add_field(name="🛠️ Utility Commands", value="""
-    `/purge`, `/group`, `/listallcommands`, `/donate`, `/say`, `/calculator`, `/poll`, `/remindme`, `/ask`, `/userinfo`
-    """, inline=False)
+    embed = discord.Embed(
+        title="📚 All Available Commands",
+        description="A categorized list of all commands for easy navigation.",
+        color=discord.Color.blue()
+    )
+
+    # 🤖 AI Assistant
+    embed.add_field(
+        name="🤖 AI Assistant",
+        value="""
+        `/ask` - Chat with Llama 3 AI (supports threaded conversations)
+        `/clearhistory` - Clear your AI conversation history
+        """,
+        inline=False
+    )
+
+    # 💰 Currency Conversion
+    embed.add_field(
+        name="💰 Currency Conversion",
+        value="""
+        `/payout <robux>` - Convert Robux to PHP at payout rate (₱320/1000)
+        `/payoutreverse <php>` - Convert PHP to Robux at payout rate
+        `/gift <robux>` - Convert Robux to PHP at gift rate (₱250/1000)
+        `/giftreverse <php>` - Convert PHP to Robux at gift rate
+        `/nct <robux>` - Convert Robux to PHP at NCT rate (₱240/1000)
+        `/nctreverse <php>` - Convert PHP to Robux at NCT rate
+        `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1000)
+        `/ctreverse <php>` - Convert PHP to Robux at CT rate
+        """,
+        inline=False
+    )
+
+    # 📊 Comparison & Tax
+    embed.add_field(
+        name="📊 Comparison & Tax",
+        value="""
+        `/allrates <robux>` - Compare PHP values across all rates
+        `/allratesreverse <php>` - Compare Robux needed across all rates
+        `/beforetax <robux>` - Calculate how much you'll receive after 30% tax
+        `/aftertax <target>` - Calculate how much to send to get X after tax
+        """,
+        inline=False
+    )
+
+    # 🛠️ Utility Tools
+    embed.add_field(
+        name="🛠️ Utility Tools",
+        value="""
+        `/userinfo [user]` - View detailed info about a user
+        `/purge <amount>` - Delete a number of messages (mod only)
+        `/calculator <num1> <op> <num2>` - Perform basic math operations
+        `/group` - Show info about the 1cy Roblox group
+        """,
+        inline=False
+    )
+
+    # 🎉 Fun Commands
+    embed.add_field(
+        name="🎉 Fun",
+        value="""
+        `/poll <question> <time> <unit>` - Create a poll with up/down votes
+        `/remindme <minutes> <note>` - Set a reminder for yourself
+        `/say <message>` - Make the bot say something
+        `/donate <user> <amount>` - Donate Robux to someone (only for fun!)
+        """,
+        inline=False
+    )
+
+    # Footer
+    embed.set_footer(text="Neroniel AI")
+    embed.timestamp = discord.utils.utcnow()
+
     await interaction.response.send_message(embed=embed)
 
 # ===========================
 # Bot Events
 # ===========================
-
 @bot.event
 async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
