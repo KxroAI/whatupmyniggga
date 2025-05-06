@@ -131,7 +131,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
         try:
             # Custom filter for creator questions
             normalized_prompt = prompt.strip().lower()
-            if normalized_prompt in ["who made you", "who created you", "who created this bot"]:
+            if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
                 embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = discord.utils.utcnow()
@@ -240,9 +240,9 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     joined_at = member.joined_at.strftime("%B %d, %Y • %I:%M %p UTC") if member.joined_at else "Unknown"
     # Roles
     roles = [role.mention for role in member.roles if not role.is_default()]
-    roles_str = ", ".join(roles) if roles else "No roles"
+    roles_str = ", ".join(roles) if roles else "No Roles"
     # Boosting status
-    boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC") if member.premium_since else "Not boosting"
+    boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC") if member.premium_since else "Not Boosting"
     embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
     # Basic Info
     embed.add_field(name="Username", value=f"{member.mention}", inline=False)
@@ -261,7 +261,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     # Set thumbnail to user's avatar
     embed.set_thumbnail(url=member.display_avatar.url)
     # Footer and timestamp
-    embed.set_footer(text="Neroniel AI")
+    embed.set_footer(text="Neroniel")
     embed.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=embed)
 
@@ -435,7 +435,7 @@ async def groupinfo(interaction: discord.Interaction):
         owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No owner"
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
-        embed.set_footer(text="Neroniel AI")
+        embed.set_footer(text="Neroniel")
         embed.timestamp = discord.utils.utcnow()
         await interaction.response.send_message(embed=embed)
     except Exception as e:
@@ -465,7 +465,7 @@ async def poll(interaction: discord.Interaction, question: str, amount: int, uni
         await interaction.response.send_message("❗ Duration cannot exceed 24 hours.", ephemeral=True)
         return
     embed = discord.Embed(title="📊 Poll", description=question, color=discord.Color.orange())
-    embed.set_footer(text="Neroniel AI")
+    embed.set_footer(text="Neroniel")
     embed.timestamp = discord.utils.utcnow()
     message = await interaction.channel.send(embed=embed)
     await message.add_reaction("👍")
@@ -587,10 +587,10 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="💰 Currency Conversion",
         value="""
-        `/payout <robux>` - Convert Robux to PHP at payout rate (₱320/1000)
-        `/payoutreverse <php>` - Convert PHP to Robux at payout rate
-        `/gift <robux>` - Convert Robux to PHP at gift rate (₱250/1000)
-        `/giftreverse <php>` - Convert PHP to Robux at gift rate
+        `/payout <robux>` - Convert Robux to PHP at Payout rate (₱320/1000)
+        `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
+        `/gift <robux>` - Convert Robux to PHP at Gift rate (₱250/1000)
+        `/giftreverse <php>` - Convert PHP to Robux at Gift rate
         `/nct <robux>` - Convert Robux to PHP at NCT rate (₱240/1000)
         `/nctreverse <php>` - Convert PHP to Robux at NCT rate
         `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1000)
@@ -618,7 +618,7 @@ async def listallcommands(interaction: discord.Interaction):
         `/userinfo [user]` - View detailed info about a user
         `/purge <amount>` - Delete a number of messages (mod only)
         `/calculator <num1> <op> <num2>` - Perform basic math operations
-        `/group` - Show info about the 1cy Roblox group
+        `/group` - Show info about the 1cy Roblox Group
         """,
         inline=False
     )
@@ -630,13 +630,13 @@ async def listallcommands(interaction: discord.Interaction):
         `/poll <question> <time> <unit>` - Create a poll with up/down votes
         `/remindme <minutes> <note>` - Set a reminder for yourself
         `/say <message>` - Make the bot say something
-        `/donate <user> <amount>` - Donate Robux to someone (only for fun!)
+        `/donate <user> <amount>` - Donate Robux to someone
         """,
         inline=False
     )
 
     # Footer
-    embed.set_footer(text="Neroniel AI")
+    embed.set_footer(text="Neroniel")
     embed.timestamp = discord.utils.utcnow()
 
     await interaction.response.send_message(embed=embed)
