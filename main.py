@@ -13,6 +13,10 @@ from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient
 from datetime import datetime, timedelta
+import pytz  # <-- NEW for timezone support
+
+# Set timezone to Philippines (GMT+8)
+PH_TIMEZONE = pytz.timezone("Asia/Manila")
 
 load_dotenv()
 
@@ -35,10 +39,8 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is alive!"
-
 def run_server():
     app.run(host='0.0.0.0', port=5000)
-
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
@@ -47,7 +49,6 @@ def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
-
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
@@ -60,7 +61,6 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
-
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
@@ -76,7 +76,7 @@ async def check_reminders():
     if not reminders_collection:
         return
     try:
-        now = datetime.utcnow()
+        now = datetime.now(PH_TIMEZONE)
         expired = reminders_collection.find({"reminder_time": {"$lte": now}})
         for reminder in expired:
             user_id = reminder["user_id"]
@@ -134,7 +134,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
             if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
                 embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
                 embed.set_footer(text="Neroniel AI")
-                embed.timestamp = discord.utils.utcnow()
+                embed.timestamp = datetime.now(PH_TIMEZONE)
                 msg = await interaction.followup.send(embed=embed)
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
@@ -182,7 +182,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
             # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
-            embed.timestamp = discord.utils.utcnow()
+            embed.timestamp = datetime.now(PH_TIMEZONE)
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -205,11 +205,10 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "user_id": user_id,
                     "prompt": prompt,
                     "response": ai_response,
-                    "timestamp": datetime.utcnow()
+                    "timestamp": datetime.now(PH_TIMEZONE)
                 })
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
-
 
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
@@ -223,7 +222,6 @@ async def clearhistory(interaction: discord.Interaction):
         conversations_collection.delete_many({"user_id": user_id})
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
 
-
 # ===========================
 # Utility Commands
 # ===========================
@@ -235,14 +233,14 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     if member is None:
         member = interaction.user
     # Account creation date
-    created_at = member.created_at.strftime("%B %d, %Y • %I:%M %p UTC")
+    created_at = member.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
     # Join date
-    joined_at = member.joined_at.strftime("%B %d, %Y • %I:%M %p UTC") if member.joined_at else "Unknown"
+    joined_at = member.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.joined_at else "Unknown"
     # Roles
     roles = [role.mention for role in member.roles if not role.is_default()]
     roles_str = ", ".join(roles) if roles else "No Roles"
     # Boosting status
-    boost_since = member.premium_since.strftime("%B %d, %Y • %I:%M %p UTC") if member.premium_since else "Not Boosting"
+    boost_since = member.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.premium_since else "Not Boosting"
     embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
     # Basic Info
     embed.add_field(name="Username", value=f"{member.mention}", inline=False)
@@ -262,7 +260,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     embed.set_thumbnail(url=member.display_avatar.url)
     # Footer and timestamp
     embed.set_footer(text="Neroniel")
-    embed.timestamp = discord.utils.utcnow()
+    embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
 
