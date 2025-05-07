@@ -1,6 +1,3 @@
-import discord
-from discord import app_commands
-
 def setup(bot):
     @bot.tree.command(name="listallcommands", description="List all available slash commands")
     async def listallcommands(interaction: discord.Interaction):
@@ -9,6 +6,7 @@ def setup(bot):
             description="A categorized list of all commands for easy navigation.",
             color=discord.Color.blue()
         )
+
         # 🤖 AI Assistant
         embed.add_field(
             name="🤖 AI Assistant",
@@ -18,6 +16,7 @@ def setup(bot):
             """,
             inline=False
         )
+
         # 💰 Currency Conversion
         embed.add_field(
             name="💰 Currency Conversion",
@@ -30,9 +29,11 @@ def setup(bot):
             `/nctreverse <php>` - Convert PHP to Robux at NCT rate
             `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1000)
             `/ctreverse <php>` - Convert PHP to Robux at CT rate
+            `/currencyconvert <amount> <from> <to>` - Real-time currency conversion (e.g. USD to PHP)
             """,
             inline=False
         )
+
         # 📊 Comparison & Tax
         embed.add_field(
             name="📊 Comparison & Tax",
@@ -44,17 +45,20 @@ def setup(bot):
             """,
             inline=False
         )
+
         # 🛠️ Utility Tools
         embed.add_field(
             name="🛠️ Utility Tools",
             value="""
             `/userinfo [user]` - View detailed info about a user
+            `/robloxuser <username>` - Get info about a Roblox profile
             `/purge <amount>` - Delete a number of messages (mod only)
             `/calculator <num1> <op> <num2>` - Perform basic math operations
             `/group` - Show info about the 1cy Roblox Group
             """,
             inline=False
         )
+
         # 🎉 Fun Commands
         embed.add_field(
             name="🎉 Fun",
@@ -63,10 +67,17 @@ def setup(bot):
             `/remindme <minutes> <note>` - Set a reminder for yourself
             `/say <message>` - Make the bot say something
             `/donate <user> <amount>` - Donate Robux to someone
+            `/trivia` - Answer a random trivia question
+            `/rps <choice>` - Play Rock Paper Scissors against the bot
+            `/truthordare <mode>` - Play Truth or Dare
+            `/wyr` - Would You Rather...?
+            `/meme` - Send a random meme
             """,
             inline=False
         )
+
         # Footer
         embed.set_footer(text="Neroniel")
         embed.timestamp = discord.utils.utcnow()
+
         await interaction.response.send_message(embed=embed)
