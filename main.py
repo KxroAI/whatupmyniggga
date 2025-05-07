@@ -3,8 +3,8 @@ from discord.ext import commands
 import os
 import threading
 import asyncio
+import requests  # Required for auto-replies or other future uses
 from dotenv import load_dotenv
-import importlib.util
 
 # Load environment variables
 load_dotenv()
@@ -51,23 +51,57 @@ except Exception as e:
     bot.reminders_collection = None
 
 # ===========================
-# Load Commands Dynamically
+# Load Cogs Dynamically
 # ===========================
-async def load_commands():
-    commands_folder = "Commands"
-    for filename in os.listdir(commands_folder):
+async def load_cogs():
+    for filename in os.listdir("cogs"):
         if filename.endswith(".py") and not filename.startswith("__"):
-            command_name = filename[:-3]
-            module_path = f"{commands_folder}.{command_name}"
-            spec = importlib.util.find_spec(module_path)
-            if spec:
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                if hasattr(module, 'setup'):
-                    module.setup(bot)
-                    print(f"[+] Loaded command: /{command_name}")
-            else:
-                print(f"[!] Failed to load command: /{command_name}")
+            cog_name = filename[:-3]
+            try:
+                await bot.load_extension(f"cogs.{cog_name}")
+                print(f"[+] Loaded cog: {cog_name}")
+            except Exception as e:
+                print(f"[!] Failed to load cog {cog_name}: {e}")
+
+# ===========================
+# Custom Message Responses
+# ===========================
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    content = message.content.lower()
+
+    if content == "hobie":
+        await message.channel.send("mapanghe")
+    elif content == "neroniel":
+        await message.channel.send("masarap")
+    elif content == "hi":
+        reply = (
+            "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? "
+            "tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? "
+            "lalaki makikita kang iba. magsasawa ka na, iiwan mo ako. tapos ano? magmamakaawa ako sayo "
+            "kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak habang hinahabol kita. "
+            "kaya wag na lang. thanks nalang sa hi mo"
+        )
+        await message.channel.send(reply)
+
+    # Auto-react channels
+    auto_react_channels = [
+        1225294057371074760,
+        1107600826664501258,
+        1107591404877791242,
+        1368123462077513738
+    ]
+    if message.channel.id in auto_react_channels:
+        await message.add_reaction("🎀")
+
+    if message.channel.id == 1107281584337461321:
+        await message.add_reaction("<:1cy_heart:1258694384346468362>")
+
+    # Always process commands at the end
+    await bot.process_commands(message)
 
 # ===========================
 # On Ready Event
@@ -75,7 +109,9 @@ async def load_commands():
 @bot.event
 async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
-    await load_commands()
+    await load_cogs()
+    
+    # Sync slash commands
     try:
         await bot.tree.sync()
         print("✅ All commands synced globally!")
