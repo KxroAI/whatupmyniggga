@@ -1,21 +1,23 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+from discord import app_commands
 import os
-import threading
 import asyncio
-from dotenv import load_dotenv
-import importlib.util
 import requests
 import math
-import pytz
-from datetime import datetime, timedelta
-from pymongo import MongoClient
+import threading
+import random
+from flask import Flask
+from collections import defaultdict
+from dotenv import load_dotenv
 import certifi
+from pymongo import MongoClient
+from datetime import datetime, timedelta
+import pytz
 
 # Load environment variables
 load_dotenv()
 
-# Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
 
 # ===========================
@@ -23,28 +25,24 @@ PH_TIMEZONE = pytz.timezone("Asia/Manila")
 # ===========================
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
-# Rate limiting and conversation cache
-bot.ask_rate_limit = {}
-bot.conversations = {}
+# Rate limit & conversation cache
+bot.ask_rate_limit = defaultdict(list)
+bot.conversations = defaultdict(list)
 bot.last_message_id = {}
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
 # ===========================
-try:
-    from flask import Flask
-    app = Flask(__name__)
-    @app.route('/')
-    def home():
-        return "Bot is alive!"
-    def run_server():
-        app.run(host='0.0.0.0', port=5000)
-    server_thread = threading.Thread(target=run_server)
-    server_thread.start()
-except Exception as e:
-    print(f"[!] Failed to start Flask server: {e}")
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "Bot is alive!"
+def run_server():
+    app.run(host='0.0.0.0', port=5000)
+server_thread = threading.Thread(target=run_server)
+server_thread.start()
 
 # ===========================
 # MongoDB Setup
@@ -52,96 +50,85 @@ except Exception as e:
 try:
     client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
     db = client.ai_bot
-    bot.conversations_collection = db.conversations
-    bot.reminders_collection = db.reminders
-    bot.conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
-    bot.reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
+    conversations_collection = db.conversations
+    reminders_collection = db.reminders
+    conversations_collection.create_index("timestamp", expireAfterSeconds=604800)
+    reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)
 except Exception as e:
     print(f"[!] Failed to connect to MongoDB: {e}")
-    bot.conversations_collection = None
-    bot.reminders_collection = None
+    client = None
+    conversations_collection = None
+    reminders_collection = None
 
 # ===========================
 # Background Tasks
 # ===========================
 
-# Check reminders every minute
+# Reminder checker
+@tasks.loop(seconds=60)
 async def check_reminders():
-    while True:
-        if not bot.reminders_collection:
-            await asyncio.sleep(60)
-            continue
-        now = datetime.utcnow()
-        try:
-            expired = bot.reminders_collection.find({"reminder_time": {"$lte": now}})
-            for reminder in expired:
-                user = bot.get_user(reminder["user_id"])
-                guild = bot.get_guild(reminder["guild_id"])
-                channel = guild.get_channel(reminder["channel_id"]) if guild else None
-                if user and channel:
-                    await channel.send(f"🔔 {user.mention}, reminder: {reminder['note']}")
-                bot.reminders_collection.delete_one({"_id": reminder["_id"]})
-        except Exception as e:
-            print(f"[!] Error checking reminders: {e}")
-        await asyncio.sleep(60)
+    if not reminders_collection:
+        return
+    now = datetime.now(PH_TIMEZONE)
+    expired = reminders_collection.find({"reminder_time": {"$lte": now}})
+    for reminder in expired:
+        user = bot.get_user(reminder["user_id"])
+        channel = bot.get_channel(reminder["channel_id"])
+        if user and channel:
+            try:
+                await channel.send(f"🔔 {user.mention}, reminder: {reminder['note']}")
+                reminders_collection.delete_one({"_id": reminder["_id"]})
+            except:
+                pass
 
-# Update presence with Roblox group member count
+@check_reminders.before_loop
+async def before_check_reminders():
+    await bot.wait_until_ready()
+
+if reminders_collection:
+    check_reminders.start()
+
+# Presence updater
+@tasks.loop(seconds=60)
 async def update_presence():
-    while True:
-        try:
-            response = requests.get("https://groups.roblox.com/v1/groups/5838002")
-            data = response.json()
-            member_count = "{:,}".format(data['memberCount'])
-            await bot.change_presence(
-                status=discord.Status.dnd,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=f"1cy | {member_count} Members"
-                )
+    group_id = 5838002
+    try:
+        response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
+        data = response.json()
+        member_count = "{:,}".format(data['memberCount'])
+        await bot.change_presence(
+            status=discord.Status.dnd,
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name=f"1cy | {member_count} Members"
             )
-        except Exception as e:
-            print(f"[!] Error fetching group info: {e}")
-            await bot.change_presence(
-                status=discord.Status.dnd,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name="1cy"
-                )
+        )
+    except Exception as e:
+        await bot.change_presence(
+            status=discord.Status.dnd,
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name="1cy"
             )
-        await asyncio.sleep(60)
+        )
+
+update_presence.start()
 
 # ===========================
-# Load Commands from Commands Folder
-# ===========================
-async def load_commands():
-    commands_folder = "Commands"
-    for filename in os.listdir(commands_folder):
-        if filename.endswith(".py"):
-            command_name = filename[:-3]  # Remove .py extension
-            module_path = f"{commands_folder}.{command_name}"
-            spec = importlib.util.find_spec(module_path)
-            if spec:
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                if hasattr(module, 'setup'):
-                    module.setup(bot)
-                    print(f"[+] Loaded command: /{command_name}")
-            else:
-                print(f"[!] Failed to load command: /{command_name}")
-
-# ===========================
-# Bot Events
+# Event: On Ready
 # ===========================
 @bot.event
 async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
-    await bot.tree.sync()
-    print("All commands synced!")
-    # Start background tasks
-    bot.loop.create_task(check_reminders())
-    bot.loop.create_task(update_presence())
+    try:
+        await bot.tree.sync()
+        print("✅ All commands synced successfully.")
+    except Exception as e:
+        print(f"❌ Error syncing commands: {e}")
 
-# Auto-react and custom messages
+# ===========================
+# Event: Message Handling
+# ===========================
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -171,5 +158,7 @@ async def on_message(message):
     if message.channel.id == 1107281584337461321:
         await message.add_reaction("<:1cy_heart:1258694384346468362>")
 
-# Run the bot
+# ===========================
+# Run the Bot
+# ===========================
 bot.run(os.getenv('DISCORD_TOKEN'))
