@@ -5,9 +5,18 @@ import threading
 import asyncio
 from dotenv import load_dotenv
 import importlib.util
+import requests
+import math
+import pytz
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+import certifi
 
 # Load environment variables
 load_dotenv()
+
+# Set timezone to Philippines (GMT+8)
+PH_TIMEZONE = pytz.timezone("Asia/Manila")
 
 # ===========================
 # Bot Setup
@@ -15,6 +24,11 @@ load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Rate limiting and conversation cache
+bot.ask_rate_limit = {}
+bot.conversations = {}
+bot.last_message_id = {}
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -36,8 +50,6 @@ except Exception as e:
 # MongoDB Setup
 # ===========================
 try:
-    from pymongo import MongoClient
-    import certifi
     client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
     db = client.ai_bot
     bot.conversations_collection = db.conversations
@@ -49,25 +61,11 @@ except Exception as e:
     bot.conversations_collection = None
     bot.reminders_collection = None
 
-# Rate limiting and conversation cache
-bot.ask_rate_limit = {}
-bot.conversations = {}
-bot.last_message_id = {}
-
 # ===========================
 # Background Tasks
 # ===========================
-@bot.tree.command(name="listallcommands", description="List all available slash commands")
-async def listallcommands(interaction: discord.Interaction):
-    embed = discord.Embed(title="📚 All Available Commands", description="A categorized list of all commands.", color=discord.Color.blue())
-    embed.add_field(name="🤖 AI Assistant", value="/ask, /clearhistory", inline=False)
-    embed.add_field(name="💰 Currency Conversion", value="/payout, /payoutreverse, /gift, /giftreverse, /nct, /nctreverse, /ct, /ctreverse", inline=False)
-    embed.add_field(name="📊 Comparison & Tax", value="/allrates, /allratesreverse, /beforetax, /aftertax", inline=False)
-    embed.add_field(name="🛠️ Utility Tools", value="/userinfo, /purge, /calculator, /group", inline=False)
-    embed.add_field(name="🎉 Fun", value="/poll, /remindme, /say, /donate", inline=False)
-    await interaction.response.send_message(embed=embed)
 
-# Background Task: Check Reminders
+# Check reminders every minute
 async def check_reminders():
     while True:
         if not bot.reminders_collection:
@@ -142,6 +140,36 @@ async def on_ready():
     # Start background tasks
     bot.loop.create_task(check_reminders())
     bot.loop.create_task(update_presence())
+
+# Auto-react and custom messages
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+    content = message.content.lower()
+    if content == "hobie":
+        await message.channel.send("mapanghe")
+    elif content == "neroniel":
+        await message.channel.send("masarap")
+    elif content == "hi":
+        reply = (
+            "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? "
+            "tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? "
+            "lalaki makikita kang iba. magsasawa ka na, iiwan mo ako. tapos ano? magmamakaawa ako sayo "
+            "kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak habang hinahabol kita. "
+            "kaya wag na lang. thanks nalang sa hi mo"
+        )
+        await message.channel.send(reply)
+    auto_react_channels = [
+        1225294057371074760,
+        1107600826664501258,
+        1107591404877791242,
+        1368123462077513738
+    ]
+    if message.channel.id in auto_react_channels:
+        await message.add_reaction("🎀")
+    if message.channel.id == 1107281584337461321:
+        await message.add_reaction("<:1cy_heart:1258694384346468362>")
 
 # Run the bot
 bot.run(os.getenv('DISCORD_TOKEN'))
