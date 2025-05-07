@@ -19,7 +19,9 @@ bot.ask_rate_limit = {}
 bot.conversations = {}
 bot.last_message_id = {}
 
-# Flask Web Server (for platforms like Replit)
+# ===========================
+# Flask Web Server to Keep Bot Alive
+# ===========================
 try:
     from flask import Flask
     app = Flask(__name__)
@@ -33,7 +35,9 @@ try:
 except Exception as e:
     print(f"[!] Flask server failed: {e}")
 
+# ===========================
 # MongoDB Setup
+# ===========================
 try:
     from pymongo import MongoClient
     import certifi
@@ -46,11 +50,13 @@ except Exception as e:
     bot.conversations_collection = None
     bot.reminders_collection = None
 
-# Load Commands
+# ===========================
+# Load Commands Dynamically
+# ===========================
 async def load_commands():
     commands_folder = "Commands"
     for filename in os.listdir(commands_folder):
-        if filename.endswith(".py"):
+        if filename.endswith(".py") and not filename.startswith("__"):
             command_name = filename[:-3]
             module_path = f"{commands_folder}.{command_name}"
             spec = importlib.util.find_spec(module_path)
@@ -63,14 +69,16 @@ async def load_commands():
             else:
                 print(f"[!] Failed to load command: /{command_name}")
 
-# On Ready
+# ===========================
+# On Ready Event
+# ===========================
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
+    print(f"Bot is ready! Logged in as {bot.user}")
     await load_commands()
     try:
         await bot.tree.sync()
-        print("✅ All commands synced!")
+        print("✅ All commands synced globally!")
     except Exception as e:
         print(f"[!] Command sync failed: {e}")
 
