@@ -87,7 +87,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
-
+    
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
@@ -106,6 +106,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 msg = await interaction.followup.send(embed=embed)
+                bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
 
             # Language Detection
@@ -159,8 +160,9 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
+
             response = requests.post(
-                "https://api.together.xyz/v1/completions ",
+                "https://api.together.xyz/v1/completions",
                 headers=headers,
                 json=payload
             )
@@ -172,14 +174,27 @@ async def ask(interaction: discord.Interaction, prompt: str):
 
             ai_response = data["choices"][0]["text"].strip()
 
-            # Create embed response
+            # Determine if we should reply to a previous message
+            target_message_id = bot.last_message_id.get((user_id, channel_id))
+
+            # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
 
-            # Reply to the original interaction message
-            original_message = await interaction.original_response()
-            await original_message.reply(embed=embed)
+            if target_message_id:
+                try:
+                    msg = await interaction.channel.fetch_message(target_message_id)
+                    reply = await msg.reply(embed=embed)
+                except discord.NotFound:
+                    msg = await interaction.followup.send(embed=embed)
+                    reply = msg
+            else:
+                msg = await interaction.followup.send(embed=embed)
+                reply = msg
+
+            # Update the last message ID for future replies
+            bot.last_message_id[(user_id, channel_id)] = reply.id
 
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
