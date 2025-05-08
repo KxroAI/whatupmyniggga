@@ -692,11 +692,19 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
 async def roblox_username(interaction: discord.Interaction, username: str):
     try:
         # Step 1: Get User ID from username using users.roblox.com
-        user_lookup_url = f"https://users.roblox.com/v1/users?username={username.strip()}"
+        user_lookup_url = f"https://users.roblox.com/v1/users?username={requests.utils.quote(username.strip())}"
         user_lookup_response = requests.get(user_lookup_url)
+        
+        print(f"[DEBUG] Status Code: {user_lookup_response.status_code}")
+        print(f"[DEBUG] Response Text: {user_lookup_response.text}")
+
+        if user_lookup_response.status_code != 200:
+            await interaction.response.send_message("❌ User not found.", ephemeral=True)
+            return
+
         user_lookup_data = user_lookup_response.json()
 
-        if "errors" in user_lookup_data or "id" not in user_lookup_data:
+        if "id" not in user_lookup_data:
             await interaction.response.send_message("❌ User not found.", ephemeral=True)
             return
 
@@ -770,6 +778,7 @@ async def roblox_username(interaction: discord.Interaction, username: str):
 
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching Roblox user: {str(e)}", ephemeral=True)
+        print(f"[ERROR] {str(e)}")
 
 # List All Commands
 @bot.tree.command(name="listallcommands", description="List all available slash commands")
