@@ -430,26 +430,13 @@ async def aftertax(interaction: discord.Interaction, target: int):
     sent = math.ceil(target / 0.7)
     await interaction.response.send_message(f"📬 To receive **{target} Robux**, send **{sent} Robux** (30% tax).")
 
-# Default currencies to convert to if none specified
-DEFAULT_CURRENCIES = [
-    "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CHF", "CNY", "SEK", "NZD",
-    "BRL", "INR", "RUB", "ZAR", "SGD", "HKD", "KRW", "MXN", "TRY", "EGP",
-    "AED", "SAR", "ARS", "CLP", "THB", "MYR", "IDR", "PHP", "PLN"
-]
-
-# Mapping of currency codes to country flags
-CURRENCY_FLAGS = {
-    "USD": "🇺🇸", "EUR": "🇪🇺", "JPY": "🇯🇵", "GBP": "🇬🇧", "AUD": "🇦🇺",
-    "CAD": "🇨🇦", "CHF": "🇨🇭", "CNY": "🇨🇳", "SEK": "🇸🇪", "NZD": "🇳🇿",
-    "BRL": "🇧🇷", "INR": "🇮🇳", "RUB": "🇷🇺", "ZAR": "🇿🇦", "SGD": "🇸🇬",
-    "HKD": "🇭🇰", "KRW": "🇰🇷", "MXN": "🇲🇽", "TRY": "🇹🇷", "EGP": "🇪🇬",
-    "AED": "🇦🇪", "SAR": "🇸🇦", "ARS": "🇦🇷", "CLP": "🇨🇱", "THB": "🇹🇭",
-    "MYR": "🇲🇾", "IDR": "🇮🇩", "PHP": "🇵🇭", "PLN": "🇵🇱"
-}
-
-@bot.tree.command(name="currencyconvert", description="Convert an amount from one currency to multiple common currencies")
-@app_commands.describe(amount="Amount to convert", from_currency="Currency to convert from (e.g., USD)")
-async def currencyconvert(interaction: discord.Interaction, amount: float, from_currency: str):
+@bot.tree.command(name="convertcurrency", description="Convert between two currencies")
+@app_commands.describe(
+    amount="Amount to convert",
+    from_currency="Currency to convert from (e.g., USD)",
+    to_currency="Currency to convert to (e.g., PHP)"
+)
+async def convertcurrency(interaction: discord.Interaction, amount: float, from_currency: str, to_currency: str):
     api_key = os.getenv("CURRENCY_API_KEY")
     
     if not api_key:
@@ -457,9 +444,9 @@ async def currencyconvert(interaction: discord.Interaction, amount: float, from_
         return
     
     from_currency = from_currency.upper()
-    currencies_list = DEFAULT_CURRENCIES
+    to_currency = to_currency.upper()
 
-    url = f"https://api.currencyapi.com/v3/latest?apikey={api_key}&currencies={','.join(currencies_list)}&base_currency={from_currency}"
+    url = f"https://api.currencyapi.com/v3/latest?apikey={api_key}&currencies={to_currency}&base_currency={from_currency}"
     
     try:
         response = requests.get(url)
@@ -470,37 +457,32 @@ async def currencyconvert(interaction: discord.Interaction, amount: float, from_
             print("API Error Response:", data)
             return
 
-        if "data" not in data:
-            await interaction.response.send_message("❌ Unexpected API response. Data not found.")
-            print("Full API Response:", data)
+        if "data" not in data or to_currency not in data["data"]:
+            await interaction.response.send_message("❌ Invalid currency code or no data found.")
             return
 
+        rate = data["data"][to_currency]["value"]
+        result = amount * rate
+
         embed = discord.Embed(
-            title=f"💱 Currency Conversion from {from_currency}",
+            title=f"💱 Currency Conversion",
             color=discord.Color.gold()
         )
-        embed.add_field(name="📥 Input Amount", value=f"{amount} {from_currency}", inline=False)
-
-        # Build result rows as strings
-        results = []
-        for currency in currencies_list:
-            if currency not in data["data"]:
-                continue
-            
-            rate = data["data"][currency]["value"]
-            result = amount * rate
-            flag = CURRENCY_FLAGS.get(currency, "")
-            results.append(f"{flag} **{currency}**: ≈ {result:.2f}")
-
-        # Group results into chunks of 6 to make 2 rows of 3 each
-        chunk_size = 6
-        for i in range(0, len(results), chunk_size):
-            chunk = results[i:i + chunk_size]
-            embed.add_field(
-                name="‎",  # Invisible character to keep spacing
-                value=" | ".join(chunk),
-                inline=False
-            )
+        embed.add_field(
+            name="📥 Input",
+            value=f"{amount} {from_currency}",
+            inline=False
+        )
+        embed.add_field(
+            name="📉 Rate",
+            value=f"1 {from_currency} = {rate:.4f} {to_currency}",
+            inline=False
+        )
+        embed.add_field(
+            name="📤 Result",
+            value=f"≈ **{result:.2f} {to_currency}**",
+            inline=False
+        )
 
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
@@ -511,11 +493,12 @@ async def currencyconvert(interaction: discord.Interaction, amount: float, from_
         await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
         print("Exception Details:", str(e))
 
-@currencyconvert.autocomplete('from_currency')
+@convertcurrency.autocomplete('from_currency')
+@convertcurrency.autocomplete('to_currency')
 async def currency_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
-    # List of supported currencies with names
+    # Full list of supported currencies with names
     currencies = [
         "USD - US Dollar", "EUR - Euro", "JPY - Japanese Yen", "GBP - British Pound",
         "AUD - Australian Dollar", "CAD - Canadian Dollar", "CHF - Swiss Franc",
@@ -528,11 +511,7 @@ async def currency_autocomplete(
         "MYR - Malaysian Ringgit", "IDR - Indonesian Rupiah", "PHP - Philippine Peso",
         "PLN - Polish Zloty"
     ]
-    
-    # Filter based on user input
     filtered = [c for c in currencies if current.lower() in c.lower()]
-    
-    # Return up to 25 choices
     return [
         app_commands.Choice(name=c, value=c.split(" ")[0])
         for c in filtered[:25]
