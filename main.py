@@ -102,6 +102,155 @@ except Exception as e:
     games_collection = None
 
 # ===========================
+# AI Commands
+# ===========================
+
+# /ask - Chat with Llama 3 via Together AI with threaded replies
+@bot.tree.command(name="ask", description="Chat with an AI assistant using Llama 3")
+@app_commands.describe(prompt="What would you like to ask?")
+async def ask(interaction: discord.Interaction, prompt: str):
+    user_id = interaction.user.id
+    channel_id = interaction.channel.id
+    await interaction.response.defer()
+    
+    # Rate limit: 5 messages/user/minute
+    current_time = asyncio.get_event_loop().time()
+    timestamps = bot.ask_rate_limit[user_id]
+    timestamps.append(current_time)
+    bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
+    if len(timestamps) > 5:
+        await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
+        return
+
+    async with interaction.channel.typing():
+        try:
+            # Custom filter for creator questions
+            normalized_prompt = prompt.strip().lower()
+            if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
+                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
+                embed.set_footer(text="Neroniel AI")
+                embed.timestamp = datetime.now(PH_TIMEZONE)
+                msg = await interaction.followup.send(embed=embed)
+                bot.last_message_id[(user_id, channel_id)] = msg.id
+                return
+
+            # Language Detection
+            try:
+                detected_lang = detect(prompt)
+            except LangDetectException:
+                detected_lang = "en"  # default to English
+
+            lang_instruction = {
+                "tl": "Please respond in Tagalog.",
+                "es": "Por favor responde en español.",
+                "fr": "Veuillez répondre en français.",
+                "ja": "日本語で答えてください。",
+                "ko": "한국어로 답변해 주세요.",
+                "zh": "请用中文回答。",
+                "ru": "Пожалуйста, отвечайте на русском языке.",
+                "ar": "من فضلك أجب بالعربية.",
+                "vi": "Vui lòng trả lời bằng tiếng Việt.",
+                "th": "กรุณาตอบเป็นภาษาไทย",
+                "id": "Silakan jawab dalam bahasa Indonesia"
+            }.get(detected_lang, "")
+
+            # Load conversation history from MongoDB (if available)
+            history = []
+            if conversations_collection:
+                if not bot.conversations[user_id]:
+                    history_docs = conversations_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(5)
+                    for doc in history_docs:
+                        bot.conversations[user_id].append({
+                            "user": doc["prompt"],
+                            "assistant": doc["response"]
+                        })
+                    bot.conversations[user_id].reverse()  # Maintain order
+                history = bot.conversations[user_id][-5:]
+
+            # Build full prompt with language instruction
+            system_prompt = f"You are a helpful and friendly AI assistant named Neroniel AI. {lang_instruction}"
+            full_prompt = system_prompt
+            for msg in history:
+                full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
+            full_prompt += f"User: {prompt}\nAssistant:"
+
+            # Call Together AI
+            headers = {
+                "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "meta-llama/Llama-3-70b-chat-hf",
+                "prompt": full_prompt,
+                "max_tokens": 2048,
+                "temperature": 0.7
+            }
+
+            response = requests.post(
+                "https://api.together.xyz/v1/completions",
+                headers=headers,
+                json=payload
+            )
+            data = response.json()
+
+            if 'error' in data:
+                await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
+                return
+
+            ai_response = data["choices"][0]["text"].strip()
+
+            # Determine if we should reply to a previous message
+            target_message_id = bot.last_message_id.get((user_id, channel_id))
+
+            # Send the AI response
+            embed = discord.Embed(description=ai_response, color=discord.Color.blue())
+            embed.set_footer(text="Neroniel AI")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+
+            if target_message_id:
+                try:
+                    msg = await interaction.channel.fetch_message(target_message_id)
+                    reply = await msg.reply(embed=embed)
+                except discord.NotFound:
+                    msg = await interaction.followup.send(embed=embed)
+                    reply = msg
+            else:
+                msg = await interaction.followup.send(embed=embed)
+                reply = msg
+
+            # Update the last message ID for future replies
+            bot.last_message_id[(user_id, channel_id)] = reply.id
+
+            # Store in memory and MongoDB
+            bot.conversations[user_id].append({
+                "user": prompt,
+                "assistant": ai_response
+            })
+
+            if conversations_collection:
+                conversations_collection.insert_one({
+                    "user_id": user_id,
+                    "prompt": prompt,
+                    "response": ai_response,
+                    "timestamp": datetime.now(PH_TIMEZONE)
+                })
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error: {str(e)}")
+
+# /clearhistory - Clear stored conversation history
+@bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
+async def clearhistory(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    # Clear local memory
+    if user_id in bot.conversations:
+        bot.conversations[user_id].clear()
+    # Clear MongoDB history
+    if conversations_collection:
+        conversations_collection.delete_many({"user_id": user_id})
+    await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
+
+# ===========================
 # Utility Functions
 # ===========================
 
