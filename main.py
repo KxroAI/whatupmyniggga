@@ -548,12 +548,6 @@ async def sync(interaction: discord.Interaction):
     await bot.tree.sync()
     await interaction.response.send_message("✅ Slash commands have been synced globally.", ephemeral=True)
 
-@bot.tree.command(name="reload", description="Reload cogs (Owner Only)")
-@is_owner()
-async def reload(interaction: discord.Interaction):
-    # Placeholder for future cog reloading
-    await interaction.response.send_message("ℹ️ No cogs to reload yet. Add cogs for full functionality.", ephemeral=True)
-
 # ========== Fun Commands ==========
 # Poll
 @bot.tree.command(name="poll", description="Create a poll with up/down votes")
@@ -735,8 +729,7 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/sync` - Sync slash commands globally (owner only)  
-        `/reload` - Reload cogs (owner only)
+        `/sync` - Sync slash commands globally
         """,
         inline=False
     )
