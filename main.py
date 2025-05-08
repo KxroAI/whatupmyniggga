@@ -66,10 +66,8 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is alive!"
-
 def run_server():
     app.run(host='0.0.0.0', port=5000)
-
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
@@ -78,7 +76,6 @@ def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
-
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
