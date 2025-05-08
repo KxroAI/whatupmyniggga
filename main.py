@@ -689,112 +689,20 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
 @app_commands.describe(username="The Roblox username to look up")
 async def roblox_username(interaction: discord.Interaction, username: str):
     try:
-        # Step 1: Get User ID from username
-        user_id_response = requests.get(f"https://api.roblox.com/users/get-by-username?username={username}")
-        user_id_data = user_id_response.json()
+        # Step 1: Get User ID from username using users.roblox.com (more reliable)
+        user_lookup_url = f"https://users.roblox.com/v1/users?username={username}"
+        user_lookup_response = requests.get(user_lookup_url)
+        user_lookup_data = user_lookup_response.json()
 
-        if not user_id_data.get("success", True):
+        if "errors" in user_lookup_data or "id" not in user_lookup_data:
             await interaction.response.send_message("❌ User not found.", ephemeral=True)
             return
 
-        user_data = user_id_data.get("data")
-        if not user_data:
-            await interaction.response.send_message("❌ User not found.", ephemeral=True)
-            return
-
-        user_id = user_data["id"]
-        display_name = user_data["displayName"]
-        created = user_data["created"]
-        is_banned = user_data["isBanned"]
-        description = user_data.get("description", "N/A")
-
-        # Step 2: Get detailed profile info
-        profile_response = requests.get(f"https://users.roblox.com/v1/users/{user_id}")
-        profile_data = profile_response.json()
-        username = profile_data["name"]
-
-        # Step 3: Get avatar image URL
-        avatar_response = requests.get(f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false")
-        avatar_data = avatar_response.json()
-        avatar_url = avatar_data.get("data", [{}])[0].get("imageUrl", "")
-
-        # Step 4: Map badge names to rbxassetid URLs
-        badge_mapping = {
-            "Veteran": "https://www.roblox.com/asset/?id=123456789",
-            "Friendship": "https://www.roblox.com/asset/?id=987654321",
-            "Ambassador": "https://www.roblox.com/asset/?id=112233445",
-            "Inviter": "https://www.roblox.com/asset/?id=556677889",
-            "Homestead": "https://www.roblox.com/asset/?id=223344556",
-            "Bricksmith": "https://www.roblox.com/asset/?id=667788990",
-            "Official Model Maker": "https://www.roblox.com/asset/?id=334455667",
-            "Combat Initiation": "https://www.roblox.com/asset/?id=778899001",
-            "Warrior": "https://www.roblox.com/asset/?id=445566778",
-            "Bloxxer": "https://www.roblox.com/asset/?id=889900112"
-        }
-
-        # Step 5: Request for all 12 badges (IDs 1–12)
-        badges_response = requests.get(f"https://badges.roblox.com/v1/users/{user_id}/badges?badgeIds=1,2,3,4,5,6,7,8,9,10,11,12")
-        badges_data = badges_response.json()
-        active_badge_images = []
-
-        for badge in badges_data.get("data", []):
-            badge_name = badge.get("name")
-            if badge_name in badge_mapping:
-                badge_url = badge_mapping[badge_name]
-                active_badge_images.append(badge_url)
-
-        # Build badge image string
-        if active_badge_images:
-            badge_display = "\n".join([f"[⁣](<{url}>)" for url in active_badge_images])
-        else:
-            badge_display = "N/A"
-
-        # Format creation date with time
-        created_datetime = datetime.fromisoformat(created.rstrip("Z")).astimezone(PH_TIMEZONE)
-        created_date_str = created_datetime.strftime("%B %d, %Y • %I:%M %p GMT+8")
-
-        # Build embed
-        embed = discord.Embed(
-            title=f"🎮 {username}",
-            url=f"https://www.roblox.com/users/{user_id}/profile",
-            color=discord.Color.orange()
-        )
-        embed.set_thumbnail(url=avatar_url)
-
-        embed.add_field(name="Display Name", value=f"`{display_name}`", inline=False)
-        embed.add_field(name="Account Created", value=f"`{created_date_str}`", inline=False)
-        embed.add_field(name="Status", value="⛔ Banned" if is_banned else "✅ Active", inline=False)
-        embed.add_field(name="Description", value=f"```\n{description[:500] or 'N/A'}\n```", inline=False)
-        embed.add_field(name="Badges", value=badge_display, inline=False)
-
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-
-        await interaction.response.send_message(embed=embed)
-
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Error fetching Roblox user: {str(e)}", ephemeral=True)@bot.tree.command(name="roblox_username", description="Get Roblox profile info by username")
-@app_commands.describe(username="The Roblox username to look up")
-async def roblox_username(interaction: discord.Interaction, username: str):
-    try:
-        # Step 1: Get User ID from username
-        user_id_response = requests.get(f"https://api.roblox.com/users/get-by-username?username={username}")
-        user_id_data = user_id_response.json()
-
-        if not user_id_data.get("success", True):
-            await interaction.response.send_message("❌ User not found.", ephemeral=True)
-            return
-
-        user_data = user_id_data.get("data")
-        if not user_data:
-            await interaction.response.send_message("❌ User not found.", ephemeral=True)
-            return
-
-        user_id = user_data["id"]
-        display_name = user_data["displayName"]
-        created = user_data["created"]
-        is_banned = user_data["isBanned"]
-        description = user_data.get("description", "N/A")
+        user_id = user_lookup_data["id"]
+        display_name = user_lookup_data["displayName"]
+        created = user_lookup_data["created"]
+        is_banned = user_lookup_data["isBanned"]
+        description = user_lookup_data.get("description", "N/A")
 
         # Step 2: Get detailed profile info
         profile_response = requests.get(f"https://users.roblox.com/v1/users/{user_id}")
