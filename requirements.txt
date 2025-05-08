@@ -6,3 +6,5 @@ python-dotenv>=1.0.0
 flask>=2.0.0
 pytz==2023.3.post1
 langdetect>=1.0.9
+urllib3>=2.0.0
+emoji>=2.0.0
