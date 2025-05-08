@@ -87,13 +87,12 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
-
+    
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
-
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
@@ -163,26 +162,11 @@ async def ask(interaction: discord.Interaction, prompt: str):
             }
 
             response = requests.post(
-                "https://api.together.xyz/v1/completions ",
+                "https://api.together.xyz/v1/completions",
                 headers=headers,
                 json=payload
             )
-
-            # Check for HTTP errors
-            if response.status_code != 200:
-                print(f"[!] Together API HTTP Error: {response.status_code}")
-                print(f"Response Text: {response.text}")
-                await interaction.followup.send(f"❌ HTTP Error from AI API: `{response.status_code}`")
-                return
-
-            # Try parsing JSON
-            try:
-                data = response.json()
-            except requests.exceptions.JSONDecodeError as je:
-                print(f"[!] JSON Decode Error: {je}")
-                print(f"Raw Response: {response.text}")
-                await interaction.followup.send("❌ Failed to parse AI response. The server may be down.")
-                return
+            data = response.json()
 
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
@@ -227,8 +211,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 })
 
         except Exception as e:
-            print(f"[!] Unexpected error in /ask: {e}")
-            await interaction.followup.send(f"❌ An unexpected error occurred: `{str(e)}`")
+            await interaction.followup.send(f"❌ Error: {str(e)}")
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
