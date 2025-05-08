@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient
 from datetime import datetime, timedelta
-import pytz  # <-- NEW for timezone support
+import pytz
+from langdetect import detect, LangDetectException
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -119,6 +120,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
+    
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
@@ -127,6 +129,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
+
     async with interaction.channel.typing():
         try:
             # Custom filter for creator questions
@@ -138,6 +141,27 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 msg = await interaction.followup.send(embed=embed)
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
+
+            # Language Detection
+            try:
+                detected_lang = detect(prompt)
+            except LangDetectException:
+                detected_lang = "en"  # default to English
+
+            lang_instruction = {
+                "tl": "Please respond in Tagalog.",
+                "es": "Por favor responde en español.",
+                "fr": "Veuillez répondre en français.",
+                "ja": "日本語で答えてください。",
+                "ko": "한국어로 답변해 주세요.",
+                "zh": "请用中文回答。",
+                "ru": "Пожалуйста, отвечайте на русском языке.",
+                "ar": "من فضلك أجب بالعربية.",
+                "vi": "Vui lòng trả lời bằng tiếng Việt.",
+                "th": "กรุณาตอบเป็นภาษาไทย",
+                "id": "Silakan jawab dalam bahasa Indonesia"
+            }.get(detected_lang, "")
+
             # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
@@ -150,12 +174,14 @@ async def ask(interaction: discord.Interaction, prompt: str):
                         })
                     bot.conversations[user_id].reverse()  # Maintain order
                 history = bot.conversations[user_id][-5:]
-            # Build full prompt
-            system_prompt = "You are a helpful and friendly AI assistant named Neroniel AI.\n"
+
+            # Build full prompt with language instruction
+            system_prompt = f"You are a helpful and friendly AI assistant named Neroniel AI. {lang_instruction}"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
+
             # Call Together AI
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
@@ -167,22 +193,28 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
+
             response = requests.post(
                 "https://api.together.xyz/v1/completions",
                 headers=headers,
                 json=payload
             )
             data = response.json()
+
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
+
             ai_response = data["choices"][0]["text"].strip()
+
             # Determine if we should reply to a previous message
             target_message_id = bot.last_message_id.get((user_id, channel_id))
+
             # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
+
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -193,13 +225,16 @@ async def ask(interaction: discord.Interaction, prompt: str):
             else:
                 msg = await interaction.followup.send(embed=embed)
                 reply = msg
+
             # Update the last message ID for future replies
             bot.last_message_id[(user_id, channel_id)] = reply.id
+
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
             })
+
             if conversations_collection:
                 conversations_collection.insert_one({
                     "user_id": user_id,
@@ -207,6 +242,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.now(PH_TIMEZONE)
                 })
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
 
