@@ -45,6 +45,8 @@ GLOBAL_CAPITAL_CITIES = [
     "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
     "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
 
+]
+
 # ===========================
 # Bot Setup
 # ===========================
