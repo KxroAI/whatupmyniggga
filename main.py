@@ -430,33 +430,106 @@ async def aftertax(interaction: discord.Interaction, target: int):
     sent = math.ceil(target / 0.7)
     await interaction.response.send_message(f"📬 To receive **{target} Robux**, send **{sent} Robux** (30% tax).")
 
-@bot.tree.command(name="currencyconvert", description="Convert between currencies (e.g., USD to PHP)")
-@app_commands.describe(amount="Amount to convert", from_currency="From currency (e.g., USD)", to_currency="To currency (e.g., PHP)")
-async def currencyconvert(interaction: discord.Interaction, amount: float, from_currency: str, to_currency: str):
+# Default currencies to convert to if none specified
+DEFAULT_CURRENCIES = [
+    "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CHF", "CNY", "SEK", "NZD",
+    "BRL", "INR", "RUB", "ZAR", "SGD", "HKD", "KRW", "MXN", "TRY", "EGP",
+    "AED", "SAR", "ARS", "CLP", "THB", "MYR", "IDR", "PHP", "PLN"
+]
+
+# Mapping of currency codes to country flags
+CURRENCY_FLAGS = {
+    "USD": "🇺🇸", "EUR": "🇪🇺", "JPY": "🇯🇵", "GBP": "🇬🇧", "AUD": "🇦🇺",
+    "CAD": "🇨🇦", "CHF": "🇨🇭", "CNY": "🇨🇳", "SEK": "🇸🇪", "NZD": "🇳🇿",
+    "BRL": "🇧🇷", "INR": "🇮🇳", "RUB": "🇷🇺", "ZAR": "🇿🇦", "SGD": "🇸🇬",
+    "HKD": "🇭🇰", "KRW": "🇰🇷", "MXN": "🇲🇽", "TRY": "🇹🇷", "EGP": "🇪🇬",
+    "AED": "🇦🇪", "SAR": "🇸🇦", "ARS": "🇦🇷", "CLP": "🇨🇱", "THB": "🇹🇭",
+    "MYR": "🇲🇾", "IDR": "🇮🇩", "PHP": "🇵🇭", "PLN": "🇵🇱"
+}
+
+@bot.tree.command(name="currencyconvert", description="Convert an amount from one currency to multiple common currencies")
+@app_commands.describe(amount="Amount to convert", from_currency="Currency to convert from (e.g., USD)")
+async def currencyconvert(interaction: discord.Interaction, amount: float, from_currency: str):
     api_key = os.getenv("CURRENCY_API_KEY")
-    url = f"https://api.currencyapi.com/v3/latest?apikey={api_key}&currencies={to_currency}&base_currency={from_currency}"
+    
+    if not api_key:
+        await interaction.response.send_message("❌ `CURRENCY_API_KEY` is missing in environment variables.")
+        return
+    
+    from_currency = from_currency.upper()
+    currencies_list = DEFAULT_CURRENCIES
+
+    url = f"https://api.currencyapi.com/v3/latest?apikey={api_key}&currencies={','.join(currencies_list)}&base_currency={from_currency}"
     
     try:
         response = requests.get(url)
         data = response.json()
-        
-        if "data" not in data:
-            await interaction.response.send_message("❌ Invalid currency code or API error.")
+
+        if 'error' in data:
+            await interaction.response.send_message(f"❌ API Error: {data['error']['message']}")
+            print("API Error Response:", data)
             return
 
-        rate = data["data"][to_currency]["value"]
-        result = amount * rate
+        if "data" not in data:
+            await interaction.response.send_message("❌ Unexpected API response. Data not found.")
+            print("Full API Response:", data)
+            return
 
-        embed = discord.Embed(title="💱 Currency Conversion", color=discord.Color.gold())
-        embed.add_field(name="Input", value=f"{amount} {from_currency}", inline=True)
-        embed.add_field(name="Rate", value=f"1 {from_currency} = {rate:.4f} {to_currency}", inline=True)
-        embed.add_field(name="Result", value=f"≈ {result:.2f} {to_currency}", inline=False)
-        embed.set_footer(text="Powered by currencyapi.com")
+        embed = discord.Embed(
+            title=f"💱 Currency Conversion from {from_currency}",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="📥 Input Amount", value=f"{amount} {from_currency}", inline=False)
+
+        for currency in currencies_list:
+            if currency not in data["data"]:
+                continue  # Skip unsupported currencies
+            
+            rate = data["data"][currency]["value"]
+            result = amount * rate
+
+            flag = CURRENCY_FLAGS.get(currency, "")
+            embed.add_field(
+                name=f"{flag} {currency}",
+                value=f"1 {from_currency} = {rate:.4f} {currency}\n≈ {result:.2f} {currency}",
+                inline=True
+            )
+
+        embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
 
         await interaction.response.send_message(embed=embed)
+
     except Exception as e:
         await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
+        print("Exception Details:", str(e))
+
+@currencyconvert.autocomplete('from_currency')
+async def currency_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # List of supported currencies with names
+    currencies = [
+        "USD - US Dollar", "EUR - Euro", "JPY - Japanese Yen", "GBP - British Pound",
+        "AUD - Australian Dollar", "CAD - Canadian Dollar", "CHF - Swiss Franc",
+        "CNY - Chinese Yuan", "SEK - Swedish Krona", "NZD - New Zealand Dollar",
+        "BRL - Brazilian Real", "INR - Indian Rupee", "RUB - Russian Ruble",
+        "ZAR - South African Rand", "SGD - Singapore Dollar", "HKD - Hong Kong Dollar",
+        "KRW - South Korean Won", "MXN - Mexican Peso", "TRY - Turkish Lira",
+        "EGP - Egyptian Pound", "AED - UAE Dirham", "SAR - Saudi Riyal",
+        "ARS - Argentine Peso", "CLP - Chilean Peso", "THB - Thai Baht",
+        "MYR - Malaysian Ringgit", "IDR - Indonesian Rupiah", "PHP - Philippine Peso",
+        "PLN - Polish Zloty"
+    ]
+    
+    # Filter based on user input
+    filtered = [c for c in currencies if current.lower() in c.lower()]
+    
+    # Return up to 25 choices
+    return [
+        app_commands.Choice(name=c, value=c.split(" ")[0])
+        for c in filtered[:25]
+    ]
 
 # ===========================
 # Other Commands
