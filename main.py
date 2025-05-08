@@ -15,6 +15,7 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
+from discord.ui import Button, View
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -87,6 +88,8 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
+    games_collection = db.games  # NEW - For game stats and streaks
+
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
@@ -95,6 +98,7 @@ except Exception as e:
     client = None
     conversations_collection = None
     reminders_collection = None
+    games_collection = None
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
@@ -322,6 +326,679 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     # Footer and timestamp
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed)
+
+def get_user_pair_key(user1_id, user2_id):
+    """Returns a consistent key for a user pair"""
+    return tuple(sorted([user1_id, user2_id]))
+
+def update_game_stats(user1_id, user2_id, winner_id, game_type):
+    """Tracks game wins, streaks, and logs"""
+    if not games_collection:
+        return
+
+    key = get_user_pair_key(user1_id, user2_id)
+
+    # Find or create document
+    stats = games_collection.find_one({"user_pair": key})
+
+    # Initialize log entry
+    log_entry = {
+        "winner_id": winner_id,
+        "timestamp": datetime.now(PH_TIMEZONE),
+        "game_type": game_type
+    }
+
+    if stats:
+        # Update streaks between these two users
+        p1, p2 = key
+        current_streaks = stats.get("streaks", {str(p1): 0, str(p2): 0})
+
+        last_log = stats.get("game_history", [])[-1] if "game_history" in stats else None
+
+        if last_log and last_log["winner_id"] == winner_id:
+            current_streaks[str(winner_id)] += 1
+        else:
+            other_id = p1 if winner_id == p2 else p2
+            current_streaks[str(winner_id)] = 1
+            current_streaks[str(other_id)] = 0
+
+        # Update global streaks
+        global_data = games_collection.find_one({"user_id": winner_id}) or {}
+        last_global_log = global_data.get("latest_game")
+
+        if last_global_log and last_global_log["winner_id"] == winner_id:
+            global_streak = global_data.get("global_streak", 0) + 1
+        else:
+            global_streak = 1
+
+        max_streak = max(global_streak, global_data.get("max_streak", 0))
+
+        # Combine updates
+        update_data = {
+            "$inc": {
+                f"wins.{winner_id}": 1,
+                "total_games": 1,
+                f"game_logs.{game_type}": 1
+            },
+            "$set": {
+                "streaks": current_streaks,
+                "latest_game": log_entry,
+                "last_updated": datetime.now(PH_TIMEZONE),
+                "global_streak": global_streak,
+                "max_streak": max_streak
+            },
+            "$push": {
+                "game_history": log_entry
+            }
+        }
+
+        games_collection.update_one({"user_pair": key}, update_data, upsert=True)
+    else:
+        # First game between this pair
+        p1, p2 = key
+        new_doc = {
+            "user_pair": key,
+            "wins": {
+                str(p1): 0,
+                str(p2): 0
+            },
+            "total_games": 0,
+            "game_logs": {game_type: 1},
+            "game_history": [log_entry],
+            "streaks": {
+                str(p1): 1 if p1 == winner_id else 0,
+                str(p2): 1 if p2 == winner_id else 0
+            },
+            "latest_game": log_entry
+        }
+        new_doc["wins"][str(winner_id)] = 1
+        new_doc["total_games"] = 1
+        games_collection.insert_one(new_doc)
+
+    # Also track global streak
+    games_collection.update_one(
+        {"user_id": winner_id},
+        {
+            "$set": {
+                "latest_game": log_entry,
+                "global_streak": global_streak,
+                "last_updated": datetime.now(PH_TIMEZONE),
+                "max_streak": max_streak
+            }
+        },
+        upsert=True
+    )
+
+# ===========================
+# Game Commands
+# ===========================
+
+@bot.tree.command(name="game", description="Play fun mini-games with the bot")
+@app_commands.describe(game="Choose a game mode", user="Opponent (optional)")
+@app_commands.choices(game=[
+    app_commands.Choice(name="Blackjack", value="blackjack"),
+    app_commands.Choice(name="Tic Tac Toe", value="tictactoe"),
+    app_commands.Choice(name="Game Stats", value="stats"),
+    app_commands.Choice(name="Hangman", value="hangman")
+])
+async def game(interaction: discord.Interaction, game: app_commands.Choice[str], user: discord.Member = None):
+    if user and user == interaction.user:
+        await interaction.response.send_message("❌ You can't play against yourself!", ephemeral=True)
+        return
+
+    if game.value == "blackjack":
+        if user:
+            await start_blackjack_game(interaction, interaction.user, user)
+        else:
+            await start_blackjack_solo(interaction)
+    elif game.value == "tictactoe":
+        if user:
+            await start_tictactoe_game(interaction, interaction.user, user)
+        else:
+            await start_tictactoe_game(interaction, interaction.user, bot.user)
+    elif game.value == "hangman":
+        if user:
+            await interaction.response.send_modal(HangmanChallengeModal(interaction.user, user))
+        else:
+            await start_hangman_game(interaction)
+    elif game.value == "stats":
+        target = user or interaction.user
+        await show_game_stats(interaction, target)
+    else:
+        await interaction.response.send_message("❌ Invalid game selected.", ephemeral=True)
+
+# ========== Blackjack ==========
+async def start_blackjack_solo(interaction: discord.Interaction):
+    player_hand = [random.randint(1, 11), random.randint(1, 10)]
+    bot_hand = [random.randint(1, 11), random.randint(1, 10)]
+
+    embed = discord.Embed(title="🃏 Blackjack", color=discord.Color.gold())
+    embed.add_field(name="🧑 Your Hand", value=f"{player_hand} = {sum(player_hand)}", inline=False)
+    embed.add_field(name="🤖 Bot's Hand", value="[?, ?]", inline=False)
+
+    view = BlackjackSoloView(interaction.user, player_hand, bot_hand)
+    await interaction.response.send_message(embed=embed, view=view)
+
+class BlackjackButton(Button):
+    def __init__(self, label, emoji, style, action):
+        super().__init__(label=label, emoji=emoji, style=style)
+        self.action = action
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.action(interaction)
+
+class BlackjackSoloView(View):
+    def __init__(self, player, player_hand, bot_hand):
+        super().__init__(timeout=60)
+        self.player = player
+        self.player_hand = player_hand
+        self.bot_hand = bot_hand
+
+    async def hit(self, interaction: discord.Interaction):
+        self.player_hand.append(random.randint(1, 11))
+        total = sum(self.player_hand)
+        if total > 21:
+            embed = discord.Embed(title="💥 Busted!", description="You went over 21 and lost.", color=discord.Color.red())
+            update_game_stats(self.player.id, self.bot_hand[0], self.bot_hand[0], "blackjack")  # Simulate bot ID
+            await interaction.response.edit_message(embed=embed, view=None)
+            return
+        embed = discord.Embed(title="🃏 Blackjack", color=discord.Color.gold())
+        embed.add_field(name="🧑 Your Hand", value=f"{self.player_hand} = {sum(self.player_hand)}", inline=False)
+        embed.add_field(name="🤖 Bot's Hand", value="[?, ?]", inline=False)
+        view = BlackjackSoloView(self.player, self.player_hand, self.bot_hand)
+        view.add_item(BlackjackButton("Hit", "🟢", discord.ButtonStyle.success, self.hit))
+        view.add_item(BlackjackButton("Stand", "🔴", discord.ButtonStyle.danger, self.stand))
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def stand(self, interaction: discord.Interaction):
+        bot_total = sum(self.bot_hand)
+        while bot_total < 17:
+            self.bot_hand.append(random.randint(1, 10))
+            bot_total = sum(self.bot_hand)
+
+        player_total = sum(self.player_hand)
+        embed = discord.Embed(title="🎮 Blackjack Result", color=discord.Color.green())
+
+        if player_total > 21:
+            embed.description = "💥 You busted."
+            embed.color = discord.Color.red()
+        elif bot_total > 21 or player_total > bot_total:
+            embed.description = f"{interaction.user.mention} wins! 🎉"
+            update_game_stats(self.player.id, self.bot_hand[0], self.player.id, "blackjack")  # Simulated bot ID
+        elif player_total < bot_total:
+            embed.description = f"{interaction.user.mention} loses! 😢"
+            update_game_stats(self.player.id, self.bot_hand[0], self.bot_hand[0], "blackjack")
+        else:
+            embed.description = "⚖️ It's a tie!"
+
+        embed.add_field(name="🧑 Your Hand", value=f"{self.player_hand} = {sum(self.player_hand)}", inline=True)
+        embed.add_field(name="🤖 Bot's Hand", value=f"{self.bot_hand} = {sum(self.bot_hand)}", inline=True)
+
+        await interaction.response.edit_message(embed=embed, view=None)
+
+# ========== Tic-Tac-Toe ==========
+
+class TicTacToeButton(Button):
+    def __init__(self, x, y):
+        super().__init__(style=discord.ButtonStyle.secondary, label="\u200b", row=y)
+        self.x = x
+        self.y = y
+        self.mark = None
+
+    async def callback(self, interaction: discord.Interaction):
+        view: TicTacToeView = self.view
+        if interaction.user != view.current_player:
+            await interaction.response.send_message("❌ Not your turn!", ephemeral=True)
+            return
+
+        if self.mark is not None:
+            await interaction.response.send_message("❌ Already marked!", ephemeral=True)
+            return
+
+        self.mark = view.current_mark
+        self.label = view.current_mark
+        self.style = discord.ButtonStyle.success if view.current_mark == "X" else discord.ButtonStyle.danger
+        self.disabled = True
+
+        view.board[self.y][self.x] = view.current_mark
+        await view.check_winner(interaction)
+
+class TicTacToeView(View):
+    def __init__(self, player1, player2):
+        super().__init__(timeout=120)
+        self.player1 = player1
+        self.player2 = player2
+        self.current_player = player1
+        self.current_mark = "X"
+        self.board = [["" for _ in range(3)] for _ in range(3)]
+        for x in range(3):
+            for y in range(3):
+                self.add_item(TicTacToeButton(x, y))
+
+    async def check_winner(self, interaction: discord.Interaction):
+        winning_combos = [
+            [(x, y) for x in range(3)],
+            [(y, y) for y in range(3)],
+            [(2 - y, y) for y in range(3)],
+            [(y, x) for x in range(3)],
+        ]
+
+        winner = None
+        for combo in winning_combos:
+            marks = [self.board[x][y] for x, y in combo]
+            if all(m == "X" for m in marks):
+                winner = self.player1
+            elif all(m == "O" for m in marks):
+                winner = self.player2
+
+        if winner:
+            embed = discord.Embed(
+                title="🎮 Tic-Tac-Toe",
+                description=f"{winner.mention} wins!",
+                color=discord.Color.green()
+            )
+            update_game_stats(self.player1.id, self.player2.id, winner.id, "tictactoe")
+            for child in self.children:
+                child.disabled = True
+            await interaction.edit_original_response(embed=embed, view=self)
+            self.stop()
+            return
+
+        if all(cell != "" for row in self.board for cell in row):
+            embed = discord.Embed(
+                title="🎮 Tic-Tac-Toe",
+                description="It's a tie!",
+                color=discord.Color.orange()
+            )
+            await interaction.edit_original_response(embed=embed, view=self)
+            self.stop()
+            return
+
+        self.current_player = self.player2 if self.current_player == self.player1 else self.player1
+        self.current_mark = "O" if self.current_mark == "X" else "X"
+
+        embed = discord.Embed(
+            title="🎮 Tic-Tac-Toe",
+            description=f"{self.current_player.mention}'s turn ({self.current_mark})",
+            color=discord.Color.gold()
+        )
+        await interaction.edit_original_response(embed=embed, view=self)
+
+async def start_tictactoe_game(interaction: discord.Interaction, player1: discord.Member, player2: discord.Member):
+    view = TicTacToeView(player1, player2)
+    embed = discord.Embed(
+        title="❌⭕ Tic-Tac-Toe",
+        description=f"{player1.mention} vs {player2.mention}\n\n{player1.mention}'s turn (X)",
+        color=discord.Color.gold()
+    )
+    for child in view.children:
+        child.disabled = False
+    await interaction.response.send_message(embed=embed, view=view)
+
+# ========== Hangman ==========
+HANGMAN_WORDS = {
+    "animals": ["lion", "tiger", "elephant"],
+    "fruits": ["apple", "banana", "grape"],
+    "countries": ["philippines", "japan", "canada"],
+    "movies": ["inception", "titanic", "avatar"],
+    "brands": ["apple", "nike", "mcdonalds"]
+}
+
+HANGMAN_STAGES = [
+    "```\n+---+\n    |\n    |\n    |\n   ===\n```",
+    "```\n+---+\nO   |\n    |\n    |\n   ===\n```",
+    "```\n+---+\nO   |\n|   |\n    |\n   ===\n```",
+    "```\n+---+\n O  |\n/|  |\n    |\n   ===\n```",
+    "```\n+---+\n O  |\n/|\\ |\n    |\n   ===\n```",
+    "```\n+---+\n O  |\n/|\\ |\n/   |\n   ===\n```",
+    "```\n+---+\n O  |\n/|\\ |\n/ \\ |\n   ===\n```"
+]
+
+class HangmanLetterButton(Button):
+    def __init__(self, letter, hangman_view):
+        super().__init__(label=letter.upper(), style=discord.ButtonStyle.secondary, row=int(ord(letter) // 9))
+        self.letter = letter.lower()
+        self.hangman_view = hangman_view
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.hangman_view.handle_letter(interaction, self.letter)
+        self.disabled = True
+        await interaction.message.edit(view=self.hangman_view)
+
+class HangmanChallengeModal(discord.ui.Modal, title="🧍 Hangman Challenge"):
+    word = discord.ui.TextInput(label="Secret Word", placeholder="Enter a word for the opponent to guess", required=True)
+
+    def __init__(self, challenger, opponent):
+        super().__init__()
+        self.challenger = challenger
+        self.opponent = opponent
+
+    async def on_submit(self, interaction: discord.Interaction):
+        word = self.word.value.strip().lower()
+        hidden = ["_" for _ in word]
+        guessed_letters = set()
+        attempts = 0
+
+        embed = discord.Embed(title="🧍 Hangman", description="Guess the word!", color=discord.Color.gold())
+        embed.add_field(name="Word", value=" ".join(hidden), inline=False)
+        embed.add_field(name="Attempts", value=str(attempts), inline=True)
+        embed.add_field(name="Guessed Letters", value="None", inline=True)
+        embed.add_field(name="Status", value=HANGMAN_STAGES[attempts], inline=False)
+
+        view = HangmanChallengeView(self.challenger, self.opponent, word, hidden, guessed_letters, attempts)
+        for letter in "abcdefghijklmnopqrstuvwxyz":
+            view.add_item(HangmanLetterButton(letter, view))
+        await interaction.response.send_message(embed=embed, view=view)
+
+class HangmanChallengeView(View):
+    def __init__(self, challenger, opponent, word, hidden, guessed_letters, attempts):
+        super().__init__(timeout=120)
+        self.challenger = challenger
+        self.opponent = opponent
+        self.word = word
+        self.hidden = hidden
+        self.guessed_letters = guessed_letters
+        self.attempts = attempts
+        self.current_turn = opponent
+        self.buttons = {}
+
+    async def handle_letter(self, interaction: discord.Interaction, letter: str):
+        if letter in self.guessed_letters:
+            await interaction.response.send_message("⚠️ Already guessed that letter.", ephemeral=True)
+            return
+
+        self.guessed_letters.add(letter)
+
+        if letter in self.word:
+            for i in range(len(self.word)):
+                if self.word[i] == letter:
+                    self.hidden[i] = letter
+        else:
+            self.attempts += 1
+
+        guessed_str = ", ".join(sorted(self.guessed_letters)) or "None"
+        word_display = " ".join(self.hidden)
+
+        embed = discord.Embed(title="🧍 Hangman", color=discord.Color.gold())
+        embed.add_field(name="Word", value=word_display, inline=False)
+        embed.add_field(name="Attempts", value=str(self.attempts), inline=True)
+        embed.add_field(name="Guessed Letters", value=guessed_str, inline=True)
+        embed.add_field(name="Status", value=HANGMAN_STAGES[self.attempts], inline=False)
+
+        if "_" not in self.hidden:
+            embed.description = f"🎉 {interaction.user.mention} wins!"
+            embed.color = discord.Color.green()
+            update_game_stats(self.challenger.id, self.opponent.id, interaction.user.id, "hangman")
+            for child in self.children:
+                child.disabled = True
+        elif self.attempts >= len(HANGMAN_STAGES) - 1:
+            embed.description = f"💀 You lose! The word was: `{self.word}`"
+            embed.color = discord.Color.red()
+            update_game_stats(self.challenger.id, self.opponent.id, self.opponent.id, "hangman")
+            for child in self.children:
+                child.disabled = True
+        else:
+            await interaction.response.defer()
+            await interaction.edit_original_response(embed=embed, view=self)
+            return
+
+        await interaction.edit_original_response(embed=embed, view=None)
+
+# ========== Game Stats ==========
+@bot.tree.command(name="gamestreak", description="Check current win streak between you and another user")
+@app_commands.describe(user="The user to compare streak with")
+async def gamestreak(interaction: discord.Interaction, user: discord.Member):
+    if user == interaction.user:
+        await interaction.response.send_message("❌ You can't check streak with yourself!", ephemeral=True)
+        return
+
+    key = get_user_pair_key(interaction.user.id, user.id)
+    stats = games_collection.find_one({"user_pair": key})
+
+    if not stats:
+        await interaction.response.send_message(f"📊 No recorded games between you and {user.mention}.", ephemeral=True)
+        return
+
+    streak_p1 = stats["streaks"].get(str(interaction.user.id), 0)
+    streak_p2 = stats["streaks"].get(str(user.id), 0)
+
+    embed = discord.Embed(
+        title=f"🔥 Win Streak: {interaction.user.display_name} vs {user.display_name}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name=interaction.user.display_name, value=f"Current Streak: {streak_p1}", inline=True)
+    embed.add_field(name=user.display_name, value=f"Current Streak: {streak_p2}", inline=True)
+
+    if streak_p1 > streak_p2:
+        embed.description = f"{interaction.user.mention} has the longer streak!"
+    elif streak_p2 > streak_p1:
+        embed.description = f"{user.mention} has the longer streak!"
+    else:
+        embed.description = "You're tied in win streaks!"
+
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+    embed.set_footer(text="Neroniel")
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="gamelb", description="Show top players by win streak or game stats")
+@app_commands.describe(mode="pairs | global | blackjack | tictactoe | hangman")
+async def gamelb(interaction: discord.Interaction, mode: str = "pairs"):
+    if not games_collection:
+        await interaction.response.send_message("❌ Game data is not available.", ephemeral=True)
+        return
+
+    if mode in ["global", "streak"]:
+        cursor = games_collection.find({"max_streak": {"$exists": True}})
+        streak_list = []
+
+        for doc in cursor:
+            user_id = doc["user_id"]
+            try:
+                user = await bot.fetch_user(user_id)
+            except:
+                continue
+            max_streak = doc.get("max_streak", 0)
+            streak_list.append({
+                "user": user,
+                "max_streak": max_streak
+            })
+
+        streak_list.sort(key=lambda x: x["max_streak"], reverse=True)
+
+        embed = discord.Embed(title="🔥 Global Win Streak Leaderboard", color=discord.Color.gold())
+        for i, entry in enumerate(streak_list[:10], 1):
+            embed.add_field(
+                name=f"{i}. {entry['user'].display_name}",
+                value=f"Longest Streak: **{entry['max_streak']}**",
+                inline=False
+            )
+        await interaction.response.send_message(embed=embed)
+    else:
+        game_filter = mode if mode in ["blackjack", "tictactoe", "hangman"] else None
+        cursor = games_collection.find({})
+        pair_scores = []
+
+        for doc in cursor:
+            p1, p2 = doc["user_pair"]
+            wins_p1 = doc["wins"].get(str(p1), 0)
+            wins_p2 = doc["p2", 0)
+            total_wins = wins_p1 + wins_p2
+            if game_filter and doc["game_logs"].get(game_filter, 0) == 0:
+                continue
+            pair_scores.append({
+                "pair": doc["user_pair"],
+                "total_wins": total_wins,
+                "wins": doc["wins"],
+                "streaks": doc.get("streaks", {}),
+                "game_type": game_filter or "all"
+            })
+
+        pair_scores.sort(key=lambda x: x["total_wins"], reverse=True)
+
+        embed = discord.Embed(
+            title=f"🏆 Top Game Pairs ({game_filter.capitalize() if game_filter else 'All Games'})",
+            color=discord.Color.gold()
+        )
+
+        for i, entry in enumerate(pair_scores[:10], 1):
+            try:
+                u1 = await bot.fetch_user(entry["pair"][0])
+                u2 = await bot.fetch_user(entry["pair"][1])
+            except:
+                continue
+
+            w1 = entry["wins"].get(str(entry["pair"][0]), 0)
+            w2 = entry["wins"].get(str(entry["pair"][1]), 0)
+            s1 = entry["streaks"].get(str(entry["pair"][0]), 0)
+            s2 = entry["streaks"].get(str(entry["pair"][1]), 0)
+
+            longest_streak = max(s1, s2)
+            longest_streak_user = u1.display_name if s1 > s2 else u2.display_name
+
+            embed.add_field(
+                name=f"{i}. {u1.display_name} & {u2.display_name}",
+                value=f"{u1.display_name}: {w1} win(s)\n"
+                      f"{u2.display_name}: {w2} win(s)\n"
+                      f"🔥 Longest Streak: {longest_streak} by {longest_streak_user}",
+                inline=False
+            )
+
+        await interaction.response.send_message(embed=embed)
+
+# ========== Start Commands ==========
+async def start_blackjack_game(interaction: discord.Interaction, player1: discord.Member, player2: discord.Member):
+    view = BlackjackPairView(player1, player2)
+    embed = discord.Embed(
+        title="🃏 Blackjack",
+        description=f"{player1.mention} vs {player2.mention}\n\n{player1.mention}'s turn.",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name=player1.display_name, value="?", inline=True)
+    embed.add_field(name=player2.display_name, value="?", inline=True)
+    await interaction.response.send_message(embed=embed, view=view)
+
+# ========== Blackjack Pair View ==========
+class BlackjackPairView(View):
+    def __init__(self, player1, player2):
+        super().__init__(timeout=120)
+        self.player1 = player1
+        self.player2 = player2
+        self.current_player = player1
+        self.hands = {
+            player1.id: [random.randint(1, 11), random.randint(1, 10)],
+            player2.id: [random.randint(1, 11), random.randint(1, 10)]
+        }
+        self.busts = []
+        self.stands = {player1.id: False, player2.id: False}
+        self.add_item(HitButton(self, player1, player2))
+        self.add_item(StandButton(self, player1, player2))
+
+    async def update_embed(self, interaction: discord.Interaction):
+        p1_total = sum(self.hands[self.player1.id])
+        p2_total = sum(self.hands[self.player2.id])
+
+        embed = discord.Embed(title="🃏 Blackjack", color=discord.Color.gold())
+        embed.add_field(name=self.player1.display_name, value=f"{self.hands[self.player1.id]} = {p1_total}", inline=True)
+        embed.add_field(name=self.player2.display_name, value=f"{self.hands[self.player2.id]} = {p2_total}", inline=True)
+        embed.add_field(name="Status", value=f"It's {self.current_player.mention}'s turn." if not all(self.stands.values()) else "Final round...", inline=False)
+
+        await interaction.edit_original_response(embed=embed, view=self)
+
+    async def check_bust(self, interaction: discord.Interaction):
+        for pid in [self.player1.id, self.player2.id]:
+            if sum(self.hands[pid]) > 21 and pid not in self.busts:
+                self.busts.append(pid)
+                await interaction.channel.send(f"{await bot.fetch_user(pid)} went bust!")
+
+        if all(self.stands.values()):
+            p1_total = sum(self.hands[self.player1.id])
+            p2_total = sum(self.hands[self.player2.id])
+
+            if p1_total > p2_total:
+                embed = discord.Embed(description=f"{self.player1.mention} wins!", color=discord.Color.green())
+                update_game_stats(self.player1.id, self.player2.id, self.player1.id, "blackjack")
+            elif p2_total > p1_total:
+                embed = discord.Embed(description=f"{self.player2.mention} wins!", color=discord.Color.green())
+                update_game_stats(self.player1.id, self.player2.id, self.player2.id, "blackjack")
+            else:
+                embed = discord.Embed(description="⚖️ It's a tie!", color=discord.Color.orange())
+
+            await interaction.edit_original_response(embed=embed, view=None)
+
+# ========== Hit / Stand Buttons ==========
+class HitButton(Button):
+    def __init__(self, view, player1, player2):
+        super().__init__(label="🟢 Hit", style=discord.ButtonStyle.success)
+        self.view = view
+        self.player1 = player1
+        self.player2 = player2
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user not in [self.view.current_player, self.player1, self.player2]:
+            await interaction.response.send_message("❌ Not your game!", ephemeral=True)
+            return
+
+        new_card = random.randint(1, 11)
+        self.view.hands[interaction.user.id].append(new_card)
+
+        if sum(self.view.hands[interaction.user.id]) > 21:
+            self.view.busts.append(interaction.user.id)
+            embed = discord.Embed(description=f"{interaction.user.mention} busted!", color=discord.Color.red())
+            await interaction.response.edit_message(embed=embed, view=None)
+            return
+
+        self.view.current_player = self.player2 if interaction.user == self.player1 else self.player1
+        await self.view.update_embed(interaction)
+
+class StandButton(Button):
+    def __init__(self, view, player1, player2):
+        super().__init__(label="🔴 Stand", style=discord.ButtonStyle.danger)
+        self.view = view
+        self.player1 = player1
+        self.player2 = player2
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user not in [self.view.current_player, self.player1, self.player2]:
+            await interaction.response.send_message("❌ Not your turn!", ephemeral=True)
+            return
+
+        self.view.stands[interaction.user.id] = True
+        self.view.current_player = self.player2 if interaction.user == self.player1 else self.player1
+
+        if all(self.view.stands.values()):
+            await self.view.check_bust(interaction)
+        else:
+            await self.view.update_embed(interaction)
+
+# ========== Show Game Stats ==========
+async def show_game_stats(interaction: discord.Interaction, user: discord.Member):
+    if user == interaction.user:
+        await interaction.response.send_message("❌ Can't check stats with yourself!", ephemeral=True)
+        return
+
+    key = get_user_pair_key(interaction.user.id, user.id)
+    stats = games_collection.find_one({"user_pair": key})
+
+    if not stats:
+        await interaction.response.send_message(f"📊 No recorded games between you and {user.mention}.", ephemeral=True)
+        return
+
+    w1 = stats["wins"].get(str(interaction.user.id), 0)
+    w2 = stats["wins"].get(str(user.id), 0)
+    total = stats.get("total_games", 0)
+    win_rate = (w1 / total * 100) if total > 0 else 0
+
+    embed = discord.Embed(
+        title=f"🎮 Game Stats: {interaction.user.display_name} vs {user.display_name}",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="Total Games", value=str(total), inline=False)
+    embed.add_field(name=interaction.user.display_name, value=f"Wins: {w1}", inline=True)
+    embed.add_field(name=user.display_name, value=f"Wins: {w2}", inline=True)
+    embed.add_field(name="Win Rate", value=f"{win_rate:.1f}% wins", inline=False)
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+    embed.set_footer(text="Neroniel")
     await interaction.response.send_message(embed=embed)
 
 
