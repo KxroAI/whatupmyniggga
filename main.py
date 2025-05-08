@@ -926,6 +926,25 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     await interaction.response.send_message(embed=embed)
 
 # Group Info
+@bot.tree.command(name="purge", description="Delete a specified number of messages")
+@app_commands.describe(amount="How many messages would you like to delete?")
+async def purge(interaction: discord.Interaction, amount: int):
+    if amount <= 0:
+        await interaction.response.send_message("❗ Please specify a positive number of messages.", ephemeral=True)
+        return
+    BOT_OWNER_ID = 1163771452403761193
+    has_permission = interaction.user.guild_permissions.manage_messages or interaction.user.id == BOT_OWNER_ID
+    if not has_permission:
+        await interaction.response.send_message("❗ You don't have permission to use this command.", ephemeral=True)
+        return
+    if not interaction.guild.me.guild_permissions.manage_messages:
+        await interaction.response.send_message("❗ I don't have permission to delete messages.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(f"✅ Deleted **{len(deleted)}** messages.", ephemeral=True)
+
+# Group Info Command
 @bot.tree.command(name="group", description="Display information about the 1cy Roblox group")
 async def groupinfo(interaction: discord.Interaction):
     group_id = 5838002
@@ -933,20 +952,19 @@ async def groupinfo(interaction: discord.Interaction):
         response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
         data = response.json()
         formatted_members = "{:,}".format(data['memberCount'])
-        owner = data.get("owner", None)
-        owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
-        
         embed = discord.Embed(color=discord.Color.blue())
-        embed.title = f"🔵 Group: [{data['name']}](https://www.roblox.com/groups/{group_id})"
-        embed.add_field(name="🔗 Group ID", value=f"`{data['id']}`", inline=True)
-        embed.add_field(name="📝 Description", value=f"```\n{data.get('description', 'No description.')[:500]\n```", inline=False)
-        embed.add_field(name="👑 Owner", value=owner_link, inline=True)
-        embed.add_field(name="👥 Members", value=f"`{formatted_members}`", inline=True)
+        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{group_id})", inline=False)
+        embed.add_field(name="Description", value=f"```\n{data['description'] or 'No description'}\n```", inline=False)
+        embed.add_field(name="Group ID", value=str(data['id']), inline=True)
+        owner = data['owner']
+        owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No owner"
+        embed.add_field(name="Owner", value=owner_link, inline=True)
+        embed.add_field(name="Members", value=formatted_members, inline=True)
         embed.set_footer(text="Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
+        embed.timestamp = discord.utils.utcnow()
         await interaction.response.send_message(embed=embed)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error fetching group info: {str(e)}", ephemeral=True)
+        await interaction.response.send_message(f"❌ Error fetching group info: {e}", ephemeral=True)
 
 # ========== Fun Commands ==========
 
