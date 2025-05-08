@@ -15,11 +15,34 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
+
+# List of common cities in the Philippines for autocomplete
+PHILIPPINE_CITIES = [
+    "Manila", "Quezon City", "Caloocan", "Las Piñas", "Makati",
+    "Malabon", "Navotas", "Paranaque", "Pasay", "Muntinlupa",
+    "Taguig", "Valenzuela", "Marikina", "Pasig", "San Juan",
+    "Cavite", "Cebu", "Davao", "Iloilo", "Baguio", "Zamboanga",
+    "Angeles", "Bacolod", "Batangas", "Cagayan de Oro", "Cebu City",
+    "Davao City", "General Santos", "Iligan", "Kalibo", "Lapu-Lapu City",
+    "Lucena", "Mandaue", "Olongapo", "Ormoc", "Oroquieta", "Ozamiz",
+    "Palawan", "Puerto Princesa", "Roxas City", "San Pablo", "Silay"
+]
+
+# List of major capital cities worldwide
+GLOBAL_CAPITAL_CITIES = [
+    "Washington D.C.", "London", "Paris", "Berlin", "Rome", 
+    "Moscow", "Beijing", "Tokyo", "Seoul", "New Delhi", "Islamabad",
+    "Canberra", "Ottawa", "Brasilia", "Ottawa", "Cairo", "Nairobi",
+    "Pretoria", "Kuala Lumpur", "Jakarta", "Bangkok", "Hanoi", "Athens",
+    "Vienna", "Stockholm", "Oslo", "Copenhagen", "Helsinki", "Dublin",
+    "Warsaw", "Prague", "Madrid", "Amsterdam", "Brussels", "Bern",
+    "Wellington", "Santiago", "Buenos Aires", "Brasilia", "Abu Dhabi",
+    "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
+    "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
+]
 
 load_dotenv()
 
@@ -687,98 +710,81 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
     except Exception as e:
         await interaction.response.send_message(f"⚠️ An error occurred: {str(e)}")
 
-@bot.tree.command(name="roblox_username", description="Get Roblox profile info by username")
-@app_commands.describe(username="The Roblox username to look up")
-async def roblox_username(interaction: discord.Interaction, username: str):
+@bot.tree.command(name="weather", description="Get weather information for a city")
+@app_commands.describe(city="City name", unit="Temperature unit (default is Celsius)")
+@app_commands.choices(unit=[
+    app_commands.Choice(name="Celsius (°C)", value="c"),
+    app_commands.Choice(name="Fahrenheit (°F)", value="f")
+])
+async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
+    api_key = os.getenv("WEATHER_API_KEY")
+    
+    if not api_key:
+        await interaction.response.send_message("❌ Weather API key is missing.", ephemeral=True)
+        return
+    
+    url = f"http://api.weatherapi.com/v1/current.json?key={api_key}&q={city}"
+    
     try:
-        # Step 1: Get User ID from username using users.roblox.com
-        user_lookup_url = f"https://users.roblox.com/v1/users?username={requests.utils.quote(username.strip())}"
-        user_lookup_response = requests.get(user_lookup_url)
-        
-        print(f"[DEBUG] Status Code: {user_lookup_response.status_code}")
-        print(f"[DEBUG] Response Text: {user_lookup_response.text}")
+        response = requests.get(url)
+        data = response.json()
 
-        if user_lookup_response.status_code != 200:
-            await interaction.response.send_message("❌ User not found.", ephemeral=True)
+        if "error" in data:
+            await interaction.response.send_message("❌ City not found or invalid input.", ephemeral=True)
             return
 
-        user_lookup_data = user_lookup_response.json()
+        current = data["current"]
+        location = data["location"]["name"]
+        region = data["location"]["region"]
+        country = data["location"]["country"]
 
-        if "id" not in user_lookup_data:
-            await interaction.response.send_message("❌ User not found.", ephemeral=True)
-            return
+        # Temperature logic
+        if unit == "c":
+            temperature = current["temp_c"]
+            feels_like = current["feelslike_c"]
+            unit_label = "°C"
+        else:
+            temperature = current["temp_f"]
+            feels_like = current["feelslike_f"]
+            unit_label = "°F"
 
-        user_id = user_lookup_data["id"]
+        humidity = current["humidity"]
+        wind_kph = current["wind_kph"]
+        condition = current["condition"]["text"]
+        icon_url = f"https:{current['condition']['icon']}"
 
-        # Step 2: Get detailed profile info
-        profile_response = requests.get(f"https://users.roblox.com/v1/users/{user_id}")
-        profile_data = profile_response.json()
-
-        display_name = profile_data["displayName"]
-        created = profile_data["created"]
-        is_banned = profile_data.get("isBanned", False)
-        description = profile_data.get("description", "N/A")
-
-        # Step 3: Get avatar image URL
-        avatar_response = requests.get(
-            f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
-        )
-        avatar_data = avatar_response.json()
-        avatar_url = avatar_data.get("data", [{}])[0].get("imageUrl", "")
-
-        # Step 4: Map badge names to rbxassetid URLs (example placeholder)
-        badge_mapping = {
-            "Veteran": "https://www.roblox.com/asset/?id=123456789",
-            "Friendship": "https://www.roblox.com/asset/?id=987654321",
-            "Ambassador": "https://www.roblox.com/asset/?id=112233445",
-            "Inviter": "https://www.roblox.com/asset/?id=556677889",
-            "Homestead": "https://www.roblox.com/asset/?id=223344556",
-            "Bricksmith": "https://www.roblox.com/asset/?id=667788990",
-            "Official Model Maker": "https://www.roblox.com/asset/?id=334455667",
-            "Combat Initiation": "https://www.roblox.com/asset/?id=778899001",
-            "Warrior": "https://www.roblox.com/asset/?id=445566778",
-            "Bloxxer": "https://www.roblox.com/asset/?id=889900112"
-        }
-
-        # Step 5: Request for all 12 badges (IDs 1–12)
-        badges_response = requests.get(f"https://badges.roblox.com/v1/users/{user_id}/badges?badgeIds=1,2,3,4,5,6,7,8,9,10,11,12")
-        badges_data = badges_response.json()
-        active_badge_images = []
-
-        for badge in badges_data.get("data", []):
-            badge_name = badge.get("name")
-            if badge_name in badge_mapping:
-                badge_url = badge_mapping[badge_name]
-                active_badge_images.append(badge_url)
-
-        badge_display = "\n".join([f"[⁣](<{url}>)" for url in active_badge_images]) if active_badge_images else "N/A"
-
-        # Format creation date with time
-        created_datetime = datetime.fromisoformat(created.rstrip("Z")).astimezone(PH_TIMEZONE)
-        created_date_str = created_datetime.strftime("%B %d, %Y • %I:%M %p GMT+8")
-
-        # Build embed
         embed = discord.Embed(
-            title=f"🎮 {profile_data['name']}",
-            url=f"https://www.roblox.com/users/{user_id}/profile",
-            color=discord.Color.orange()
+            title=f"🌤️ Weather in {location}, {region}, {country}",
+            color=discord.Color.blue()
         )
-        embed.set_thumbnail(url=avatar_url)
-
-        embed.add_field(name="Display Name", value=f"`{display_name}`", inline=False)
-        embed.add_field(name="Account Created", value=f"`{created_date_str}`", inline=False)
-        embed.add_field(name="Status", value="⛔ Banned" if is_banned else "✅ Active", inline=False)
-        embed.add_field(name="Description", value=f"```\n{description[:500] or 'N/A'}\n```", inline=False)
-        embed.add_field(name="Badges", value=badge_display, inline=False)
-
-        embed.set_footer(text="Neroniel")
+        embed.add_field(name="🌡️ Temperature", value=f"{temperature}{unit_label}", inline=True)
+        embed.add_field(name="🧯 Feels Like", value=f"{feels_like}{unit_label}", inline=True)
+        embed.add_field(name="💧 Humidity", value=f"{humidity}%", inline=True)
+        embed.add_field(name="🌬️ Wind Speed", value=f"{wind_kph} km/h", inline=True)
+        embed.add_field(name="📝 Condition", value=condition, inline=False)
+        embed.set_thumbnail(url=icon_url)
+        embed.set_footer(text="Powered by WeatherAPI • Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
 
         await interaction.response.send_message(embed=embed)
 
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error fetching Roblox user: {str(e)}", ephemeral=True)
-        print(f"[ERROR] {str(e)}")
+        await interaction.response.send_message(f"❌ Error fetching weather data: {str(e)}", ephemeral=True)
+
+@weather.autocomplete('city')
+async def city_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # Combine Philippine and global capitals
+    all_cities = PHILIPPINE_CITIES + GLOBAL_CAPITAL_CITIES
+
+    # Filter based on user input
+    filtered = [c for c in all_cities if current.lower() in c.lower()]
+    
+    return [
+        app_commands.Choice(name=c, value=c)
+        for c in filtered[:25]  # Max 25 choices
+    ]
 
 # List All Commands
 @bot.tree.command(name="listallcommands", description="List all available slash commands")
