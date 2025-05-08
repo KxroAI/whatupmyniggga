@@ -136,7 +136,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
 
             # Language Detection
             try:
-                detected_lang = detect(prompt)
+                detected_lang = langdetect(prompt)
             except LangDetectException:
                 detected_lang = "en"  # default to English
 
