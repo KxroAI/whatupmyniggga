@@ -692,7 +692,7 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
 async def roblox_username(interaction: discord.Interaction, username: str):
     try:
         # Step 1: Get User ID from username using users.roblox.com
-        user_lookup_url = f"https://users.roblox.com/v1/users?username={username}"
+        user_lookup_url = f"https://users.roblox.com/v1/users?username={username.strip()}"
         user_lookup_response = requests.get(user_lookup_url)
         user_lookup_data = user_lookup_response.json()
 
@@ -718,7 +718,7 @@ async def roblox_username(interaction: discord.Interaction, username: str):
         avatar_data = avatar_response.json()
         avatar_url = avatar_data.get("data", [{}])[0].get("imageUrl", "")
 
-        # Step 4: Map badge names to rbxassetid URLs
+        # Step 4: Map badge names to rbxassetid URLs (example placeholder)
         badge_mapping = {
             "Veteran": "https://www.roblox.com/asset/?id=123456789",
             "Friendship": "https://www.roblox.com/asset/?id=987654321",
