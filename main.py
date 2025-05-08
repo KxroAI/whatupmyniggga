@@ -481,18 +481,25 @@ async def currencyconvert(interaction: discord.Interaction, amount: float, from_
         )
         embed.add_field(name="📥 Input Amount", value=f"{amount} {from_currency}", inline=False)
 
+        # Build result rows as strings
+        results = []
         for currency in currencies_list:
             if currency not in data["data"]:
-                continue  # Skip unsupported currencies
+                continue
             
             rate = data["data"][currency]["value"]
             result = amount * rate
-
             flag = CURRENCY_FLAGS.get(currency, "")
+            results.append(f"{flag} **{currency}**: ≈ {result:.2f}")
+
+        # Group results into chunks of 6 to make 2 rows of 3 each
+        chunk_size = 6
+        for i in range(0, len(results), chunk_size):
+            chunk = results[i:i + chunk_size]
             embed.add_field(
-                name=f"{flag} {currency}",
-                value=f"1 {from_currency} = {rate:.4f} {currency}\n≈ {result:.2f} {currency}",
-                inline=True
+                name="‎",  # Invisible character to keep spacing
+                value=" | ".join(chunk),
+                inline=False
             )
 
         embed.set_footer(text="Neroniel")
