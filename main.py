@@ -15,6 +15,8 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -689,7 +691,7 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
 @app_commands.describe(username="The Roblox username to look up")
 async def roblox_username(interaction: discord.Interaction, username: str):
     try:
-        # Step 1: Get User ID from username using users.roblox.com (more reliable)
+        # Step 1: Get User ID from username using users.roblox.com
         user_lookup_url = f"https://users.roblox.com/v1/users?username={username}"
         user_lookup_response = requests.get(user_lookup_url)
         user_lookup_data = user_lookup_response.json()
@@ -699,18 +701,20 @@ async def roblox_username(interaction: discord.Interaction, username: str):
             return
 
         user_id = user_lookup_data["id"]
-        display_name = user_lookup_data["displayName"]
-        created = user_lookup_data["created"]
-        is_banned = user_lookup_data["isBanned"]
-        description = user_lookup_data.get("description", "N/A")
 
         # Step 2: Get detailed profile info
         profile_response = requests.get(f"https://users.roblox.com/v1/users/{user_id}")
         profile_data = profile_response.json()
-        username = profile_data["name"]
+
+        display_name = profile_data["displayName"]
+        created = profile_data["created"]
+        is_banned = profile_data.get("isBanned", False)
+        description = profile_data.get("description", "N/A")
 
         # Step 3: Get avatar image URL
-        avatar_response = requests.get(f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false")
+        avatar_response = requests.get(
+            f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+        )
         avatar_data = avatar_response.json()
         avatar_url = avatar_data.get("data", [{}])[0].get("imageUrl", "")
 
@@ -739,11 +743,7 @@ async def roblox_username(interaction: discord.Interaction, username: str):
                 badge_url = badge_mapping[badge_name]
                 active_badge_images.append(badge_url)
 
-        # Build badge image string
-        if active_badge_images:
-            badge_display = "\n".join([f"[⁣](<{url}>)" for url in active_badge_images])
-        else:
-            badge_display = "N/A"
+        badge_display = "\n".join([f"[⁣](<{url}>)" for url in active_badge_images]) if active_badge_images else "N/A"
 
         # Format creation date with time
         created_datetime = datetime.fromisoformat(created.rstrip("Z")).astimezone(PH_TIMEZONE)
@@ -751,7 +751,7 @@ async def roblox_username(interaction: discord.Interaction, username: str):
 
         # Build embed
         embed = discord.Embed(
-            title=f"🎮 {username}",
+            title=f"🎮 {profile_data['name']}",
             url=f"https://www.roblox.com/users/{user_id}/profile",
             color=discord.Color.orange()
         )
