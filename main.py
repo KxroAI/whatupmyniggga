@@ -22,32 +22,6 @@ from discord.ui import Button, View
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
 load_dotenv()
 
-# List of common cities in the Philippines for autocomplete
-PHILIPPINE_CITIES = [
-    "Manila", "Quezon City", "Caloocan", "Las Piñas", "Makati",
-    "Malabon", "Navotas", "Paranaque", "Pasay", "Muntinlupa",
-    "Taguig", "Valenzuela", "Marikina", "Pasig", "San Juan",
-    "Cavite", "Cebu", "Davao", "Iloilo", "Baguio", "Zamboanga",
-    "Angeles", "Bacolod", "Batangas", "Cagayan de Oro", "Cebu City",
-    "Davao City", "General Santos", "Iligan", "Kalibo", "Lapu-Lapu City",
-    "Lucena", "Mandaue", "Olongapo", "Ormoc", "Oroquieta", "Ozamiz",
-    "Palawan", "Puerto Princesa", "Roxas City", "San Pablo", "Silay"
-]
-
-# List of major capital cities worldwide
-GLOBAL_CAPITAL_CITIES = [
-    "Washington D.C.", "London", "Paris", "Berlin", "Rome", 
-    "Moscow", "Beijing", "Tokyo", "Seoul", "New Delhi", "Islamabad",
-    "Canberra", "Ottawa", "Brasilia", "Ottawa", "Cairo", "Nairobi",
-    "Pretoria", "Kuala Lumpur", "Jakarta", "Bangkok", "Hanoi", "Athens",
-    "Vienna", "Stockholm", "Oslo", "Copenhagen", "Helsinki", "Dublin",
-    "Warsaw", "Prague", "Madrid", "Amsterdam", "Brussels", "Bern",
-    "Wellington", "Santiago", "Buenos Aires", "Brasilia", "Abu Dhabi",
-    "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
-    "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
-
-]
-
 # ===========================
 # Bot Setup
 # ===========================
@@ -67,8 +41,10 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is alive!"
+
 def run_server():
     app.run(host='0.0.0.0', port=5000)
+
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
@@ -77,6 +53,7 @@ def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
+
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
@@ -89,7 +66,6 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
-    games_collection = db.games  # NEW - For game stats and streaks
 
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
@@ -99,7 +75,6 @@ except Exception as e:
     client = None
     conversations_collection = None
     reminders_collection = None
-    games_collection = None
 
 # ===========================
 # AI Commands
@@ -112,12 +87,13 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
-    
+
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
+
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
@@ -136,7 +112,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
 
             # Language Detection
             try:
-                detected_lang = langdetect(prompt)
+                detected_lang = detect(prompt)
             except LangDetectException:
                 detected_lang = "en"  # default to English
 
@@ -187,7 +163,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
             }
 
             response = requests.post(
-                "https://api.together.xyz/v1/completions",
+                "https://api.together.xyz/v1/completions ",
                 headers=headers,
                 json=payload
             )
@@ -251,103 +227,8 @@ async def clearhistory(interaction: discord.Interaction):
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
 
 # ===========================
-# Utility Functions
-# ===========================
-
-def get_user_pair_key(user1_id, user2_id):
-    """Returns a consistent key for a user pair"""
-    return tuple(sorted([user1_id, user2_id]))
-
-def update_game_stats(user1_id, user2_id, winner_id, game_type):
-    """Tracks game wins, streaks, and logs"""
-    if not games_collection:
-        return
-
-    key = get_user_pair_key(user1_id, user2_id)
-
-    log_entry = {
-        "winner_id": winner_id,
-        "timestamp": datetime.now(PH_TIMEZONE),
-        "game_type": game_type
-    }
-
-    stats = games_collection.find_one({"user_pair": key})
-
-    if stats:
-        p1, p2 = key
-        current_streaks = stats.get("streaks", {str(p1): 0, str(p2): 0})
-        last_log = stats.get("game_history", [])[-1] if "game_history" in stats else None
-
-        if last_log and last_log["winner_id"] == winner_id:
-            current_streaks[str(winner_id)] += 1
-        else:
-            other_id = p1 if winner_id == p2 else p2
-            current_streaks[str(other_id)] = 0
-            current_streaks[str(winner_id)] = 1
-
-        # Update global streaks
-        global_data = games_collection.find_one({"user_id": winner_id}) or {}
-        last_global_log = global_data.get("latest_game")
-
-        if last_global_log and last_global_log["winner_id"] == winner_id:
-            global_streak = global_data.get("global_streak", 0) + 1
-        else:
-            global_streak = 1
-
-        max_streak = max(global_streak, global_data.get("max_streak", 0))
-
-        update_data = {
-            "$inc": {
-                f"wins.{winner_id}": 1,
-                "total_games": 1,
-                f"game_logs.{game_type}": 1
-            },
-            "$set": {
-                "streaks": current_streaks,
-                "latest_game": log_entry,
-                "last_updated": datetime.now(PH_TIMEZONE),
-                "global_streak": global_streak,
-                "max_streak": max_streak
-            },
-            "$push": {"game_history": log_entry}
-        }
-        games_collection.update_one({"user_pair": key}, update_data, upsert=True)
-    else:
-        p1, p2 = key
-        new_doc = {
-            "user_pair": key,
-            "wins": {
-                str(p1): 1 if p1 == winner_id else 0,
-                str(p2): 1 if p2 == winner_id else 0
-            },
-            "total_games": 1,
-            "game_logs": {game_type: 1},
-            "game_history": [log_entry],
-            "streaks": {
-                str(p1): 1 if p1 == winner_id else 0,
-                str(p2): 1 if p2 == winner_id else 0
-            },
-            "latest_game": log_entry
-        }
-        games_collection.insert_one(new_doc)
-
-    games_collection.update_one(
-        {"user_id": winner_id},
-        {
-            "$set": {
-                "latest_game": log_entry,
-                "global_streak": global_streak,
-                "last_updated": datetime.now(PH_TIMEZONE),
-                "max_streak": max_streak
-            }
-        },
-        upsert=True
-    )
-
-# ===========================
 # Background Tasks
 # ===========================
-
 @tasks.loop(seconds=60)
 async def check_reminders():
     if not reminders_collection:
@@ -384,474 +265,7 @@ async def before_check_reminders():
 if reminders_collection:
     check_reminders.start()
 
-# ===========================
-# Game Commands
-# ===========================
-
-@bot.tree.command(name="game", description="Play fun mini-games with the bot")
-@app_commands.describe(game="Choose a game mode", user="Opponent (optional)")
-@app_commands.choices(game=[
-    app_commands.Choice(name="Blackjack", value="blackjack"),
-    app_commands.Choice(name="Tic Tac Toe", value="tictactoe"),
-    app_commands.Choice(name="Game Stats", value="stats"),
-    app_commands.Choice(name="Hangman", value="hangman")
-])
-async def game(interaction: discord.Interaction, game: app_commands.Choice[str], user: discord.Member = None):
-    if user and user == interaction.user:
-        await interaction.response.send_message("❌ You can't play against yourself!", ephemeral=True)
-        return
-
-    if game.value == "blackjack":
-        if user:
-            await start_blackjack_game(interaction, interaction.user, user)
-        else:
-            await start_blackjack_solo(interaction)
-    elif game.value == "tictactoe":
-        if user:
-            await start_tictactoe_game(interaction, interaction.user, user)
-        else:
-            await start_tictactoe_game(interaction, interaction.user, bot.user)
-    elif game.value == "hangman":
-        if user:
-            await interaction.response.send_modal(HangmanChallengeModal(interaction.user, user))
-        else:
-            await start_hangman_game(interaction)
-    elif game.value == "stats":
-        target = user or interaction.user
-        await show_game_stats(interaction, target)
-    else:
-        await interaction.response.send_message("❌ Invalid game selected.", ephemeral=True)
-
-# ========== Blackjack ==========
-
-async def start_blackjack_solo(interaction: discord.Interaction):
-    player_hand = [random.randint(1, 11), random.randint(1, 10)]
-    bot_hand = [random.randint(1, 11), random.randint(1, 10)]
-
-    embed = discord.Embed(title="🃏 Blackjack", color=discord.Color.gold())
-    embed.add_field(name="🧑 Your Hand", value=f"{player_hand} = {sum(player_hand)}", inline=False)
-    embed.add_field(name="🤖 Bot's Hand", value="[?, ?]", inline=False)
-
-    view = BlackjackSoloView(interaction.user, player_hand, bot_hand)
-    await interaction.response.send_message(embed=embed, view=view)
-
-class BlackjackButton(Button):
-    def __init__(self, label, emoji, style, action):
-        super().__init__(label=label, emoji=emoji, style=style)
-        self.action = action
-
-    async def callback(self, interaction: discord.Interaction):
-        await self.action(interaction)
-
-class BlackjackSoloView(View):
-    def __init__(self, player, player_hand, bot_hand):
-        super().__init__(timeout=60)
-        self.player = player
-        self.player_hand = player_hand
-        self.bot_hand = bot_hand
-
-    async def hit(self, interaction: discord.Interaction):
-        self.player_hand.append(random.randint(1, 11))
-        total = sum(self.player_hand)
-        if total > 21:
-            embed = discord.Embed(title="💥 Busted!", description="You went over 21 and lost.", color=discord.Color.red())
-            update_game_stats(self.player.id, self.bot_hand[0], self.bot_hand[0], "blackjack")  # Simulate bot ID
-            await interaction.response.edit_message(embed=embed, view=None)
-            return
-        embed = discord.Embed(title="🃏 Blackjack", color=discord.Color.gold())
-        embed.add_field(name="🧑 Your Hand", value=f"{self.player_hand} = {sum(self.player_hand)}", inline=False)
-        embed.add_field(name="🤖 Bot's Hand", value="[?, ?]", inline=False)
-        view = BlackjackSoloView(self.player, self.player_hand, self.bot_hand)
-        view.add_item(BlackjackButton("Hit", "🟢", discord.ButtonStyle.success, self.hit))
-        view.add_item(BlackjackButton("Stand", "🔴", discord.ButtonStyle.danger, self.stand))
-        await interaction.response.edit_message(embed=embed, view=view)
-
-    async def stand(self, interaction: discord.Interaction):
-        bot_total = sum(self.bot_hand)
-        while bot_total < 17:
-            self.bot_hand.append(random.randint(1, 10))
-            bot_total = sum(self.bot_hand)
-
-        player_total = sum(self.player_hand)
-        embed = discord.Embed(title="🎮 Blackjack Result", color=discord.Color.green())
-
-        if player_total > 21:
-            embed.description = "💥 You busted."
-            embed.color = discord.Color.red()
-        elif bot_total > 21 or player_total > bot_total:
-            embed.description = f"{interaction.user.mention} wins! 🎉"
-            update_game_stats(self.player.id, self.bot_hand[0], self.player.id, "blackjack")
-        elif player_total < bot_total:
-            embed.description = f"{interaction.user.mention} loses! 😢"
-            update_game_stats(self.player.id, self.bot_hand[0], self.bot_hand[0], "blackjack")
-        else:
-            embed.description = "⚖️ It's a tie!"
-
-        embed.add_field(name="🧑 Your Hand", value=f"{self.player_hand} = {sum(self.player_hand)}", inline=True)
-        embed.add_field(name="🤖 Bot's Hand", value=f"{self.bot_hand} = {sum(self.bot_hand)}", inline=True)
-        await interaction.response.edit_message(embed=embed, view=None)
-
-# ========== Tic-Tac-Toe ==========
-
-class TicTacToeButton(Button):
-    def __init__(self, x, y):
-        super().__init__(style=discord.ButtonStyle.secondary, label="\u200b", row=y)
-        self.x = x
-        self.y = y
-        self.mark = None
-
-    async def callback(self, interaction: discord.Interaction):
-        view: TicTacToeView = self.view
-        if interaction.user != view.current_player:
-            await interaction.response.send_message("❌ Not your turn!", ephemeral=True)
-            return
-
-        if self.mark is not None:
-            await interaction.response.send_message("❌ Already marked!", ephemeral=True)
-            return
-
-        self.mark = view.current_mark
-        self.label = view.current_mark
-        self.style = discord.ButtonStyle.success if view.current_mark == "X" else discord.ButtonStyle.danger
-        self.disabled = True
-
-        view.board[self.y][self.x] = view.current_mark
-        await view.check_winner(interaction)
-
-class TicTacToeView(View):
-    def __init__(self, player1, player2):
-        super().__init__(timeout=120)
-        self.player1 = player1
-        self.player2 = player2
-        self.current_player = player1
-        self.current_mark = "X"
-        self.board = [["" for _ in range(3)] for _ in range(3)]
-        for x in range(3):
-            for y in range(3):
-                self.add_item(TicTacToeButton(x, y))
-
-    async def check_winner(self, interaction: discord.Interaction):
-        winning_combos = [
-            [(x, y) for x in range(3)],
-            [(y, y) for y in range(3)],
-            [(2 - y, y) for y in range(3)],
-            [(y, x) for x in range(3)],
-        ]
-        winner = None
-        for combo in winning_combos:
-            marks = [self.board[x][y] for x, y in combo]
-            if all(m == "X" for m in marks):
-                winner = self.player1
-            elif all(m == "O" for m in marks):
-                winner = self.player2
-
-        if winner:
-            embed = discord.Embed(
-                title="🎮 Tic-Tac-Toe",
-                description=f"{winner.mention} wins!",
-                color=discord.Color.green()
-            )
-            update_game_stats(self.player1.id, self.player2.id, winner.id, "tictactoe")
-            for child in self.children:
-                child.disabled = True
-            await interaction.edit_original_response(embed=embed, view=self)
-            self.stop()
-            return
-
-        if all(cell != "" for row in self.board for cell in row):
-            embed = discord.Embed(
-                title="🎮 Tic-Tac-Toe",
-                description="It's a tie!",
-                color=discord.Color.orange()
-            )
-            await interaction.edit_original_response(embed=embed, view=self)
-            self.stop()
-            return
-
-        self.current_player = self.player2 if self.current_player == self.player1 else self.player1
-        self.current_mark = "O" if self.current_mark == "X" else "X"
-
-        embed = discord.Embed(
-            title="🎮 Tic-Tac-Toe",
-            description=f"{self.current_player.mention}'s turn ({self.current_mark})",
-            color=discord.Color.gold()
-        )
-        await interaction.edit_original_response(embed=embed, view=self)
-
-async def start_tictactoe_game(interaction: discord.Interaction, player1: discord.Member, player2: discord.Member):
-    view = TicTacToeView(player1, player2)
-    embed = discord.Embed(
-        title="❌⭕ Tic-Tac-Toe",
-        description=f"{player1.mention} vs {player2.mention}\n\n{player1.mention}'s turn (X)",
-        color=discord.Color.gold()
-    )
-    for child in view.children:
-        child.disabled = False
-    await interaction.response.send_message(embed=embed, view=view)
-
-# ========== Hangman ==========
-
-HANGMAN_WORDS = {
-    "animals": ["lion", "tiger", "elephant"],
-    "fruits": ["apple", "banana", "grape"],
-    "countries": ["philippines", "japan", "canada"],
-    "movies": ["inception", "titanic", "avatar"],
-    "brands": ["apple", "nike", "mcdonalds"]
-}
-
-HANGMAN_STAGES = [
-    "```\n+---+\n    |\n    |\n    |\n   ===\n```",
-    "```\n+---+\nO   |\n    |\n    |\n   ===\n```",
-    "```\n+---+\nO   |\n|   |\n    |\n   ===\n```",
-    "```\n+---+\n O  |\n/|  |\n    |\n   ===\n```",
-    "```\n+---+\n O  |\n/|\\ |\n    |\n   ===\n```",
-    "```\n+---+\n O  |\n/|\\ |\n/   |\n   ===\n```",
-    "```\n+---+\n O  |\n/|\\ |\n/ \\ |\n   ===\n```"
-]
-
-class HangmanLetterButton(Button):
-    def __init__(self, letter, hangman_view):
-        super().__init__(label=letter.upper(), style=discord.ButtonStyle.secondary, row=int(ord(letter) // 9))
-        self.letter = letter.lower()
-        self.hangman_view = hangman_view
-
-    async def callback(self, interaction: discord.Interaction):
-        await self.hangman_view.handle_letter(interaction, self.letter)
-        self.disabled = True
-        await interaction.message.edit(view=self.hangman_view)
-
-class HangmanChallengeModal(discord.ui.Modal, title="🧍 Hangman Challenge"):
-    word = discord.ui.TextInput(label="Secret Word", placeholder="Enter a word for the opponent to guess", required=True)
-
-    def __init__(self, challenger, opponent):
-        super().__init__()
-        self.challenger = challenger
-        self.opponent = opponent
-
-    async def on_submit(self, interaction: discord.Interaction):
-        word = self.word.value.strip().lower()
-        hidden = ["_" for _ in word]
-        guessed_letters = set()
-        attempts = 0
-
-        embed = discord.Embed(title="🧍 Hangman", description="Guess the word!", color=discord.Color.gold())
-        embed.add_field(name="Word", value=" ".join(hidden), inline=False)
-        embed.add_field(name="Attempts", value=str(attempts), inline=True)
-        embed.add_field(name="Guessed Letters", value="None", inline=True)
-        embed.add_field(name="Status", value=HANGMAN_STAGES[attempts], inline=False)
-
-        view = HangmanChallengeView(self.challenger, self.opponent, word, hidden, guessed_letters, attempts)
-        for letter in "abcdefghijklmnopqrstuvwxyz":
-            view.add_item(HangmanLetterButton(letter, view))
-        await interaction.response.send_message(embed=embed, view=view)
-
-class HangmanChallengeView(View):
-    def __init__(self, challenger, opponent, word, hidden, guessed_letters, attempts):
-        super().__init__(timeout=120)
-        self.challenger = challenger
-        self.opponent = opponent
-        self.word = word
-        self.hidden = hidden
-        self.guessed_letters = guessed_letters
-        self.attempts = attempts
-        self.current_turn = opponent
-        self.buttons = {}
-
-    async def handle_letter(self, interaction: discord.Interaction, letter: str):
-        if letter in self.guessed_letters:
-            await interaction.response.send_message("⚠️ Already guessed that letter.", ephemeral=True)
-            return
-
-        self.guessed_letters.add(letter)
-
-        if letter in self.word:
-            for i in range(len(self.word)):
-                if self.word[i] == letter:
-                    self.hidden[i] = letter
-        else:
-            self.attempts += 1
-
-        guessed_str = ", ".join(sorted(self.guessed_letters)) or "None"
-        word_display = " ".join(self.hidden)
-
-        embed = discord.Embed(title="🧍 Hangman", color=discord.Color.gold())
-        embed.add_field(name="Word", value=word_display, inline=False)
-        embed.add_field(name="Attempts", value=str(self.attempts), inline=True)
-        embed.add_field(name="Guessed Letters", value=guessed_str, inline=True)
-        embed.add_field(name="Status", value=HANGMAN_STAGES[self.attempts], inline=False)
-
-        if "_" not in self.hidden:
-            embed.description = f"🎉 {interaction.user.mention} wins!"
-            embed.color = discord.Color.green()
-            update_game_stats(self.challenger.id, self.opponent.id, interaction.user.id, "hangman")
-            for child in self.children:
-                child.disabled = True
-        elif self.attempts >= len(HANGMAN_STAGES) - 1:
-            embed.description = f"💀 You lose! The word was: `{self.word}`"
-            embed.color = discord.Color.red()
-            update_game_stats(self.challenger.id, self.opponent.id, self.opponent.id, "hangman")
-            for child in self.children:
-                child.disabled = True
-        else:
-            await interaction.response.defer()
-            await interaction.edit_original_response(embed=embed, view=self)
-            return
-
-        await interaction.edit_original_response(embed=embed, view=None)
-
-# ========== Game Stats ==========
-
-@bot.tree.command(name="gamestreak", description="Check current win streak between you and another user")
-@app_commands.describe(user="The user to compare streak with")
-async def gamestreak(interaction: discord.Interaction, user: discord.Member):
-    if user == interaction.user:
-        await interaction.response.send_message("❌ You can't check streak with yourself!", ephemeral=True)
-        return
-
-    key = get_user_pair_key(interaction.user.id, user.id)
-    stats = games_collection.find_one({"user_pair": key})
-    
-    if not stats:
-        await interaction.response.send_message(f"📊 No recorded games between you and {user.mention}.", ephemeral=True)
-        return
-
-    streak_p1 = stats["streaks"].get(str(interaction.user.id), 0)
-    streak_p2 = stats["streaks"].get(str(user.id), 0)
-
-    embed = discord.Embed(
-        title=f"🔥 Win Streak: {interaction.user.display_name} vs {user.display_name}",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name=interaction.user.display_name, value=f"Current Streak: {streak_p1}", inline=True)
-    embed.add_field(name=user.display_name, value=f"Current Streak: {streak_p2}", inline=True)
-
-    if streak_p1 > streak_p2:
-        embed.description = f"{interaction.user.mention} has the longer streak!"
-    elif streak_p2 > streak_p1:
-        embed.description = f"{user.mention} has the longer streak!"
-    else:
-        embed.description = "You're tied in win streaks!"
-
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
-    embed.set_footer(text="Neroniel")
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="gamelb", description="Show top players by win streak or game stats")
-@app_commands.describe(mode="pairs | global | blackjack | tictactoe | hangman")
-async def gamelb(interaction: discord.Interaction, mode: str = "pairs"):
-    if not games_collection:
-        await interaction.response.send_message("❌ Game data is not available.", ephemeral=True)
-        return
-
-    if mode in ["global", "streak"]:
-        cursor = games_collection.find({"max_streak": {"$exists": True}})
-        streak_list = []
-        for doc in cursor:
-            user_id = doc["user_id"]
-            try:
-                user = await bot.fetch_user(user_id)
-            except:
-                continue
-            max_streak = doc.get("max_streak", 0)
-            streak_list.append({
-                "user": user,
-                "max_streak": max_streak
-            })
-        streak_list.sort(key=lambda x: x["max_streak"], reverse=True)
-
-        embed = discord.Embed(title="🔥 Global Win Streak Leaderboard", color=discord.Color.gold())
-        for i, entry in enumerate(streak_list[:10], 1):
-            embed.add_field(
-                name=f"{i}. {entry['user'].display_name}",
-                value=f"Longest Streak: **{entry['max_streak']}**",
-                inline=False
-            )
-        await interaction.response.send_message(embed=embed)
-    else:
-        game_filter = mode if mode in ["blackjack", "tictactoe", "hangman"] else None
-        cursor = games_collection.find({})
-        pair_scores = []
-
-        for doc in cursor:
-            p1, p2 = doc["user_pair"]
-            wins_p1 = doc["wins"].get(str(p1), 0)
-            wins_p2 = doc["wins"].get(str(p2), 0)
-            total_wins = wins_p1 + wins_p2
-            if game_filter and doc["game_logs"].get(game_filter, 0) == 0:
-                continue
-            pair_scores.append({
-                "pair": doc["user_pair"],
-                "total_wins": total_wins,
-                "wins": doc["wins"],
-                "streaks": doc.get("streaks", {}),
-                "game_type": game_filter or "all"
-            })
-
-        pair_scores.sort(key=lambda x: x["total_wins"], reverse=True)
-
-        embed = discord.Embed(
-            title=f"🏆 Top Game Pairs ({game_filter.capitalize() if game_filter else 'All Games'})",
-            color=discord.Color.gold()
-        )
-
-        for i, entry in enumerate(pair_scores[:10], 1):
-            try:
-                u1 = await bot.fetch_user(entry["pair"][0])
-                u2 = await bot.fetch_user(entry["pair"][1])
-            except:
-                continue
-
-            w1 = entry["wins"].get(str(entry["pair"][0]), 0)
-            w2 = entry["wins"].get(str(entry["pair"][1]), 0)
-            s1 = entry["streaks"].get(str(entry["pair"][0]), 0)
-            s2 = entry["streaks"].get(str(entry["pair"][1]), 0)
-
-            longest_streak = max(s1, s2)
-            longest_streak_user = u1.display_name if s1 > s2 else u2.display_name
-
-            embed.add_field(
-                name=f"{i}. {u1.display_name} & {u2.display_name}",
-                value=f"{u1.display_name}: {w1} win(s)\n"
-                      f"{u2.display_name}: {w2} win(s)\n"
-                      f"🔥 Longest Streak: {longest_streak} by {longest_streak_user}",
-                inline=False
-            )
-
-        await interaction.response.send_message(embed=embed)
-
-# ========== Show Game Stats ==========
-
-async def show_game_stats(interaction: discord.Interaction, user: discord.Member):
-    if user == interaction.user:
-        await interaction.response.send_message("❌ Can't check stats with yourself!", ephemeral=True)
-        return
-
-    key = get_user_pair_key(interaction.user.id, user.id)
-    stats = games_collection.find_one({"user_pair": key})
-
-    if not stats:
-        await interaction.response.send_message(f"📊 No recorded games between you and {user.mention}.", ephemeral=True)
-        return
-
-    w1 = stats["wins"].get(str(interaction.user.id), 0)
-    w2 = stats["wins"].get(str(user.id), 0)
-    total = stats.get("total_games", 0)
-    win_rate = (w1 / total * 100) if total > 0 else 0
-
-    embed = discord.Embed(
-        title=f"🎮 Game Stats: {interaction.user.display_name} vs {user.display_name}",
-        color=discord.Color.blue()
-    )
-    embed.add_field(name="Total Games", value=str(total), inline=False)
-    embed.add_field(name=interaction.user.display_name, value=f"Wins: {w1}", inline=True)
-    embed.add_field(name=user.display_name, value=f"Wins: {w2}", inline=True)
-    embed.add_field(name="Win Rate", value=f"{win_rate:.1f}% wins", inline=False)
-    embed.set_thumbnail(url=interaction.user.display_avatar.url)
-    embed.set_footer(text="Neroniel")
-    await interaction.response.send_message(embed=embed)
-
 # ========== Currency Conversion Commands ==========
-
 # Payout
 @bot.tree.command(name="payout", description="Convert Robux to PHP based on Payout rate (₱320 for 1000 Robux)")
 @app_commands.describe(robux="How much Robux do you want to convert?")
@@ -942,13 +356,12 @@ async def convertcurrency(interaction: discord.Interaction, amount: float, from_
         return
     from_currency = from_currency.upper()
     to_currency = to_currency.upper()
-    url = f"https://api.currencyapi.com/v3/latest?apikey={api_key}&currencies={to_currency}&base_currency={from_currency}"
+    url = f"https://api.currencyapi.com/v3/latest?apikey= {api_key}&currencies={to_currency}&base_currency={from_currency}"
     try:
         response = requests.get(url)
         data = response.json()
         if 'error' in data:
             await interaction.response.send_message(f"❌ API Error: {data['error']['message']}")
-            print("API Error Response:", data)
             return
         if "data" not in data or to_currency not in data["data"]:
             await interaction.response.send_message("❌ Invalid currency code or no data found.")
@@ -965,9 +378,30 @@ async def convertcurrency(interaction: discord.Interaction, amount: float, from_
         await interaction.response.send_message(embed=embed)
     except Exception as e:
         await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
-        print("Exception Details:", str(e))
 
 # ========== Weather Command ==========
+PHILIPPINE_CITIES = [
+    "Manila", "Quezon City", "Caloocan", "Las Piñas", "Makati",
+    "Malabon", "Navotas", "Paranaque", "Pasay", "Muntinlupa",
+    "Taguig", "Valenzuela", "Marikina", "Pasig", "San Juan",
+    "Cavite", "Cebu", "Davao", "Iloilo", "Baguio", "Zamboanga",
+    "Angeles", "Bacolod", "Batangas", "Cagayan de Oro", "Cebu City",
+    "Davao City", "General Santos", "Iligan", "Kalibo", "Lapu-Lapu City",
+    "Lucena", "Mandaue", "Olongapo", "Ormoc", "Oroquieta", "Ozamiz",
+    "Palawan", "Puerto Princesa", "Roxas City", "San Pablo", "Silay"
+]
+
+GLOBAL_CAPITAL_CITIES = [
+    "Washington D.C.", "London", "Paris", "Berlin", "Rome",
+    "Moscow", "Beijing", "Tokyo", "Seoul", "New Delhi", "Islamabad",
+    "Canberra", "Ottawa", "Brasilia", "Ottawa", "Cairo", "Nairobi",
+    "Pretoria", "Kuala Lumpur", "Jakarta", "Bangkok", "Hanoi", "Athens",
+    "Vienna", "Stockholm", "Oslo", "Copenhagen", "Helsinki", "Dublin",
+    "Warsaw", "Prague", "Madrid", "Amsterdam", "Brussels", "Bern",
+    "Wellington", "Santiago", "Buenos Aires", "Brasilia", "Abu Dhabi",
+    "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
+    "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
+]
 
 @bot.tree.command(name="weather", description="Get weather information for a city")
 @app_commands.describe(city="City name", unit="Temperature unit (default is Celsius)")
@@ -980,21 +414,17 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
     if not api_key:
         await interaction.response.send_message("❌ Weather API key is missing.", ephemeral=True)
         return
-
     url = f"http://api.weatherapi.com/v1/current.json?key={api_key}&q={city}"
-
     try:
         response = requests.get(url)
         data = response.json()
         if "error" in data:
             await interaction.response.send_message("❌ City not found or invalid input.", ephemeral=True)
             return
-
         current = data["current"]
         location = data["location"]["name"]
         region = data["location"]["region"]
         country = data["location"]["country"]
-
         if unit == "c":
             temperature = current["temp_c"]
             feels_like = current["feelslike_c"]
@@ -1003,12 +433,10 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
             temperature = current["temp_f"]
             feels_like = current["feelslike_f"]
             unit_label = "°F"
-
         humidity = current["humidity"]
         wind_kph = current["wind_kph"]
         condition = current["condition"]["text"]
         icon_url = f"https:{current['condition']['icon']}"
-
         embed = discord.Embed(
             title=f"🌤️ Weather in {location}, {region}, {country}",
             color=discord.Color.blue()
@@ -1021,7 +449,6 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
         embed.set_thumbnail(url=icon_url)
         embed.set_footer(text="Powered by WeatherAPI • Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
-
         await interaction.response.send_message(embed=embed)
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching weather data: {str(e)}", ephemeral=True)
@@ -1032,30 +459,25 @@ async def city_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     # Combine Philippine and global capitals
     all_cities = PHILIPPINE_CITIES + GLOBAL_CAPITAL_CITIES
-
     # Filter based on user input
     filtered = [c for c in all_cities if current.lower() in c.lower()]
-    
     return [
         app_commands.Choice(name=c, value=c)
         for c in filtered[:25]  # Max 25 choices
     ]
 
 # ========== Utility Commands ==========
-
 # User Info
 @bot.tree.command(name="userinfo", description="Display detailed info about a user")
 @app_commands.describe(member="Optional, defaults to you")
 async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
     if member is None:
         member = interaction.user
-
     created_at = member.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
     joined_at = member.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.joined_at else "Unknown"
     roles = [role.mention for role in member.roles if not role.is_default()]
     roles_str = ", ".join(roles) if roles else "No Roles"
     boost_since = member.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.premium_since else "Not Boosting"
-
     embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
     embed.add_field(name="Username", value=f"{member.mention}", inline=False)
     embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
@@ -1069,10 +491,9 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     await interaction.response.send_message(embed=embed)
 
-# Group Info
+# Purge
 @bot.tree.command(name="purge", description="Delete a specified number of messages")
 @app_commands.describe(amount="How many messages would you like to delete?")
 async def purge(interaction: discord.Interaction, amount: int):
@@ -1091,20 +512,20 @@ async def purge(interaction: discord.Interaction, amount: int):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.followup.send(f"✅ Deleted **{len(deleted)}** messages.", ephemeral=True)
 
-# Group Info Command
+# Group Info
 @bot.tree.command(name="group", description="Display information about the 1cy Roblox group")
 async def groupinfo(interaction: discord.Interaction):
     group_id = 5838002
     try:
-        response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
+        response = requests.get(f"https://groups.roblox.com/v1/groups/ {group_id}")
         data = response.json()
         formatted_members = "{:,}".format(data['memberCount'])
         embed = discord.Embed(color=discord.Color.blue())
-        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{group_id})", inline=False)
+        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/ {group_id})", inline=False)
         embed.add_field(name="Description", value=f"```\n{data['description'] or 'No description'}\n```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
         owner = data['owner']
-        owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No owner"
+        owner_link = f"[{owner['username']}](https://www.roblox.com/users/ {owner['userId']}/profile)" if owner else "No owner"
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
         embed.set_footer(text="Neroniel")
@@ -1113,8 +534,29 @@ async def groupinfo(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching group info: {e}", ephemeral=True)
 
-# ========== Fun Commands ==========
+# ===========================
+# Developer Tools
+# ===========================
 
+# Owner-only check using BOT_OWNER_ID from .env
+def is_owner():
+    def predicate(interaction: discord.Interaction) -> bool:
+        return interaction.user.id == int(os.getenv("BOT_OWNER_ID"))
+    return app_commands.check(predicate)
+
+@bot.tree.command(name="sync", description="Sync slash commands globally (Owner Only)")
+@is_owner()
+async def sync(interaction: discord.Interaction):
+    await bot.tree.sync()
+    await interaction.response.send_message("✅ Slash commands have been synced globally.", ephemeral=True)
+
+@bot.tree.command(name="reload", description="Reload cogs (Owner Only)")
+@is_owner()
+async def reload(interaction: discord.Interaction):
+    # Placeholder for future cog reloading
+    await interaction.response.send_message("ℹ️ No cogs to reload yet. Add cogs for full functionality.", ephemeral=True)
+
+# ========== Fun Commands ==========
 # Poll
 @bot.tree.command(name="poll", description="Create a poll with up/down votes")
 @app_commands.describe(question="Poll question", amount="Duration amount", unit="Time unit (seconds, minutes, hours)")
@@ -1131,36 +573,30 @@ async def poll(interaction: discord.Interaction, question: str, amount: int, uni
     if total_seconds > 86400:
         await interaction.response.send_message("❗ Duration cannot exceed 24 hours.", ephemeral=True)
         return
-
     embed = discord.Embed(title="📊 Poll", description=question, color=discord.Color.orange())
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     message = await interaction.channel.send(embed=embed)
     await message.add_reaction("👍")
     await message.add_reaction("👎")
     await interaction.response.send_message("✅ Poll created!", ephemeral=True)
-
     await asyncio.sleep(total_seconds)
     message = await interaction.channel.fetch_message(message.id)
     reactions = message.reactions
     up_count = next((r.count for r in reactions if str(r.emoji) == "👍"), 0)
     down_count = next((r.count for r in reactions if str(r.emoji) == "👎"), 0)
-
     if up_count > down_count:
         result = "👍 Upvotes win!"
     elif down_count > up_count:
         result = "👎 Downvotes win!"
     else:
         result = "⚖️ It's a tie!"
-
     result_embed = discord.Embed(title="📊 Poll Results", description=question, color=discord.Color.green())
     result_embed.add_field(name="👍 Upvotes", value=str(up_count), inline=True)
     result_embed.add_field(name="👎 Downvotes", value=str(down_count), inline=True)
     result_embed.add_field(name="Result", value=result, inline=False)
     result_embed.set_footer(text="Poll has ended")
     result_embed.timestamp = datetime.now(PH_TIMEZONE)
-
     await message.edit(embed=result_embed)
 
 # Remind Me
@@ -1170,7 +606,6 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
     if minutes <= 0:
         await interaction.response.send_message("❗ Please enter a positive number of minutes.", ephemeral=True)
         return
-
     reminder_time = datetime.utcnow() + timedelta(minutes=minutes)
     if reminders_collection:
         reminders_collection.insert_one({
@@ -1254,23 +689,10 @@ async def listallcommands(interaction: discord.Interaction):
         name="💰 Currency & Robux Conversion",
         value="""
         `/payout <robux>` - Convert Robux to PHP (Payout rate)  
-        `/payoutreverse <php>` - Convert PHP to Robux (Payout rate)  
         `/gift <robux>` - Convert Robux to PHP (Gift rate)  
-        `/giftreverse <php>` - Convert PHP to Robux (Gift rate)  
         `/nct <robux>` - Convert Robux to PHP (NCT rate)  
-        `/nctreverse <php>` - Convert PHP to Robux (NCT rate)  
         `/ct <robux>` - Convert Robux to PHP (CT rate)  
-        `/ctreverse <php>` - Convert PHP to Robux (CT rate)
-        """,
-        inline=False
-    )
-
-    # 📊 Comparison & Tax
-    embed.add_field(
-        name="📊 Comparison & Tax Calculations",
-        value="""
         `/allrates <robux>` - Compare PHP values across all rates  
-        `/allratesreverse <php>` - Compare Robux needed across all rates  
         `/beforetax <robux>` - How much you'll receive after tax  
         `/aftertax <target>` - How much to send to get desired amount
         """,
@@ -1287,20 +709,6 @@ async def listallcommands(interaction: discord.Interaction):
         `/group` - Show info about the 1cy Roblox group  
         `/convertcurrency <amount> <from> <to>` - Convert between currencies  
         `/weather <city> [unit]` - Get weather in a city (supports autocomplete)
-        """,
-        inline=False
-    )
-
-    # 🎮 Game Commands
-    embed.add_field(
-        name="🎮 Mini-Games",
-        value="""
-        `/game blackjack [@user]` - Play Blackjack  
-        `/game tictactoe [@user]` - Play Tic-Tac-Toe  
-        `/game hangman [@user]` - Play Hangman  
-        `/game stats [@user]` - View game stats between you and another  
-        `/gamelb [mode]` - Game leaderboard (supports filtering by game type)  
-        `/gamestreak [@user]` - Check win streaks with another player
         """,
         inline=False
     )
@@ -1325,11 +733,11 @@ async def listallcommands(interaction: discord.Interaction):
         inline=False
     )
 
-    # ⚙️ Developer Tools
+    # 🔧 Developer Tools
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/sync` - Sync slash commands (owner only)  
+        `/sync` - Sync slash commands globally (owner only)  
         `/reload` - Reload cogs (owner only)
         """,
         inline=False
@@ -1352,7 +760,7 @@ async def on_ready():
     group_id = 5838002
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
+            response = requests.get(f"https://groups.roblox.com/v1/groups/ {group_id}")
             data = response.json()
             member_count = "{:,}".format(data['memberCount'])
             await bot.change_presence(status=discord.Status.dnd, activity=discord.Activity(
@@ -1385,7 +793,6 @@ async def on_message(message):
             "kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak while begging you to stay. kaya wag na lang. thanks nalang sa hi mo"
         )
         await message.reply(reply)
-
     auto_react_channels = [
         1225294057371074760,
         1107600826664501258,
