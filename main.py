@@ -167,7 +167,22 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 headers=headers,
                 json=payload
             )
-            data = response.json()
+
+            # Check for HTTP errors
+            if response.status_code != 200:
+                print(f"[!] Together API HTTP Error: {response.status_code}")
+                print(f"Response Text: {response.text}")
+                await interaction.followup.send(f"❌ HTTP Error from AI API: `{response.status_code}`")
+                return
+
+            # Try parsing JSON
+            try:
+                data = response.json()
+            except requests.exceptions.JSONDecodeError as je:
+                print(f"[!] JSON Decode Error: {je}")
+                print(f"Raw Response: {response.text}")
+                await interaction.followup.send("❌ Failed to parse AI response. The server may be down.")
+                return
 
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
@@ -212,8 +227,8 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 })
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Error: {str(e)}")
-
+            print(f"[!] Unexpected error in /ask: {e}")
+            await interaction.followup.send(f"❌ An unexpected error occurred: `{str(e)}`")
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
