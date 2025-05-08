@@ -15,7 +15,7 @@ import certifi
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
-from langdetect import detect as langdetect, LangDetectException
+from langdetect import detect, LangDetectException
 from discord.ui import Button, View
 
 # Set timezone to Philippines (GMT+8)
