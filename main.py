@@ -441,33 +441,84 @@ async def aftertax(interaction: discord.Interaction, target: int):
 )
 async def convertcurrency(interaction: discord.Interaction, amount: float, from_currency: str, to_currency: str):
     api_key = os.getenv("CURRENCY_API_KEY")
+
     if not api_key:
         await interaction.response.send_message("❌ `CURRENCY_API_KEY` is missing in environment variables.")
         return
+
     from_currency = from_currency.upper()
     to_currency = to_currency.upper()
-    url = f"https://api.currencyapi.com/v3/latest?apikey= {api_key}&currencies={to_currency}&base_currency={from_currency}"
+
+    url = f"https://api.currencyapi.com/v3/latest?apikey={api_key}&currencies={to_currency}&base_currency={from_currency}"
+
     try:
         response = requests.get(url)
         data = response.json()
+
         if 'error' in data:
             await interaction.response.send_message(f"❌ API Error: {data['error']['message']}")
+            print("API Error Response:", data)
             return
+
         if "data" not in data or to_currency not in data["data"]:
             await interaction.response.send_message("❌ Invalid currency code or no data found.")
             return
+
         rate = data["data"][to_currency]["value"]
         result = amount * rate
-        embed = discord.Embed(color=discord.Color.gold())
-        embed.title = f"💱 Currency Conversion from {from_currency}"
-        embed.add_field(name="📥 Input", value=f"`{amount} {from_currency}`", inline=False)
-        embed.add_field(name="📉 Rate", value=f"`1 {from_currency} = {rate:.4f} {to_currency}`", inline=False)
-        embed.add_field(name="📤 Result", value=f"≈ **{result:.2f} {to_currency}**", inline=False)
+
+        embed = discord.Embed(
+            title=f"💱 Currency Conversion",
+            color=discord.Color.gold()
+        )
+        embed.add_field(
+            name="📥 Input",
+            value=f"{amount} {from_currency}",
+            inline=False
+        )
+        embed.add_field(
+            name="📉 Rate",
+            value=f"1 {from_currency} = {rate:.4f} {to_currency}",
+            inline=False
+        )
+        embed.add_field(
+            name="📤 Result",
+            value=f"≈ **{result:.2f} {to_currency}**",
+            inline=False
+        )
+
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
+
         await interaction.response.send_message(embed=embed)
+
     except Exception as e:
         await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
+        print("Exception Details:", str(e))
+
+@convertcurrency.autocomplete('from_currency')
+@convertcurrency.autocomplete('to_currency')
+async def currency_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # Full list of supported currencies with names
+    currencies = [
+        "USD - US Dollar", "EUR - Euro", "JPY - Japanese Yen", "GBP - British Pound",
+        "AUD - Australian Dollar", "CAD - Canadian Dollar", "CHF - Swiss Franc",
+        "CNY - Chinese Yuan", "SEK - Swedish Krona", "NZD - New Zealand Dollar",
+        "BRL - Brazilian Real", "INR - Indian Rupee", "RUB - Russian Ruble",
+        "ZAR - South African Rand", "SGD - Singapore Dollar", "HKD - Hong Kong Dollar",
+        "KRW - South Korean Won", "MXN - Mexican Peso", "TRY - Turkish Lira",
+        "EGP - Egyptian Pound", "AED - UAE Dirham", "SAR - Saudi Riyal",
+        "ARS - Argentine Peso", "CLP - Chilean Peso", "THB - Thai Baht",
+        "MYR - Malaysian Ringgit", "IDR - Indonesian Rupiah", "PHP - Philippine Peso",
+        "PLN - Polish Zloty"
+    ]
+    filtered = [c for c in currencies if current.lower() in c.lower()]
+    return [
+        app_commands.Choice(name=c, value=c.split(" ")[0])
+        for c in filtered[:25]
+    ]
 
 # ========== Weather Command ==========
 PHILIPPINE_CITIES = [
@@ -768,7 +819,7 @@ async def listallcommands(interaction: discord.Interaction):
         `/calculator <num1> <operation> <num2>` - Perform math operations  
         `/group` - Show info about the 1cy Roblox group  
         `/convertcurrency <amount> <from> <to>` - Convert between currencies  
-        `/weather <city> [unit]` - Get weather in a city (supports autocomplete)
+        `/weather <city> [unit]` - Get weather in a city
         """,
         inline=False
     )
@@ -787,8 +838,8 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🎉 Fun",
         value="""
-        `/donate <user> <amount>` - Donate Robux to someone (for fun)  
-        `/say <message>` - Make the bot say something (no @everyone/@here)
+        `/donate <user> <amount>` - Donate Robux to someone
+        `/say <message>` - Make the bot say something
         """,
         inline=False
     )
@@ -797,7 +848,7 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/(SOON)` - 
+        `/(SOON)` - test
         """,
         inline=False
     )
