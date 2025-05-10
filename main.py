@@ -737,7 +737,7 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🤖 AI Assistant",
         value="""
-        `/ask` - Chat with Llama 3 AI (supports threaded conversations)
+        `/ask <prompt>` - Chat with Llama 3 AI  
         `/clearhistory` - Clear your AI conversation history
         """,
         inline=False
@@ -759,45 +759,52 @@ async def listallcommands(interaction: discord.Interaction):
         inline=False
     )
 
-    # 📊 Comparison & Tax
-    embed.add_field(
-        name="📊 Comparison & Tax",
-        value="""
-        `/allrates <robux>` - Compare PHP values across all rates
-        `/allratesreverse <php>` - Compare Robux needed across all rates
-        `/beforetax <robux>` - Calculate how much you'll receive after 30% tax
-        `/aftertax <target>` - Calculate how much to send to get X after tax
-        """,
-        inline=False
-    )
-
     # 🛠️ Utility Tools
     embed.add_field(
         name="🛠️ Utility Tools",
         value="""
-        `/userinfo [user]` - View detailed info about a user
-        `/purge <amount>` - Delete a number of messages (mod only)
-        `/calculator <num1> <op> <num2>` - Perform basic math operations
-        `/group` - Show info about the 1cy Roblox Group
+        `/userinfo [user]` - View detailed info about a user  
+        `/purge <amount>` - Delete messages (requires mod permissions)  
+        `/calculator <num1> <operation> <num2>` - Perform math operations  
+        `/group` - Show info about the 1cy Roblox group  
+        `/convertcurrency <amount> <from> <to>` - Convert between currencies  
+        `/weather <city> [unit]` - Get weather in a city (supports autocomplete)
         """,
         inline=False
     )
 
-    # 🎉 Fun Commands
+    # 🕒 Reminders & Polls
+    embed.add_field(
+        name="⏰ Reminders & Polls",
+        value="""
+        `/remindme <minutes> <note>` - Set a personal reminder  
+        `/poll <question> <time> <unit>` - Create a timed poll  
+        """,
+        inline=False
+    )
+
+    # 🎁 Fun Commands
     embed.add_field(
         name="🎉 Fun",
         value="""
-        `/poll <question> <time> <unit>` - Create a poll with up/down votes
-        `/remindme <minutes> <note>` - Set a reminder for yourself
-        `/say <message>` - Make the bot say something
-        `/donate <user> <amount>` - Donate Robux to someone
+        `/donate <user> <amount>` - Donate Robux to someone (for fun)  
+        `/say <message>` - Make the bot say something (no @everyone/@here)
+        """,
+        inline=False
+    )
+
+    # 🔧 Developer Tools
+    embed.add_field(
+        name="🔧 Developer Tools",
+        value="""
+        `/(SOON)` - 
         """,
         inline=False
     )
 
     # Footer
     embed.set_footer(text="Neroniel")
-    embed.timestamp = discord.utils.utcnow()
+    embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
 
