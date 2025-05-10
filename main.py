@@ -432,6 +432,130 @@ async def aftertax(interaction: discord.Interaction, target: int):
     sent = math.ceil(target / 0.7)
     await interaction.response.send_message(f"📬 To receive **{target} Robux**, send **{sent} Robux** (30% tax).")
 
+# ConvertCurrency
+@bot.tree.command(name="convertcurrency", description="Convert between two currencies")
+@app_commands.describe(
+    amount="Amount to convert",
+    from_currency="Currency to convert from (e.g., USD)",
+    to_currency="Currency to convert to (e.g., PHP)"
+)
+async def convertcurrency(interaction: discord.Interaction, amount: float, from_currency: str, to_currency: str):
+    api_key = os.getenv("CURRENCY_API_KEY")
+    if not api_key:
+        await interaction.response.send_message("❌ `CURRENCY_API_KEY` is missing in environment variables.")
+        return
+    from_currency = from_currency.upper()
+    to_currency = to_currency.upper()
+    url = f"https://api.currencyapi.com/v3/latest?apikey= {api_key}&currencies={to_currency}&base_currency={from_currency}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if 'error' in data:
+            await interaction.response.send_message(f"❌ API Error: {data['error']['message']}")
+            return
+        if "data" not in data or to_currency not in data["data"]:
+            await interaction.response.send_message("❌ Invalid currency code or no data found.")
+            return
+        rate = data["data"][to_currency]["value"]
+        result = amount * rate
+        embed = discord.Embed(color=discord.Color.gold())
+        embed.title = f"💱 Currency Conversion from {from_currency}"
+        embed.add_field(name="📥 Input", value=f"`{amount} {from_currency}`", inline=False)
+        embed.add_field(name="📉 Rate", value=f"`1 {from_currency} = {rate:.4f} {to_currency}`", inline=False)
+        embed.add_field(name="📤 Result", value=f"≈ **{result:.2f} {to_currency}**", inline=False)
+        embed.set_footer(text="Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.response.send_message(embed=embed)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
+
+# ========== Weather Command ==========
+PHILIPPINE_CITIES = [
+    "Manila", "Quezon City", "Caloocan", "Las Piñas", "Makati",
+    "Malabon", "Navotas", "Paranaque", "Pasay", "Muntinlupa",
+    "Taguig", "Valenzuela", "Marikina", "Pasig", "San Juan",
+    "Cavite", "Cebu", "Davao", "Iloilo", "Baguio", "Zamboanga",
+    "Angeles", "Bacolod", "Batangas", "Cagayan de Oro", "Cebu City",
+    "Davao City", "General Santos", "Iligan", "Kalibo", "Lapu-Lapu City",
+    "Lucena", "Mandaue", "Olongapo", "Ormoc", "Oroquieta", "Ozamiz",
+    "Palawan", "Puerto Princesa", "Roxas City", "San Pablo", "Silay"
+]
+
+GLOBAL_CAPITAL_CITIES = [
+    "Washington D.C.", "London", "Paris", "Berlin", "Rome",
+    "Moscow", "Beijing", "Tokyo", "Seoul", "New Delhi", "Islamabad",
+    "Canberra", "Ottawa", "Brasilia", "Ottawa", "Cairo", "Nairobi",
+    "Pretoria", "Kuala Lumpur", "Jakarta", "Bangkok", "Hanoi", "Athens",
+    "Vienna", "Stockholm", "Oslo", "Copenhagen", "Helsinki", "Dublin",
+    "Warsaw", "Prague", "Madrid", "Amsterdam", "Brussels", "Bern",
+    "Wellington", "Santiago", "Buenos Aires", "Brasilia", "Abu Dhabi",
+    "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
+    "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
+]
+
+@bot.tree.command(name="weather", description="Get weather information for a city")
+@app_commands.describe(city="City name", unit="Temperature unit (default is Celsius)")
+@app_commands.choices(unit=[
+    app_commands.Choice(name="Celsius (°C)", value="c"),
+    app_commands.Choice(name="Fahrenheit (°F)", value="f")
+])
+async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
+    api_key = os.getenv("WEATHER_API_KEY")
+    if not api_key:
+        await interaction.response.send_message("❌ Weather API key is missing.", ephemeral=True)
+        return
+    url = f"http://api.weatherapi.com/v1/current.json?key={api_key}&q={city}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if "error" in data:
+            await interaction.response.send_message("❌ City not found or invalid input.", ephemeral=True)
+            return
+        current = data["current"]
+        location = data["location"]["name"]
+        region = data["location"]["region"]
+        country = data["location"]["country"]
+        if unit == "c":
+            temperature = current["temp_c"]
+            feels_like = current["feelslike_c"]
+            unit_label = "°C"
+        else:
+            temperature = current["temp_f"]
+            feels_like = current["feelslike_f"]
+            unit_label = "°F"
+        humidity = current["humidity"]
+        wind_kph = current["wind_kph"]
+        condition = current["condition"]["text"]
+        icon_url = f"https:{current['condition']['icon']}"
+        embed = discord.Embed(
+            title=f"🌤️ Weather in {location}, {region}, {country}",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="🌡️ Temperature", value=f"{temperature}{unit_label}", inline=True)
+        embed.add_field(name="🧯 Feels Like", value=f"{feels_like}{unit_label}", inline=True)
+        embed.add_field(name="💧 Humidity", value=f"{humidity}%", inline=True)
+        embed.add_field(name="🌬️ Wind Speed", value=f"{wind_kph} km/h", inline=True)
+        embed.add_field(name="📝 Condition", value=condition, inline=False)
+        embed.set_thumbnail(url=icon_url)
+        embed.set_footer(text="Powered by WeatherAPI • Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.response.send_message(embed=embed)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error fetching weather data: {str(e)}", ephemeral=True)
+
+@weather.autocomplete('city')
+async def city_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # Combine Philippine and global capitals
+    all_cities = PHILIPPINE_CITIES + GLOBAL_CAPITAL_CITIES
+    # Filter based on user input
+    filtered = [c for c in all_cities if current.lower() in c.lower()]
+    return [
+        app_commands.Choice(name=c, value=c)
+        for c in filtered[:25]  # Max 25 choices
+    ]
+
 # ===========================
 # Other Commands
 # ===========================
