@@ -39,7 +39,7 @@ bot.last_message_id = {}  # Store last message IDs for threaded replies
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return send_from_directory(app.static_folder, 'index.html')
 def run_server():
     app.run(host='0.0.0.0', port=5000)
 server_thread = threading.Thread(target=run_server)
