@@ -350,10 +350,10 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
-    # Create the embed
+    # Create the embed with copyable message using triple backticks
     embed = discord.Embed(
         title="ANNOUNCEMENT",
-        description=f"```\n{message}\n```",  # Wrapped in triple backticks for copyability
+        description=f"```\n{message}\n```",  # <-- Wrapped in ``` for easy copying
         color=discord.Color.blue()
     )
     embed.set_footer(text="Neroniel")
