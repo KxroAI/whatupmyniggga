@@ -351,7 +351,11 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
         return
 
     # Create the embed
-    embed = discord.Embed(description=message, color=discord.Color.blue())
+    embed = discord.Embed(
+        title="ANNOUNCEMENT",  # <-- Added Title here
+        description=message,
+        color=discord.Color.blue()
+    )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
