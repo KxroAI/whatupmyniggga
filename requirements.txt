@@ -8,3 +8,5 @@ pytz==2023.3.post1
 langdetect>=1.0.9
 urllib3>=2.0.0
 emoji>=2.0.0
+beautifulsoup4>=4.0.0
+browser-cookie3>=0.1.0
