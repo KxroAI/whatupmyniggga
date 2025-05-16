@@ -353,7 +353,7 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
     # Create the embed
     embed = discord.Embed(
         title="ANNOUNCEMENT",
-        description=message,
+        description=f"```\n{message}\n```",  # Wrapped in triple backticks for copyability
         color=discord.Color.blue()
     )
     embed.set_footer(text="Neroniel")
