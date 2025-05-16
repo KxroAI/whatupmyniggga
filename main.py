@@ -952,14 +952,11 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         "Origin": "https://www.roblox.com "
     }
 
-    # Manual CAPTCHA fallback URL
     captcha_url = "https://www.roblox.com/login "
 
-    # Create a session
     session = requests.Session()
     session.headers.update(headers)
 
-    # If username and password provided, attempt login
     if not cookie_provided:
         login_url = "https://auth.roblox.com/v2/login "
         payload = {
@@ -975,7 +972,6 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
                 error_data = response.json()
                 error_code = error_data["errors"][0]["code"]
                 if error_code == 2:
-                    # CAPTCHA required
                     embed = discord.Embed(
                         title="CAPTCHA Required",
                         description=f"[Solve CAPTCHA manually]({captcha_url}) then react below when done.",
@@ -1018,10 +1014,8 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
             await init_msg.edit(embed=embed)
             return
 
-    # Set cookie for future requests
     session.cookies.set(".ROBLOSECURITY", cookie, domain=".roblox.com")
 
-    # Get user info
     try:
         user_info_url = "https://www.roblox.com/mobileapi/userinfo "
         response = session.get(user_info_url)
@@ -1036,19 +1030,16 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         robux = user_data["RobuxBalance"]
         premium = user_data["IsPremium"]
 
-        # Get credit balance
         credit_url = "https://billing.roblox.com/v1/credit "
         response = session.get(credit_url)
         credit_data = response.json() if response.status_code == 200 else {}
         credit_balance = credit_data.get("balance", 0)
 
-        # Get parent PIN status
         pin_url = "https://auth.roblox.com/v1/account/pin "
         response = session.get(pin_url)
         pin_data = response.json() if response.status_code == 200 else {}
         pin_enabled = pin_data.get("isEnabled", False)
 
-        # Get phone/email status
         privacy_url = "https://accountsettings.roblox.com/v1/privacy "
         response = session.get(privacy_url)
         privacy_data = response.json() if response.status_code == 200 else {}
@@ -1059,21 +1050,17 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         settings_data = response.json() if response.status_code == 200 else {}
         email_verified = settings_data.get("IsEmailVerified", False)
 
-        # Check inventory visibility
         inv_url = f"https://inventory.roblox.com/v1/users/ {user_id}/can-view-inventory"
         response = requests.get(inv_url)
         can_view_inv = response.json().get("canView", False)
 
-        # Get primary group
         group_url = f"https://groups.roblox.com/v1/users/ {user_id}/groups/primary/role"
         response = requests.get(group_url)
         group_data = response.json() if response.status_code == 200 else {}
         primary_group = group_data.get("group", None)
 
-        # Get RAP
         rap = await get_total_rap(user_id, session)
 
-        # Build embed
         embed = discord.Embed(title="🧾 Roblox Account Info", color=discord.Color.blue())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId= {user_id}&width=420&height=420&format=png")
         embed.add_field(name="Username", value=username, inline=True)
