@@ -127,6 +127,61 @@ if reminders_collection:
     check_reminders.start()
 
 # ===========================
+# Owner-only Direct Message Commands
+# ===========================
+
+# Define the BOT_OWNER_ID directly in the code
+BOT_OWNER_ID = 1163771452403761193  # Replace with your actual Discord ID if different
+
+@bot.tree.command(name="dm", description="Send a direct message to a user (Owner only)")
+@app_commands.describe(user="The user you want to message", message="The message to send")
+async def dm(interaction: discord.Interaction, user: discord.User, message: str):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    try:
+        await user.send(message)
+        await interaction.response.send_message(f"✅ Sent DM to {user} ({user.id})", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message(f"❌ Unable to send DM to {user}. They might have DMs disabled.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="dmall", description="Send a direct message to all members in the server (Owner only)")
+@app_commands.describe(message="The message you want to send to all members")
+async def dmall(interaction: discord.Interaction, message: str):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    success_count = 0
+    fail_count = 0
+
+    for member in guild.members:
+        if member.bot:
+            continue  # Skip bots
+        try:
+            await member.send(message)
+            success_count += 1
+        except discord.Forbidden:
+            fail_count += 1
+        except Exception as e:
+            print(f"[!] Failed to send DM to {member}: {str(e)}")
+            fail_count += 1
+
+    await interaction.followup.send(
+        f"✅ Successfully sent DM to **{success_count}** members. ❌ Failed to reach **{fail_count}** members."
+    )
+
+# ===========================
 # AI Commands
 # ===========================
 
@@ -929,7 +984,8 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/(SOON)` - test
+        `/dm <user> <message>` - Send a direct message to a specific user  
+        `/dmall <message>` - Send a direct message to all members in the server
         """,
         inline=False
     )
