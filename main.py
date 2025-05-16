@@ -337,7 +337,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
 
 
 # ===========================
-# Announcement Command
+#  Command
 # ===========================
 @bot.tree.command(name="announcement", description="Send an embedded announcement to a specific channel")
 @app_commands.describe(message="The message to include in the announcement", channel="The channel to send the announcement to")
@@ -352,7 +352,7 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
 
     # Create the embed
     embed = discord.Embed(
-        title="ANNOUNCEMENT",  # <-- Added Title here
+        title="ANNOUNCEMENT",
         description=message,
         color=discord.Color.blue()
     )
@@ -367,7 +367,6 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
         await interaction.response.send_message(f"❌ I don't have permission to send messages in {channel.mention}.", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
-
 
 # ===========================
 # Conversion Commands
