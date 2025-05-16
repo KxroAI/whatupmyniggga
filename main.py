@@ -350,18 +350,20 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
-    # Create the embed with message in triple backticks for easy copying
+    # Create the embed
     embed = discord.Embed(
         title="ANNOUNCEMENT",
-        description=f"```\n{message}\n```",  # <-- Wrapped in code block
+        description=f"```\n{message}\n```",
         color=discord.Color.blue()
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
-    # Send only one message: the embed
     try:
+        # Send the embed to the specified channel
         await channel.send(embed=embed)
+
+        # Respond to the interaction with an ephemeral confirmation
         await interaction.response.send_message(f"✅ Announcement sent to {channel.mention}", ephemeral=True)
     except discord.Forbidden:
         await interaction.response.send_message(f"❌ I don't have permission to send messages in {channel.mention}.", ephemeral=True)
