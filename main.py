@@ -401,6 +401,15 @@ async def payout(interaction: discord.Interaction, robux: int):
     php = robux * (320 / 1000)
     await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
 
+@bot.tree.command(name="payoutreverse", description="Convert PHP to Robux based on Payout rate (₱320 for 1000 Robux)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def payoutreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 320) * 1000)
+    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
+
 # Gift Rate
 @bot.tree.command(name="gift", description="Convert Robux to PHP based on Gift rate (₱250 for 1000 Robux)")
 @app_commands.describe(robux="How much Robux do you want to convert?")
@@ -683,15 +692,15 @@ async def purge(interaction: discord.Interaction, amount: int):
 async def groupinfo(interaction: discord.Interaction):
     group_id = 5838002
     try:
-        response = requests.get(f"https://groups.roblox.com/v1/groups/ {group_id}")
+        response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
         data = response.json()
         formatted_members = "{:,}".format(data['memberCount'])
         embed = discord.Embed(color=discord.Color.blue())
-        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/ {group_id})", inline=False)
+        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{group_id})", inline=False)
         embed.add_field(name="Description", value=f"```\n{data.get('description', 'No description')}\n```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
         owner = data.get('owner')
-        owner_link = f"[{owner['username']}](https://www.roblox.com/users/ {owner['userId']}/profile)" if owner else "No owner"
+        owner_link = f"[{owner['username']}](https://www.roblox.com/users/ {owner['userId']}/profile)" if owner else "No Owner"
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
         embed.set_footer(text="Neroniel")
@@ -823,77 +832,87 @@ async def listallcommands(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📚 All Available Commands",
         description="A categorized list of all commands for easy navigation.",
-        color=discord.Color.blue()
+        color=discord.Color.from_rgb(0, 0, 0)  # Black
     )
+    
     # 🤖 AI Assistant
     embed.add_field(
         name="🤖 AI Assistant",
         value="""
-        `/ask <prompt>` - Chat with Llama 3  
-        `/clearhistory` - Clear AI conversation
+        `/ask <prompt>` - Chat with Llama 3 AI  
+        `/clearhistory` - Clear your AI conversation history
         """,
         inline=False
     )
+
     # 💰 Currency Conversion
     embed.add_field(
         name="💰 Currency Conversion",
         value="""
-        `/payout <robux>` - Payout rate  
-        `/payoutreverse <php>` - Reverse Payout  
-        `/gift <robux>` - Gift rate  
-        `/giftreverse <php>` - Reverse Gift  
-        `/nct <robux>` - NCT rate  
-        `/nctreverse <php>` - Reverse NCT  
-        `/ct <robux>` - CT rate  
-        `/ctreverse <php>` - Reverse CT  
-        `/convertcurrency <amount> <from> <to>` - Convert currencies
+        `/payout <robux>` - Convert Robux to PHP at Payout rate (₱320/1000)
+        `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
+        `/gift <robux>` - Convert Robux to PHP at Gift rate (₱250/1000)
+        `/giftreverse <php>` - Convert PHP to Robux at Gift rate
+        `/nct <robux>` - Convert Robux to PHP at NCT rate (₱240/1k)
+        `/nctreverse <php>` - Convert PHP to Robux at NCT rate
+        `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1k)
+        `/ctreverse <php>` - Convert PHP to Robux at CT rate
         """,
         inline=False
     )
+
     # 🛠️ Utility Tools
     embed.add_field(
         name="🛠️ Utility Tools",
         value="""
-        `/userinfo [user]` - View user details  
-        `/purge <amount>` - Delete messages  
-        `/calculator <num1> <op> <num2>` - Perform math  
-        `/group` - Show 1cy Roblox group  
-        `/weather <city> [unit]` - Get weather  
-        `/announcement <message> <channel>` - Send announcement
+        `/userinfo [user]` - View detailed info about a user  
+        `/purge <amount>` - Delete messages (requires mod permissions)  
+        `/calculator <num1> <operation> <num2>` - Perform math operations  
+        `/group` - Show info about the 1cy Roblox group  
+        `/convertcurrency <amount> <from> <to>` - Convert between currencies  
+        `/weather <city> [unit]` - Get weather in a city  
+        `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
         """,
         inline=False
     )
-    # 🕒 Reminders & Polls
+
+    # ⏰ Reminders & Polls
     embed.add_field(
         name="⏰ Reminders & Polls",
         value="""
-        `/remindme <minutes> <note>` - Set a reminder  
-        `/poll <question> <time> <unit>` - Create a poll
+        `/remindme <minutes> <note>` - Set a personal reminder  
+        `/poll <question> <time> <unit>` - Create a timed poll  
         """,
         inline=False
     )
+
     # 🎁 Fun Commands
     embed.add_field(
         name="🎉 Fun",
         value="""
-        `/donate <user> <amount>` - Donate Robux  
-        `/say <message>` - Make the bot speak
+        `/donate <user> <amount>` - Donate Robux to someone
+        `/say <message>` - Make the bot say something
         """,
         inline=False
     )
+
     # 🔧 Developer Tools
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/dm <user> <message>` - Send DM  
-        `/dmall <message>` - DM all users
+        `/dm <user> <message>` - Send a direct message to a specific user  
+        `/dmall <message>` - Send a direct message to all members in the server
         """,
         inline=False
     )
+
     # Footer
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
+
     await interaction.response.send_message(embed=embed)
+
+
 # ===========================
 # Payment Command
 # ===========================
