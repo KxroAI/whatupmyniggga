@@ -700,7 +700,7 @@ async def groupinfo(interaction: discord.Interaction):
         embed.add_field(name="Description", value=f"```\n{data.get('description', 'No description')}\n```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
         owner = data.get('owner')
-        owner_link = f"[{owner['username']}](https://www.roblox.com/users/ {owner['userId']}/profile)" if owner else "No Owner"
+        owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
         embed.set_footer(text="Neroniel")
