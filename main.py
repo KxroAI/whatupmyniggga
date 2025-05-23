@@ -15,6 +15,7 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
+from enum import Enum
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
