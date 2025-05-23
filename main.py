@@ -17,36 +17,51 @@ import pytz
 from langdetect import detect, LangDetectException
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
+
 load_dotenv()
+
 # ===========================
 # Bot Setup
 # ===========================
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
+
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
+
 # ===========================
 # Flask Web Server to Keep Bot Alive
 # ===========================
 app = Flask(__name__)
+
+
 @app.route('/')
 def home():
     return "Bot is alive!"
+
+
 def run_server():
     app.run(host='0.0.0.0', port=5000)
+
+
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
+
+
 # Optional: Add another threaded task
 def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
+
+
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
+
 # ===========================
 # MongoDB Setup (with SSL Fix)
 # ===========================
@@ -64,6 +79,7 @@ except Exception as e:
     client = None
     conversations_collection = None
     reminders_collection = None
+
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
 async def check_reminders():
@@ -91,7 +107,7 @@ async def check_reminders():
                 continue
 
             try:
-                await channel.send(f"🔔 {user.mention}, reminder: {note}")
+                await channel.send(f"ð {user.mention}, reminder: {note}")
             except discord.Forbidden:
                 print(f"[!] Cannot send reminder to {user} in #{channel.name}")
 
@@ -100,9 +116,11 @@ async def check_reminders():
     except Exception as e:
         print(f"[!] Error checking reminders: {e}")
 
+
 @check_reminders.before_loop
 async def before_check_reminders():
     await bot.wait_until_ready()
+
 
 if reminders_collection:
     check_reminders.start()
