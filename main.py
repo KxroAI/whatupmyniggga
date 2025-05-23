@@ -15,53 +15,41 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
-from enum import Enum
-
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
-
-# Load environment variables
 load_dotenv()
-
-# =============================
+# ===========================
 # Bot Setup
-# =============================
+# ===========================
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
-
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
-
-# =============================
+# ===========================
 # Flask Web Server to Keep Bot Alive
-# =============================
+# ===========================
 app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is alive!"
-
 def run_server():
     app.run(host='0.0.0.0', port=5000)
-
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
-
 # Optional: Add another threaded task
 def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
-
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
-
-# =============================
+# ===========================
 # MongoDB Setup (with SSL Fix)
-# =============================
+# ===========================
 try:
     client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
     db = client.ai_bot
@@ -76,7 +64,6 @@ except Exception as e:
     client = None
     conversations_collection = None
     reminders_collection = None
-
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
 async def check_reminders():
@@ -119,12 +106,11 @@ async def before_check_reminders():
 
 if reminders_collection:
     check_reminders.start()
-
-# =============================
+# ===========================
 # Owner-only Direct Message Commands
-# =============================
+# ===========================
+# Define the BOT_OWNER_ID directly in the code
 BOT_OWNER_ID = 1163771452403761193  # Replace with your actual Discord ID if different
-
 @bot.tree.command(name="dm", description="Send a direct message to a user (Owner only)")
 @app_commands.describe(user="The user you want to message", message="The message to send")
 async def dm(interaction: discord.Interaction, user: discord.User, message: str):
@@ -138,7 +124,6 @@ async def dm(interaction: discord.Interaction, user: discord.User, message: str)
         await interaction.response.send_message(f"❌ Unable to send DM to {user}. They might have DMs disabled.", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
-
 @bot.tree.command(name="dmall", description="Send a direct message to all members in the server (Owner only)")
 @app_commands.describe(message="The message you want to send to all members")
 async def dmall(interaction: discord.Interaction, message: str):
@@ -169,10 +154,9 @@ async def dmall(interaction: discord.Interaction, message: str):
     await interaction.followup.send(
         f"✅ Successfully sent DM to **{success_count}** members. ❌ Failed to reach **{fail_count}** members."
     )
-
-# =============================
+# ===========================
 # AI Commands
-# =============================
+# ===========================
 # /ask - Chat with Llama 3 via Together AI with threaded replies
 @bot.tree.command(name="ask", description="Chat with an AI assistant using Llama 3")
 @app_commands.describe(prompt="What would you like to ask?")
@@ -180,6 +164,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
+    # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
@@ -189,19 +174,20 @@ async def ask(interaction: discord.Interaction, prompt: str):
         return
     async with interaction.channel.typing():
         try:
+            # Custom filter for creator questions
             normalized_prompt = prompt.strip().lower()
             if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
-                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.from_rgb(0, 0, 0))
+                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 msg = await interaction.followup.send(embed=embed)
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
-
+            # Language Detection
             try:
                 detected_lang = detect(prompt)
             except LangDetectException:
-                detected_lang = "en"
+                detected_lang = "en"  # default to English
 
             lang_instruction = {
                 "tl": "Please respond in Tagalog.",
@@ -216,7 +202,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "th": "กรุณาตอบเป็นภาษาไทย",
                 "id": "Silakan jawab dalam bahasa Indonesia"
             }.get(detected_lang, "")
-
+            # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
                 if not bot.conversations[user_id]:
@@ -226,15 +212,15 @@ async def ask(interaction: discord.Interaction, prompt: str):
                             "user": doc["prompt"],
                             "assistant": doc["response"]
                         })
-                    bot.conversations[user_id].reverse()
+                    bot.conversations[user_id].reverse()  # Maintain order
                 history = bot.conversations[user_id][-5:]
-
+            # Build full prompt with language instruction
             system_prompt = f"You are a helpful and friendly AI assistant named Neroniel AI. {lang_instruction}"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
-
+            # Call Together AI
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
                 "Content-Type": "application/json"
@@ -246,7 +232,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "temperature": 0.7
             }
             response = requests.post(
-                "https://api.together.xyz/v1/completions ",
+                "https://api.together.xyz/v1/completions  ",
                 headers=headers,
                 json=payload
             )
@@ -255,13 +241,12 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
             ai_response = data["choices"][0]["text"].strip()
-
+            # Determine if we should reply to a previous message
             target_message_id = bot.last_message_id.get((user_id, channel_id))
-
-            embed = discord.Embed(description=ai_response, color=discord.Color.from_rgb(0, 0, 0))
+            # Send the AI response
+            embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -273,8 +258,10 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 msg = await interaction.followup.send(embed=embed)
                 reply = msg
 
+            # Update the last message ID for future replies
             bot.last_message_id[(user_id, channel_id)] = reply.id
 
+            # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
@@ -289,75 +276,98 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 })
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
-
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
     user_id = interaction.user.id
+    # Clear local memory
     if user_id in bot.conversations:
         bot.conversations[user_id].clear()
+    # Clear MongoDB history
     if conversations_collection:
         conversations_collection.delete_many({"user_id": user_id})
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
-
-# =============================
+# ===========================
 # Utility Commands
-# =============================
+# ===========================
 # /userinfo - Display user information
 @bot.tree.command(name="userinfo", description="Display detailed information about a user")
 @app_commands.describe(member="The member to get info for (optional, defaults to you)")
 async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
     if member is None:
         member = interaction.user
+    # Account creation date
     created_at = member.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
+    # Join date
     joined_at = member.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.joined_at else "Unknown"
+    # Roles
     roles = [role.mention for role in member.roles if not role.is_default()]
     roles_str = ", ".join(roles) if roles else "No Roles"
+    # Boosting status
     boost_since = member.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.premium_since else "Not Boosting"
 
-    embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.from_rgb(0, 0, 0))
+    embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
+
+    # Basic Info
     embed.add_field(name="Username", value=f"{member.mention}", inline=False)
     embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
     embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
+
+    # Dates
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
+
+    # Roles
     embed.add_field(name="Roles", value=roles_str, inline=False)
+
+    # Boosting
     embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
+
+    # Optional: Show if the user is a bot
     if member.bot:
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
+
+    # Set thumbnail to user's avatar
     embed.set_thumbnail(url=member.display_avatar.url)
+
+    # Footer and timestamp
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    await interaction.response.send_message(embed=embed)
 
-# /announcement - Send embedded announcement
+    await interaction.response.send_message(embed=embed)
+# ===========================
+#  Command
+# ===========================
 @bot.tree.command(name="announcement", description="Send an embedded announcement to a specific channel")
 @app_commands.describe(message="The message to include in the announcement", channel="The channel to send the announcement to")
 async def announcement(interaction: discord.Interaction, message: str, channel: discord.TextChannel):
-    BOT_OWNER_ID = 1163771452403761193
+    BOT_OWNER_ID = 1163771452403761193  # Update if needed
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
     if not is_owner and not is_admin:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
+    # Create the embed
     embed = discord.Embed(
-        title="📢 ANNOUNCEMENT",
+        title="ANNOUNCEMENT",
         description=f"```\n{message}\n```",
-        color=discord.Color.from_rgb(0, 0, 0)
+        color=discord.Color.blue()
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     try:
+        # Send the embed to the specified channel
         await channel.send(embed=embed)
+        # Respond to the interaction with an ephemeral confirmation
         await interaction.response.send_message(f"✅ Announcement sent to {channel.mention}", ephemeral=True)
     except discord.Forbidden:
-        await interaction.response.send_message(f"❌ I can't send messages in {channel.mention}.", ephemeral=True)
+        await interaction.response.send_message(f"❌ I don't have permission to send messages in {channel.mention}.", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
-
-# =============================
+# ===========================
 # Conversion Commands
-# =============================
+# ===========================
+# Payout Rate
 @bot.tree.command(name="payout", description="Convert Robux to PHP based on Payout rate (₱320 for 1000 Robux)")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def payout(interaction: discord.Interaction, robux: int):
@@ -365,17 +375,33 @@ async def payout(interaction: discord.Interaction, robux: int):
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
     php = robux * (320 / 1000)
-    await interaction.response.send_message(f"💵 {robux} Robux = ₱{php:.2f} PHP")
-
+    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
+@bot.tree.command(name="payoutreverse", description="Convert PHP to Robux based on Payout rate (₱320 for 1000 Robux)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def payoutreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 320) * 1000)
+    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
+# Gift Rate
 @bot.tree.command(name="gift", description="Convert Robux to PHP based on Gift rate (₱250 for 1000 Robux)")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def gift(interaction: discord.Interaction, robux: int):
     if robux <= 0:
-        await interaction.response.send_message("❗ Invalid input.")
+        await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
     php = robux * (250 / 1000)
-    await interaction.response.send_message(f"🎁 {robux} Robux = ₱{php:.2f} PHP")
-
+    await interaction.response.send_message(f"🎁 {robux} Robux = **₱{php:.2f} PHP**")
+@bot.tree.command(name="giftreverse", description="Convert PHP to Robux based on Gift rate (₱250 for 1000 Robux)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def giftreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 250) * 1000)
+    await interaction.response.send_message(f"🎉 ₱{php:.2f} PHP = **{robux} Robux**")
+# NCT Rate
 @bot.tree.command(name="nct", description="Convert Robux to PHP based on NCT rate (₱240/1k)")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def nct(interaction: discord.Interaction, robux: int):
@@ -383,8 +409,16 @@ async def nct(interaction: discord.Interaction, robux: int):
         await interaction.response.send_message("❗ Invalid input.")
         return
     php = robux * (240 / 1000)
-    await interaction.response.send_message(f"💸 {robux} Robux = ₱{php:.2f} PHP")
-
+    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
+@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on NCT rate (₱240/1k)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def nctreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 240) * 1000)
+    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
+# CT Rate
 @bot.tree.command(name="ct", description="Convert Robux to PHP based on CT rate (₱340/1k)")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def ct(interaction: discord.Interaction, robux: int):
@@ -392,56 +426,158 @@ async def ct(interaction: discord.Interaction, robux: int):
         await interaction.response.send_message("❗ Invalid input.")
         return
     php = robux * (340 / 1000)
-    await interaction.response.send_message(f"💳 {robux} Robux = ₱{php:.2f} PHP")
-
+    await interaction.response.send_message(f"💵 {robux} Robux = **₱{php:.2f} PHP**")
+@bot.tree.command(name="ctreverse", description="Convert PHP to Robux based on CT rate (₱340/1k)")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def ctreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    robux = math.ceil((php / 340) * 1000)
+    await interaction.response.send_message(f"💰 ₱{php:.2f} PHP = **{robux} Robux**")
+# All Rates Comparison
+@bot.tree.command(name="allrates", description="See PHP equivalent across all rates for given Robux")
+@app_commands.describe(robux="How much Robux do you want to compare?")
+async def allrates(interaction: discord.Interaction, robux: int):
+    if robux <= 0:
+        await interaction.response.send_message("❗ Robux amount must be greater than zero.")
+        return
+    rates = {
+        "Not Covered Tax (₱240)": 240,
+        "Covered Tax (₱340)": 340,
+        "Group Payout (₱320)": 320,
+        "Gift (₱250)": 250
+    }
+    result = "\n".join([f"**{label}** → ₱{(value / 1000) * robux:.2f}" for label, value in rates.items()])
+    await interaction.response.send_message(f"📊 **{robux} Robux Conversion:**\n{result}")
+@bot.tree.command(name="allratesreverse", description="See Robux equivalent across all rates for given PHP")
+@app_commands.describe(php="How much PHP do you want to compare?")
+async def allratesreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    rates = {
+        "Not Covered Tax (₱240)": 240,
+        "Covered Tax (₱340)": 340,
+        "Group Payout (₱320)": 320,
+        "Gift (₱250)": 250
+    }
+    result = "\n".join([f"**{label}** → {math.ceil((php / value) * 1000)} Robux" for label, value in rates.items()])
+    await interaction.response.send_message(f"📊 **₱{php:.2f} PHP Conversion:**\n{result}")
+# Tax Calculations
 @bot.tree.command(name="beforetax", description="Calculate how much Robux you'll receive after 30% tax")
 @app_commands.describe(robux="How much Robux is being sent?")
 async def beforetax(interaction: discord.Interaction, robux: int):
+    if robux <= 0:
+        await interaction.response.send_message("❗ Robux amount must be greater than zero.")
+        return
     received = math.floor(robux * 0.7)
-    await interaction.response.send_message(f"📤 Sending {robux} → Receive **{received} Robux** after tax.")
-
+    await interaction.response.send_message(f"📤 Sending **{robux} Robux** → You will receive **{received} Robux** after tax.")
+@bot.tree.command(name="aftertax", description="Calculate how much Robux to send to receive desired amount after 30% tax")
+@app_commands.describe(target="How much Robux do you want to receive *after* tax?")
+async def aftertax(interaction: discord.Interaction, target: int):
+    if target <= 0:
+        await interaction.response.send_message("❗ Target Robux must be greater than zero.")
+        return
+    sent = math.ceil(target / 0.7)
+    await interaction.response.send_message(f"📬 To receive **{target} Robux**, send **{sent} Robux** (30% tax).")
 # ConvertCurrency
 @bot.tree.command(name="convertcurrency", description="Convert between two currencies")
-@app_commands.describe(amount="Amount to convert", from_currency="Currency to convert from (e.g., USD)", to_currency="Currency to convert to (e.g., PHP)")
+@app_commands.describe(
+    amount="Amount to convert",
+    from_currency="Currency to convert from (e.g., USD)",
+    to_currency="Currency to convert to (e.g., PHP)"
+)
 async def convertcurrency(interaction: discord.Interaction, amount: float, from_currency: str, to_currency: str):
     api_key = os.getenv("CURRENCY_API_KEY")
     if not api_key:
-        await interaction.response.send_message("❌ CURRENCY_API_KEY missing.", ephemeral=True)
+        await interaction.response.send_message("❌ `CURRENCY_API_KEY` is missing in environment variables.")
         return
-    url = f"https://api.currencyapi.com/v3/latest?apikey= {api_key}&currencies={to_currency.upper()}&base_currency={from_currency.upper()}"
+    from_currency = from_currency.upper()
+    to_currency = to_currency.upper()
+    url = f"https://api.currencyapi.com/v3/latest?apikey=  {api_key}&currencies={to_currency}&base_currency={from_currency}"
     try:
         response = requests.get(url)
         data = response.json()
         if 'error' in data:
             await interaction.response.send_message(f"❌ API Error: {data['error']['message']}")
+            print("API Error Response:", data)
             return
-        if "data" not in data or to_currency.upper() not in data["data"]:
-            await interaction.response.send_message("❌ Invalid currency or no data found.")
+        if "data" not in data or to_currency not in data["data"]:
+            await interaction.response.send_message("❌ Invalid currency code or no data found.")
             return
-        rate = data["data"][to_currency.upper()]["value"]
+        rate = data["data"][to_currency]["value"]
         result = amount * rate
-        embed = discord.Embed(title="💱 Currency Conversion", color=discord.Color.from_rgb(0, 0, 0))
-        embed.add_field(name="📥 Input", value=f"{amount} {from_currency.upper()}", inline=False)
-        embed.add_field(name="📉 Rate", value=f"1 {from_currency.upper()} = {rate:.4f} {to_currency.upper()}", inline=False)
-        embed.add_field(name="📤 Result", value=f"≈ **{result:.2f} {to_currency.upper()}**", inline=False)
+        embed = discord.Embed(
+            title=f"💱 Currency Conversion",
+            color=discord.Color.gold()
+        )
+        embed.add_field(
+            name="📥 Input",
+            value=f"{amount} {from_currency}",
+            inline=False
+        )
+        embed.add_field(
+            name="📉 Rate",
+            value=f"1 {from_currency} = {rate:.4f} {to_currency}",
+            inline=False
+        )
+        embed.add_field(
+            name="📤 Result",
+            value=f"≈ **{result:.2f} {to_currency}**",
+            inline=False
+        )
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.response.send_message(embed=embed)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error: {str(e)}")
-
+        await interaction.response.send_message(f"❌ Error during conversion: {str(e)}")
+        print("Exception Details:", str(e))
+@convertcurrency.autocomplete('from_currency')
+@convertcurrency.autocomplete('to_currency')
+async def currency_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # Full list of supported currencies with names
+    currencies = [
+        "USD - US Dollar", "EUR - Euro", "JPY - Japanese Yen", "GBP - British Pound",
+        "AUD - Australian Dollar", "CAD - Canadian Dollar", "CHF - Swiss Franc",
+        "CNY - Chinese Yuan", "SEK - Swedish Krona", "NZD - New Zealand Dollar",
+        "BRL - Brazilian Real", "INR - Indian Rupee", "RUB - Russian Ruble",
+        "ZAR - South African Rand", "SGD - Singapore Dollar", "HKD - Hong Kong Dollar",
+        "KRW - South Korean Won", "MXN - Mexican Peso", "TRY - Turkish Lira",
+        "EGP - Egyptian Pound", "AED - UAE Dirham", "SAR - Saudi Riyal",
+        "ARS - Argentine Peso", "CLP - Chilean Peso", "THB - Thai Baht",
+        "MYR - Malaysian Ringgit", "IDR - Indonesian Rupiah", "PHP - Philippine Peso",
+        "PLN - Polish Zloty"
+    ]
+    filtered = [c for c in currencies if current.lower() in c.lower()]
+    return [
+        app_commands.Choice(name=c, value=c.split(" ")[0])
+        for c in filtered[:25]
+    ]
 # ========== Weather Command ==========
 PHILIPPINE_CITIES = [
     "Manila", "Quezon City", "Caloocan", "Las Piñas", "Makati",
     "Malabon", "Navotas", "Paranaque", "Pasay", "Muntinlupa",
-    "Taguig", "Valenzuela", "Marikina", "Pasig", "San Juan"
+    "Taguig", "Valenzuela", "Marikina", "Pasig", "San Juan",
+    "Cavite", "Cebu", "Davao", "Iloilo", "Baguio", "Zamboanga",
+    "Angeles", "Bacolod", "Batangas", "Cagayan de Oro", "Cebu City",
+    "Davao City", "General Santos", "Iligan", "Kalibo", "Lapu-Lapu City",
+    "Lucena", "Mandaue", "Olongapo", "Ormoc", "Oroquieta", "Ozamiz",
+    "Palawan", "Puerto Princesa", "Roxas City", "San Pablo", "Silay"
 ]
-
 GLOBAL_CAPITAL_CITIES = [
     "Washington D.C.", "London", "Paris", "Berlin", "Rome",
-    "Moscow", "Beijing", "Tokyo", "Seoul", "New Delhi"
+    "Moscow", "Beijing", "Tokyo", "Seoul", "New Delhi", "Islamabad",
+    "Canberra", "Ottawa", "Brasilia", "Ottawa", "Cairo", "Nairobi",
+    "Pretoria", "Kuala Lumpur", "Jakarta", "Bangkok", "Hanoi", "Athens",
+    "Vienna", "Stockholm", "Oslo", "Copenhagen", "Helsinki", "Dublin",
+    "Warsaw", "Prague", "Madrid", "Amsterdam", "Brussels", "Bern",
+    "Wellington", "Santiago", "Buenos Aires", "Brasilia", "Abu Dhabi",
+    "Doha", "Riyadh", "Kuwait City", "Muscat", "Manama", "Doha",
+    "Beijing", "Shanghai", "Tokyo", "Seoul", "Sydney", "Melbourne"
 ]
-
 @bot.tree.command(name="weather", description="Get weather information for a city")
 @app_commands.describe(city="City name", unit="Temperature unit (default is Celsius)")
 @app_commands.choices(unit=[
@@ -451,7 +587,7 @@ GLOBAL_CAPITAL_CITIES = [
 async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
     api_key = os.getenv("WEATHER_API_KEY")
     if not api_key:
-        await interaction.response.send_message("❌ Weather API key missing.", ephemeral=True)
+        await interaction.response.send_message("❌ Weather API key is missing.", ephemeral=True)
         return
     url = f"http://api.weatherapi.com/v1/current.json?key={api_key}&q={city}"
     try:
@@ -460,21 +596,28 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
         if "error" in data:
             await interaction.response.send_message("❌ City not found or invalid input.", ephemeral=True)
             return
-        current = data["current"][0]
+        current = data["current"]
         location = data["location"]["name"]
-        temperature = current["temp_c"] if unit == "c" else current["temp_f"]
-        feels_like = current["feelslike_c"] if unit == "c" else current["feelslike_f"]
+        region = data["location"]["region"]
+        country = data["location"]["country"]
+        if unit == "c":
+            temperature = current["temp_c"]
+            feels_like = current["feelslike_c"]
+            unit_label = "°C"
+        else:
+            temperature = current["temp_f"]
+            feels_like = current["feelslike_f"]
+            unit_label = "°F"
         humidity = current["humidity"]
         wind_kph = current["wind_kph"]
-        condition = current["condition"][0]["text"]
-        icon_url = f"https:{current['condition'][0]['icon']}"
-
+        condition = current["condition"]["text"]
+        icon_url = f"https:{current['condition']['icon']}"
         embed = discord.Embed(
-            title=f"🌤️ Weather in {location}",
-            color=discord.Color.from_rgb(0, 0, 0)
+            title=f"🌤️ Weather in {location}, {region}, {country}",
+            color=discord.Color.blue()
         )
-        embed.add_field(name="🌡️ Temperature", value=f"{temperature}{unit.upper()}", inline=True)
-        embed.add_field(name="🧯 Feels Like", value=f"{feels_like}{unit.upper()}", inline=True)
+        embed.add_field(name="🌡️ Temperature", value=f"{temperature}{unit_label}", inline=True)
+        embed.add_field(name="🧯 Feels Like", value=f"{feels_like}{unit_label}", inline=True)
         embed.add_field(name="💧 Humidity", value=f"{humidity}%", inline=True)
         embed.add_field(name="🌬️ Wind Speed", value=f"{wind_kph} km/h", inline=True)
         embed.add_field(name="📝 Condition", value=condition, inline=False)
@@ -483,24 +626,40 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.response.send_message(embed=embed)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error fetching weather: {str(e)}", ephemeral=True)
-
-# =============================
+        await interaction.response.send_message(f"❌ Error fetching weather data: {str(e)}", ephemeral=True)
+@weather.autocomplete('city')
+async def city_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # Combine Philippine and global capitals
+    all_cities = PHILIPPINE_CITIES + GLOBAL_CAPITAL_CITIES
+    # Filter based on user input
+    filtered = [c for c in all_cities if current.lower() in c.lower()]
+    return [
+        app_commands.Choice(name=c, value=c)
+        for c in filtered[:25]
+    ]
+# ===========================
 # Other Commands
-# =============================
+# ===========================
 # Purge Command
 @bot.tree.command(name="purge", description="Delete a specified number of messages")
 @app_commands.describe(amount="How many messages would you like to delete?")
 async def purge(interaction: discord.Interaction, amount: int):
     if amount <= 0:
-        await interaction.response.send_message("❗ Please specify a positive number.", ephemeral=True)
+        await interaction.response.send_message("❗ Please specify a positive number of messages.", ephemeral=True)
         return
-    if not interaction.user.guild_permissions.manage_messages:
+    BOT_OWNER_ID = 1163771452403761193
+    has_permission = interaction.user.guild_permissions.manage_messages or interaction.user.id == BOT_OWNER_ID
+    if not has_permission:
         await interaction.response.send_message("❗ You don't have permission to use this command.", ephemeral=True)
         return
-    await interaction.channel.purge(limit=amount)
-    await interaction.response.send_message(f"✅ Deleted **{amount}** messages.", ephemeral=True)
-
+    if not interaction.guild.me.guild_permissions.manage_messages:
+        await interaction.response.send_message("❗ I don't have permission to delete messages.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(f"✅ Deleted **{len(deleted)}** messages.", ephemeral=True)
 # Group Info Command
 @bot.tree.command(name="group", description="Display information about the 1cy Roblox group")
 async def groupinfo(interaction: discord.Interaction):
@@ -509,36 +668,45 @@ async def groupinfo(interaction: discord.Interaction):
         response = requests.get(f"https://groups.roblox.com/v1/groups/ {group_id}")
         data = response.json()
         formatted_members = "{:,}".format(data['memberCount'])
-        embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+        embed = discord.Embed(color=discord.Color.blue())
         embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/ {group_id})", inline=False)
         embed.add_field(name="Description", value=f"```\n{data.get('description', 'No description')}\n```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
-        owner = data.get('owner')
+        owner = data['owner']
         owner_link = f"[{owner['username']}](https://www.roblox.com/users/ {owner['userId']}/profile)" if owner else "No owner"
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
         embed.set_footer(text="Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
+        embed.timestamp = discord.utils.utcnow()
         await interaction.response.send_message(embed=embed)
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching group info: {e}", ephemeral=True)
-
 # Poll Command
 @bot.tree.command(name="poll", description="Create a poll with reactions and result summary")
-@app_commands.describe(question="Poll question", amount="Duration amount", unit="Time unit (seconds, minutes, hours)")
+@app_commands.describe(
+    question="What is the poll question?",
+    amount="Duration amount",
+    unit="Time unit (seconds, minutes, hours)"
+)
 @app_commands.choices(unit=[
     app_commands.Choice(name="Seconds", value="seconds"),
     app_commands.Choice(name="Minutes", value="minutes"),
     app_commands.Choice(name="Hours", value="hours")
 ])
 async def poll(interaction: discord.Interaction, question: str, amount: int, unit: app_commands.Choice[str]):
-    total_seconds = {"seconds": amount, "minutes": amount * 60, "hours": amount * 3600}.get(unit.value, 0)
-    if total_seconds == 0 or total_seconds > 86400:
-        await interaction.response.send_message("❗ Invalid duration.", ephemeral=True)
+    if amount <= 0:
+        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
         return
-    embed = discord.Embed(title="📊 Poll", description=question, color=discord.Color.from_rgb(0, 0, 0))
+    total_seconds = {"seconds": amount, "minutes": amount * 60, "hours": amount * 3600}.get(unit.value, 0)
+    if total_seconds == 0:
+        await interaction.response.send_message("❗ Invalid time unit selected.", ephemeral=True)
+        return
+    if total_seconds > 86400:
+        await interaction.response.send_message("❗ Duration cannot exceed 24 hours.", ephemeral=True)
+        return
+    embed = discord.Embed(title="📊 Poll", description=question, color=discord.Color.orange())
     embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
+    embed.timestamp = discord.utils.utcnow()
     message = await interaction.channel.send(embed=embed)
     await message.add_reaction("👍")
     await message.add_reaction("👎")
@@ -546,25 +714,29 @@ async def poll(interaction: discord.Interaction, question: str, amount: int, uni
     await asyncio.sleep(total_seconds)
     message = await interaction.channel.fetch_message(message.id)
     reactions = message.reactions
-    up = next((r.count for r in reactions if str(r.emoji) == "👍"), 0)
-    down = next((r.count for r in reactions if str(r.emoji) == "👎"), 0)
-    result = "👍 Upvotes win!" if up > down else ("👎 Downvotes win!" if down > up else "⚖️ It's a tie!")
-    result_embed = discord.Embed(title="📊 Poll Results", description=question, color=discord.Color.from_rgb(0, 0, 0))
-    result_embed.add_field(name="👍 Upvotes", value=str(up), inline=True)
-    result_embed.add_field(name="👎 Downvotes", value=str(down), inline=True)
+    up_count = next((r.count for r in reactions if str(r.emoji) == "👍"), 0)
+    down_count = next((r.count for r in reactions if str(r.emoji) == "👎"), 0)
+    if up_count > down_count:
+        result = "👍 Upvotes win!"
+    elif down_count > up_count:
+        result = "👎 Downvotes win!"
+    else:
+        result = "⚖️ It's a tie!"
+    result_embed = discord.Embed(title="📊 Poll Results", description=question, color=discord.Color.green())
+    result_embed.add_field(name="👍 Upvotes", value=str(up_count), inline=True)
+    result_embed.add_field(name="👎 Downvotes", value=str(down_count), inline=True)
     result_embed.add_field(name="Result", value=result, inline=False)
-    result_embed.set_footer(text="Poll ended")
-    result_embed.timestamp = datetime.now(PH_TIMEZONE)
+    result_embed.set_footer(text="Poll has ended")
+    result_embed.timestamp = discord.utils.utcnow()
     await message.edit(embed=result_embed)
-
 # Remind Me Command
 @bot.tree.command(name="remindme", description="Set a reminder after X minutes (will ping you in this channel)")
 @app_commands.describe(minutes="How many minutes until I remind you?", note="Your reminder message")
 async def remindme(interaction: discord.Interaction, minutes: int, note: str):
     if minutes <= 0:
-        await interaction.response.send_message("❗ Enter a positive number.", ephemeral=True)
+        await interaction.response.send_message("❗ Please enter a positive number of minutes.", ephemeral=True)
         return
-    reminder_time = datetime.now(PH_TIMEZONE) + timedelta(minutes=minutes)
+    reminder_time = datetime.utcnow() + timedelta(minutes=minutes)
     if reminders_collection:
         reminders_collection.insert_one({
             "user_id": interaction.user.id,
@@ -573,30 +745,34 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
             "note": note,
             "reminder_time": reminder_time
         })
-    await interaction.response.send_message(f"⏰ Reminder set in `{minutes}` minutes: `{note}`", ephemeral=True)
-
+    await interaction.response.send_message(
+        f"⏰ I'll remind you in `{minutes}` minutes: `{note}`",
+        ephemeral=True
+    )
 # Donate Command
 @bot.tree.command(name="donate", description="Donate Robux to a Discord user.")
-@app_commands.describe(user="The user to donate to.", amount="Robux amount")
+@app_commands.describe(user="The Discord user to donate to.", amount="The amount of Robux to donate.")
 async def donate(interaction: discord.Interaction, user: discord.Member, amount: int):
     if amount <= 0:
-        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
+        await interaction.response.send_message("❗ Robux amount must be greater than zero.", ephemeral=True)
         return
-    await interaction.response.send_message(f"`{interaction.user}` donated **{amount:,} Robux** to {user.mention}!")
-
+    await interaction.response.send_message(
+        f"`{interaction.user.name}` just donated **{amount:,} Robux** to {user.mention}!"
+    )
 # Say Command
-@bot.tree.command(name="say", description="Make the bot say something in chat")
+@bot.tree.command(name="say", description="Make the bot say something in chat (no @everyone/@here allowed)")
 @app_commands.describe(message="Message for the bot to say")
 async def say(interaction: discord.Interaction, message: str):
     if "@everyone" in message or "@here" in message:
-        await interaction.response.send_message("❌ No @everyone/@here allowed.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ You cannot use `@everyone` or `@here` in the message.",
+            ephemeral=True
+        )
         return
-    await interaction.channel.send(message)
-    await interaction.response.send_message("✅ Message sent!", ephemeral=True)
-
+    await interaction.response.send_message(message)
 # Calculator Command
 @bot.tree.command(name="calculator", description="Perform basic math operations")
-@app_commands.describe(num1="First number", operation="Operation", num2="Second number")
+@app_commands.describe(num1="First number", operation="Operation to perform", num2="Second number")
 @app_commands.choices(operation=[
     app_commands.Choice(name="Addition (+)", value="add"),
     app_commands.Choice(name="Subtraction (-)", value="subtract"),
@@ -620,67 +796,99 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
         elif operation.value == "divide":
             result = num1 / num2
             symbol = "/"
-        await interaction.response.send_message(f"🔢 `{num1} {symbol} {num2} = {result}`")
+        await interaction.response.send_message(f"Result: `{num1} {symbol} {num2} = {result}`")
     except Exception as e:
         await interaction.response.send_message(f"⚠️ An error occurred: {str(e)}")
-
 # List All Commands
 @bot.tree.command(name="listallcommands", description="List all available slash commands")
 async def listallcommands(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📚 All Available Commands",
-        description="A categorized list of all commands.",
-        color=discord.Color.from_rgb(0, 0, 0)
+        description="A categorized list of all commands for easy navigation.",
+        color=discord.Color.blue()
     )
-    embed.add_field(name="🤖 AI Assistant", value="""
+    # 🤖 AI Assistant
+    embed.add_field(
+        name="🤖 AI Assistant",
+        value="""
         `/ask <prompt>` - Chat with Llama 3  
         `/clearhistory` - Clear AI conversation
-    """, inline=False)
-    embed.add_field(name="💰 Currency Conversion", value="""
+        """,
+        inline=False
+    )
+    # 💰 Currency Conversion
+    embed.add_field(
+        name="💰 Currency Conversion",
+        value="""
         `/payout <robux>` - Payout rate  
+        `/payoutreverse <php>` - Reverse Payout  
         `/gift <robux>` - Gift rate  
+        `/giftreverse <php>` - Reverse Gift  
         `/nct <robux>` - NCT rate  
+        `/nctreverse <php>` - Reverse NCT  
         `/ct <robux>` - CT rate  
+        `/ctreverse <php>` - Reverse CT  
         `/convertcurrency <amount> <from> <to>` - Convert currencies
-    """, inline=False)
-    embed.add_field(name="🛠️ Utility Tools", value="""
+        """,
+        inline=False
+    )
+    # 🛠️ Utility Tools
+    embed.add_field(
+        name="🛠️ Utility Tools",
+        value="""
         `/userinfo [user]` - View user details  
         `/purge <amount>` - Delete messages  
-        `/calculator <num1> <op> <num2>` - Math operations  
+        `/calculator <num1> <op> <num2>` - Perform math  
         `/group` - Show 1cy Roblox group  
-        `/weather <city>` - Get weather  
-        `/payment <method>` - Payment Methods
-    """, inline=False)
-    embed.add_field(name="⏰ Reminders & Polls", value="""
+        `/weather <city> [unit]` - Get weather  
+        `/announcement <message> <channel>` - Send announcement
+        """,
+        inline=False
+    )
+    # 🕒 Reminders & Polls
+    embed.add_field(
+        name="⏰ Reminders & Polls",
+        value="""
         `/remindme <minutes> <note>` - Set a reminder  
         `/poll <question> <time> <unit>` - Create a poll
-    """, inline=False)
-    embed.add_field(name="🎉 Fun", value="""
+        """,
+        inline=False
+    )
+    # 🎁 Fun Commands
+    embed.add_field(
+        name="🎉 Fun",
+        value="""
         `/donate <user> <amount>` - Donate Robux  
-        `/say <message>` - Make bot speak
-    """, inline=False)
-    embed.add_field(name="🔧 Developer Tools", value="""
+        `/say <message>` - Make the bot speak
+        """,
+        inline=False
+    )
+    # 🔧 Developer Tools
+    embed.add_field(
+        name="🔧 Developer Tools",
+        value="""
         `/dm <user> <message>` - Send DM  
         `/dmall <message>` - DM all users
-    """, inline=False)
+        """,
+        inline=False
+    )
+    # Footer
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
-
-# =============================
-# Payment Command
-# =============================
+# ===========================
+# Payment Command (Added)
+# ===========================
 class PaymentMethod(str, Enum):
     GCASH = "Gcash"
     PAYMAYA = "PayMaya"
     GOTYME = "GoTyme"
-
 @bot.tree.command(name="payment", description="Show payment instructions for Gcash, PayMaya, or GoTyme")
 @app_commands.describe(method="Choose a payment method to display instructions")
 @app_commands.choices(method=[
-    app_commands.Choice(name="Gcash", value="Gcash"),
-    app_commands.Choice(name="PayMaya", value="PayMaya"),
-    app_commands.Choice(name="GoTyme", value="GoTyme"),
+    app_commands.Choice(name=PaymentMethod.GCASH, value=PaymentMethod.GCASH),
+    app_commands.Choice(name=PaymentMethod.PAYMAYA, value=PaymentMethod.PAYMAYA),
+    app_commands.Choice(name=PaymentMethod.GOTYME, value=PaymentMethod.GOTYME),
 ])
 async def payment(interaction: discord.Interaction, method: PaymentMethod):
     payment_info = {
@@ -702,20 +910,23 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
     }
 
     info = payment_info[method]
+
     embed = discord.Embed(
         title=info["title"],
         description=info["description"],
-        color=discord.Color.from_rgb(0, 0, 0)
+        color=discord.Color.blue()
     )
+
     if info["image"]:
         embed.set_image(url=info["image"])
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    await interaction.response.send_message(embed=embed)
 
-# =============================
+    await interaction.response.send_message(embed=embed)
+# ===========================
 # Bot Events
-# =============================
+# ===========================
 @bot.event
 async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
@@ -725,7 +936,7 @@ async def on_ready():
     group_id = 5838002
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/ {group_id}")
+            response = requests.get(f"https://groups.roblox.com/v1/groups/  {group_id}")
             data = response.json()
             member_count = data['memberCount']
             await bot.change_presence(status=discord.Status.dnd,
@@ -739,7 +950,6 @@ async def on_ready():
                                        type=discord.ActivityType.watching,
                                        name="1cy"))
         await asyncio.sleep(60)
-
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -764,6 +974,5 @@ async def on_message(message):
         await message.add_reaction("🎀")
     if message.channel.id == 1107281584337461321:
         await message.add_reaction("<:1cy_heart:1258694384346468362>")
-
 # Run the bot
 bot.run(os.getenv('DISCORD_TOKEN'))
