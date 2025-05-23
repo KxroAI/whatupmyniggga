@@ -834,13 +834,13 @@ async def listallcommands(interaction: discord.Interaction):
         description="A categorized list of all commands for easy navigation.",
         color=discord.Color.from_rgb(0, 0, 0)  # Black
     )
-    
+
     # 🤖 AI Assistant
     embed.add_field(
         name="🤖 AI Assistant",
         value="""
-        `/ask <prompt>` - Chat with Llama 3 AI  
-        `/clearhistory` - Clear your AI conversation history
+- `/ask <prompt>` - Chat with Llama 3 AI  
+- `/clearhistory` - Clear your AI conversation history
         """,
         inline=False
     )
@@ -849,14 +849,15 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="💰 Currency Conversion",
         value="""
-        `/payout <robux>` - Convert Robux to PHP at Payout rate (₱320/1000)
-        `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
-        `/gift <robux>` - Convert Robux to PHP at Gift rate (₱250/1000)
-        `/giftreverse <php>` - Convert PHP to Robux at Gift rate
-        `/nct <robux>` - Convert Robux to PHP at NCT rate (₱240/1k)
-        `/nctreverse <php>` - Convert PHP to Robux at NCT rate
-        `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1k)
-        `/ctreverse <php>` - Convert PHP to Robux at CT rate
+- `/payout <robux>` - Convert Robux to PHP at Payout rate (₱320/1000)
+- `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
+- `/gift <robux>` - Convert Robux to PHP at Gift rate (₱250/1000)
+- `/giftreverse <php>` - Convert PHP to Robux at Gift rate
+- `/nct <robux>` - Convert Robux to PHP at NCT rate (₱240/1k)
+- `/nctreverse <php>` - Convert PHP to Robux at NCT rate
+- `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1k)
+- `/ctreverse <php>` - Convert PHP to Robux at CT rate
+- `/convertcurrency <amount> <from> <to>` - Convert between currencies
         """,
         inline=False
     )
@@ -865,13 +866,13 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🛠️ Utility Tools",
         value="""
-        `/userinfo [user]` - View detailed info about a user  
-        `/purge <amount>` - Delete messages (requires mod permissions)  
-        `/calculator <num1> <operation> <num2>` - Perform math operations  
-        `/group` - Show info about the 1cy Roblox group  
-        `/convertcurrency <amount> <from> <to>` - Convert between currencies  
-        `/weather <city> [unit]` - Get weather in a city  
-        `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
+- `/userinfo [user]` - View detailed info about a user  
+- `/purge <amount>` - Delete messages (requires mod permissions)  
+- `/calculator <num1> <operation> <num2>` - Perform math operations  
+- `/group` - Show info about the 1cy Roblox group  
+- `/weather <city> [unit]` - Get weather in a city  
+- `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
+- `/announcement <message> <channel>` - Send an embedded announcement
         """,
         inline=False
     )
@@ -880,8 +881,8 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="⏰ Reminders & Polls",
         value="""
-        `/remindme <minutes> <note>` - Set a personal reminder  
-        `/poll <question> <time> <unit>` - Create a timed poll  
+- `/remindme <minutes> <note>` - Set a personal reminder  
+- `/poll <question> <time> <unit>` - Create a timed poll  
         """,
         inline=False
     )
@@ -890,8 +891,8 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🎉 Fun",
         value="""
-        `/donate <user> <amount>` - Donate Robux to someone
-        `/say <message>` - Make the bot say something
+- `/donate <user> <amount>` - Donate Robux to someone
+- `/say <message>` - Make the bot say something
         """,
         inline=False
     )
@@ -900,8 +901,8 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="🔧 Developer Tools",
         value="""
-        `/dm <user> <message>` - Send a direct message to a specific user  
-        `/dmall <message>` - Send a direct message to all members in the server
+- `/dm <user> <message>` - Send a direct message to a specific user  
+- `/dmall <message>` - Send a direct message to all members in the server
         """,
         inline=False
     )
