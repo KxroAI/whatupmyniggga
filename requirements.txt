@@ -1,9 +1,10 @@
-discord.py>=2.3.2
+discord.py>=2.0.0
 pymongo>=4.0.0
-certifi>=2024.7.26
-requests>=2.32.3
-python-dotenv>=1.0.1
-Flask>=3.0.0
-pytz>=2024.1
+certifi>=2023.01.00
+requests>=2.0.0
+python-dotenv>=1.0.0
+flask>=2.0.0
+pytz>=2023.3.post1
 langdetect>=1.0.9
-emoji>=2.3.0
+urllib3>=2.0.0
+emoji>=2.0.0
