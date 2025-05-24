@@ -903,6 +903,8 @@ async def listallcommands(interaction: discord.Interaction):
         value="""
 - `/dm <user> <message>` - Send a direct message to a specific user  
 - `/dmall <message>` - Send a direct message to all members in the server
+- `/invite` - Get the invite link for the bot  
+- `/status` - Show how many servers the bot is in and total user count
         """,
         inline=False
     )
@@ -958,6 +960,38 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
     if info["image"]:
         embed.set_image(url=info["image"])
 
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+# ========== Invite Command ==========
+@bot.tree.command(name="invite", description="Get the invite link for the bot")
+async def invite(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔗 Invite N Bot",
+        description="Click [here](https://discord.com/oauth2/authorize?client_id=1358242947790803084&permissions=8&integration_type=0&scope=bot%20applications.commands ) to invite the bot to your server!",
+        color=discord.Color.from_rgb(0, 0, 0)  # Black using RGB
+    )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed)
+
+# ========== Status Command ==========
+@bot.tree.command(name="status", description="Show how many servers the bot is in and total user count")
+async def status(interaction: discord.Interaction):
+    guilds = interaction.client.guilds
+    total_servers = len(guilds)
+    total_users = sum(guild.member_count for guild in guilds)
+
+    description = f"**Total Servers:** {total_servers}\n"
+    description += f"**Total Users:** {total_users}\n"
+
+    embed = discord.Embed(
+        title="📊 Bot Status",
+        description=description,
+        color=discord.Color.from_rgb(0, 0, 0)  # Black using RGB
+    )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
