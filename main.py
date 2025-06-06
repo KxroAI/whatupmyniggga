@@ -18,6 +18,7 @@ from langdetect import detect, LangDetectException
 from enum import Enum
 import aiohttp
 import json
+from dateutil.parser import isoparse
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -1070,6 +1071,107 @@ async def group_funds(interaction: discord.Interaction):
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
+
+# ========== Eligibility Funds Command ==========
+# Cooldown storage (user_id -> last_used_time)
+cooldowns = {}
+
+class UsernameModal(discord.ui.Modal, title="Enter Your Roblox Username"):
+    username = discord.ui.TextInput(label="Roblox Username", placeholder="e.g. RobloxNigga123")
+
+    def __init__(self, group_id, interaction):
+        super().__init__()
+        self.group_id = group_id
+        self.interaction = interaction
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        now = datetime.now(pytz.utc)
+
+        # Enforce cooldown (5 minutes)
+        if user_id in cooldowns:
+            last_used = cooldowns[user_id]
+            if now - last_used < timedelta(minutes=5):
+                await interaction.response.send_message(
+                    "🕒 You're on cooldown! Please wait before trying again.", 
+                    ephemeral=True
+                )
+                return
+
+        roblox_username = self.username.value.strip()
+
+        async with aiohttp.ClientSession() as session:
+            # Step 1: Get Roblox User ID
+            USER_LOOKUP_URL = "https://api.roblox.com/users/get-by-username"  
+            async with session.get(USER_LOOKUP_URL, params={"username": roblox_username}) as resp:
+                if resp.status != 200:
+                    await interaction.response.send_message("❌ Failed to find Roblox user.", ephemeral=True)
+                    return
+                roblox_data = await resp.json()
+                roblox_user_id = roblox_data.get("Id")
+                if not roblox_user_id:
+                    await interaction.response.send_message("❌ Could not retrieve Roblox ID.", ephemeral=True)
+                    return
+
+            # Step 2: Check Group Membership
+            MEMBERSHIP_URL = f"https://groups.roblox.com/v1/groups/{self.group_id}/members/{roblox_user_id}"  
+            async with session.get(MEMBERSHIP_URL) as resp:
+                if resp.status != 200:
+                    await interaction.response.send_message("❌ Not a member of the group or failed to fetch data.", ephemeral=True)
+                    return
+                membership_data = await resp.json()
+
+            # Step 3: Parse Join Date
+            join_date_str = membership_data.get("user", {}).get("joined", None)
+            if not join_date_str:
+                await interaction.response.send_message("❌ Could not retrieve join date.", ephemeral=True)
+                return
+
+            join_date = isoparse(join_date_str).replace(tzinfo=pytz.utc)
+            time_diff = now - join_date
+
+            # Update cooldown
+            cooldowns[user_id] = now
+
+            # Final Eligibility Check
+            embed = discord.Embed(
+                title="📜 Group Membership Status",
+                color=discord.Color.green() if time_diff.days >= 14 else discord.Color.red()
+            )
+
+            embed.add_field(
+                name="Username",
+                value=roblox_username,
+                inline=False
+            )
+
+            embed.add_field(
+                name="Days in Group",
+                value=f"{time_diff.days} day(s)",
+                inline=False
+            )
+
+            status = "✅ Payout Eligible" if time_diff.days >= 14 else "❌ Not Currently Eligible"
+            embed.add_field(
+                name="Status",
+                value=status,
+                inline=False
+            )
+
+            embed.set_footer(text="Verification complete | Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# Register the command
+@bot.tree.command(name="eligibility", description="Check if you've been in the group for at least 14 days")
+@app_commands.checks.cooldown(1, 300, key=lambda i: i.user.id)  # Discord's built-in cooldown
+async def eligibility(interaction: discord.Interaction):
+    GROUP_ID = 5838002  # ← Replace with your actual group ID
+
+    modal = UsernameModal(group_id=GROUP_ID, interaction=interaction)
+    await interaction.response.send_modal(modal)
 
 
 # ===========================
