@@ -1002,19 +1002,18 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get Current Funds of the 1cy Roblox Group")
-@app_commands.guild_only()
-async def group_funds(interaction: Interaction):
-    # Check for Administrator permission
+@bot.tree.command(name="groupfunds", description="Get Current and Pending  Funds of the 1cy Roblox Group")
+async def group_funds(interaction: discord.Interaction):
+    # Check if user has Administrator permission
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     await interaction.response.defer()
 
-    group_id = 5838002
+    group_id = 5838002  # ← Hardcoded Group ID
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-
+    
     if not ROBLOX_COOKIE:
         await interaction.followup.send("❌ Missing `.ROBLOSECURITY` cookie in environment.")
         return
@@ -1025,7 +1024,8 @@ async def group_funds(interaction: Interaction):
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        url = f"https://www.roblox.com/communities/configure?id={group_id}#!/revenue/summary"  
+        # Fetch revenue summary page
+        url = f"https://www.roblox.com/communities/configure?id={group_id}#!/revenue/summary"
         async with session.get(url) as resp:
             if resp.status != 200:
                 error_msg = f"HTTP {resp.status}"
@@ -1033,21 +1033,23 @@ async def group_funds(interaction: Interaction):
                     error_msg = "Forbidden: Account does not have permission to view group funds."
                 await interaction.followup.send(f"❌ Failed to fetch group funds: `{error_msg}`")
                 return
-
             html = await resp.text()
 
         # Extract current balance using regex
-        balance_match = re.search(r'"BalanceAmount"[^>]*>([\d,]+)', html)
-        current_balance = balance_match.group(1).replace(',', '') if balance_match else "Unknown"
+        current_match = re.search(r'"BalanceAmount"[^>]*>([\d,]+)', html)
+        current_balance = current_match.group(1).replace(',', '') if current_match else "Unknown"
+
+        # Extract pending balance
+        pending_match = re.search(r'"PendingAmount"[^>]*>([\d,]+)', html)
+        pending_balance = pending_match.group(1).replace(',', '') if pending_match else "Unknown"
 
     # Format response
     embed = Embed(
-        title="💰 1cy Group Funds",
+        title=f"💰 1cy Group Funds",
         color=discord.Color.blue()
     )
-
-    value = f"{int(current_balance):,} R$" if current_balance.isdigit() else current_balance
-    embed.add_field(name="Current Balance", value=value, inline=False)
+    embed.add_field(name="Current Balance", value=f"{current_balance:,} R$", inline=False)
+    embed.add_field(name="Pending Funds", value=f"{pending_balance:,} R$" if pending_balance.isdigit() else pending_balance, inline=False)
     embed.set_footer(text="Fetched via Roblox Revenue Summary | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
@@ -1093,13 +1095,10 @@ async def on_message(message):
         await message.channel.send("masarap")
     elif content == "hi":
         reply = (
-            "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? liligawan mo ko? sasagutin naman kita. paplanuhin natin yung pangarap natin sa isa't isa tapos ano? may makikita kang iba. magsasawa ka na, iiwan mo na ako. tapos magmamakaawa ako sayo kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak while begging you to stay. kaya wag na lang. thanks nalang sa hi mo"
-        )
-        elif content == "hello":
-        reply = (
-            "hello, baby"
-        )
+            "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? liligawan mo ko? sasagutin naman kita. paplanuhin natin yung pangarap natin sa isa't isa tapos ano? may makikita kang iba. magsasawa ka na, iiwan mo na ako. tapos magmamakaawa ako sayo kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak while begging you to stay. kaya wag na lang. thanks nalang sa hi mo")
         await message.channel.send(reply)
+    elif content == "hello":
+        await message.channel.send("hello, baby")
     auto_react_channels = [
         1225294057371074760,
         1107600826664501258,
