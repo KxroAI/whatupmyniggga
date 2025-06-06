@@ -1002,7 +1002,7 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get Current and Pending  Funds of the 1cy Roblox Group")
+@bot.tree.command(name="groupfunds", description="Get current and pending Funds of the 1cy Roblox Group")
 async def group_funds(interaction: discord.Interaction):
     # Check if user has Administrator permission
     if not interaction.user.guild_permissions.administrator:
@@ -1025,7 +1025,7 @@ async def group_funds(interaction: discord.Interaction):
 
     async with aiohttp.ClientSession(headers=headers) as session:
         # Fetch revenue summary page
-        url = f"https://www.roblox.com/communities/configure?id={group_id}#!/revenue/summary"
+        url = f"https://www.roblox.com/communities/configure?id={group_id}#!/revenue/summary"  
         async with session.get(url) as resp:
             if resp.status != 200:
                 error_msg = f"HTTP {resp.status}"
@@ -1050,7 +1050,7 @@ async def group_funds(interaction: discord.Interaction):
     )
     embed.add_field(name="Current Balance", value=f"{current_balance:,} R$", inline=False)
     embed.add_field(name="Pending Funds", value=f"{pending_balance:,} R$" if pending_balance.isdigit() else pending_balance, inline=False)
-    embed.set_footer(text="Fetched via Roblox Revenue Summary | Neroniel")
+    embed.set_footer(text="Fetched via Roblox Revenue Summary • Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
