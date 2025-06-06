@@ -1074,43 +1074,24 @@ async def group_funds(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed)
 
 # ========== Gamepass Command ==========
-@bot.tree.command(name="gamepass", description="Show information about a Roblox game pass using its ID")
+@bot.tree.command(name="gamepass", description="Show a link to a Roblox game pass using its ID")
 @app_commands.describe(id="The ID of the Roblox game pass")
 async def gamepass(interaction: discord.Interaction, id: int):
     base_url = f"https://www.roblox.com/game-pass/{id}" 
-    thumbnail_url = f"https://www.roblox.com/game-pass-thumbnail/image?id={id}"
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://economy.roblox.com/v1/game-passes/{id}/product-info") as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                name = data.get("Name", "Unknown")
-                description = data.get("Description", "No description available.")
-                price_in_robux = data.get("PriceInRobux")
-                is_for_sale = data.get("IsForSale", False)
-
-                if price_in_robux is None:
-                    price_in_robux = "Free"
-                elif not is_for_sale:
-                    price_in_robux = "Offsale"
-            else:
-                name = "Unknown"
-                description = "Game pass not found or invalid ID."
-                price_in_robux = "N/A"
 
     embed = discord.Embed(
-        title=f"{name}",
-        description=description,
+        title="Gamepass Link",
         color=discord.Color.blue()
     )
-    embed.set_thumbnail(url=thumbnail_url)
-    embed.add_field(name="🔗 Link", value=f"[View Game Pass]({base_url})", inline=False)
-    embed.add_field(name="💰 Price", value=f"`{price_in_robux}`", inline=True)
+    embed.add_field(
+        name="🔗 Copyable Link",
+        value=f"`{base_url}`\n\n[View Gamepass]({base_url})",
+        inline=False
+    )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
-
 
 # ===========================
 # Bot Events
