@@ -1018,8 +1018,10 @@ async def status(interaction: discord.Interaction):
 # ========== Group Funds Command ==========
 @bot.tree.command(name="groupfunds", description="Get current Funds of the 1cy Roblox Group")
 async def group_funds(interaction: discord.Interaction):
-    # Check if user has Administrator permission
-    if not interaction.user.guild_permissions.administrator:
+    BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
+
+    # Check if user is either an Admin or the Bot Owner
+    if not interaction.user.guild_permissions.administrator and str(interaction.user.id) != BOT_OWNER_ID:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
@@ -1038,7 +1040,7 @@ async def group_funds(interaction: discord.Interaction):
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        currency_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"  
+        currency_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"      
         async with session.get(currency_url) as resp:
             if resp.status != 200:
                 try:
