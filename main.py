@@ -18,7 +18,6 @@ from langdetect import detect, LangDetectException
 from enum import Enum
 import aiohttp
 import json
-import re
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -183,6 +182,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
     await interaction.response.defer()
+
     # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
@@ -191,6 +191,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
+
     async with interaction.channel.typing():
         try:
             # Custom filter for creator questions
@@ -222,7 +223,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "th": "กรุณาตอบเป็นภาษาไทย",
                 "id": "Silakan jawab dalam bahasa Indonesia"
             }.get(detected_lang, "")
-
+            
             # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
@@ -243,7 +244,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
 
-            # Call Together AI
+            # Call Together AI using requests
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
                 "Content-Type": "application/json"
@@ -254,23 +255,46 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
+
+            # Make sure there's no extra space in the URL
+            api_url = "https://api.together.xyz/v1/completions" 
+
             response = requests.post(
-                "https://api.together.xyz/v1/completions  ",
+                api_url,
                 headers=headers,
                 json=payload
             )
-            data = response.json()
+
+            # Log response status and body for debugging
+            print(f"[DEBUG] API Response Status: {response.status_code}")
+            print(f"[DEBUG] Raw Response Body: {response.text}")
+
+            if response.status_code != 200:
+                await interaction.followup.send(f"❌ API returned error code {response.status_code}: `{response.text}`")
+                return
+
+            try:
+                data = response.json()
+            except ValueError as ve:
+                await interaction.followup.send("❌ Failed to parse AI response. The service may be down.")
+                print(f"[ERROR] JSON decode failed: {ve}")
+                print(f"[ERROR] Raw response: {response.text}")
+                return
+
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
+
             ai_response = data["choices"][0]["text"].strip()
 
             # Determine if we should reply to a previous message
             target_message_id = bot.last_message_id.get((user_id, channel_id))
+
             # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
+
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -298,8 +322,10 @@ async def ask(interaction: discord.Interaction, prompt: str):
                     "response": ai_response,
                     "timestamp": datetime.now(PH_TIMEZONE)
                 })
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
+            print(f"[EXCEPTION] /ask command error: {e}")
 
 # /clearhistory - Clear stored conversation history
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
