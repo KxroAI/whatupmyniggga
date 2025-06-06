@@ -175,12 +175,13 @@ async def dmall(interaction: discord.Interaction, message: str):
 # AI Commands
 # ===========================
 
-# /ask - Chat with Llama 3 via Together AI with threaded replies
 @bot.tree.command(name="ask", description="Chat with an AI assistant using Llama 3")
 @app_commands.describe(prompt="What would you like to ask?")
 async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
+
+    # ❗ RESPOND IMMEDIATELY TO AVOID INTERACTION EXPIRATION ❗
     await interaction.response.defer()
 
     # Rate limit: 5 messages/user/minute
@@ -244,7 +245,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
 
-            # Call Together AI using requests
+            # Call Together AI using async aiohttp instead of requests
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
                 "Content-Type": "application/json"
@@ -256,30 +257,17 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "temperature": 0.7
             }
 
-            # Make sure there's no extra space in the URL
-            api_url = "https://api.together.xyz/v1/completions" 
-
-            response = requests.post(
-                api_url,
-                headers=headers,
-                json=payload
-            )
-
-            # Log response status and body for debugging
-            print(f"[DEBUG] API Response Status: {response.status_code}")
-            print(f"[DEBUG] Raw Response Body: {response.text}")
-
-            if response.status_code != 200:
-                await interaction.followup.send(f"❌ API returned error code {response.status_code}: `{response.text}`")
-                return
-
-            try:
-                data = response.json()
-            except ValueError as ve:
-                await interaction.followup.send("❌ Failed to parse AI response. The service may be down.")
-                print(f"[ERROR] JSON decode failed: {ve}")
-                print(f"[ERROR] Raw response: {response.text}")
-                return
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://api.together.xyz/v1/completions", 
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        text = await response.text()
+                        await interaction.followup.send(f"❌ API returned error code {response.status}: `{text}`")
+                        return
+                    data = await response.json()
 
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
