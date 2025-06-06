@@ -887,12 +887,12 @@ async def listallcommands(interaction: discord.Interaction):
 - `/userinfo [user]` - View detailed info about a user  
 - `/purge <amount>` - Delete messages (requires mod permissions)  
 - `/calculator <num1> <operation> <num2>` - Perform math operations  
-- `/group` - Show info about the 1cy Roblox group  
+- `/group` - Show info about the 1cy Roblox Group  
 - `/groupfunds` - Show Current Funds of the 1cy Group 
 - `/weather <city> [unit]` - Get weather in a city  
 - `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
 - `/announcement <message> <channel>` - Send an embedded announcement
-- `/gamepass <id>` - View details about a Roblox game pass
+- `/gamepass <id>` - Show a link to a Roblox Gamepass using its ID
         """,
         inline=False
     )
@@ -1074,17 +1074,16 @@ async def group_funds(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed)
 
 # ========== Gamepass Command ==========
-@bot.tree.command(name="gamepass", description="Show a link to a Roblox game pass using its ID")
-@app_commands.describe(id="The ID of the Roblox game pass")
+@bot.tree.command(name="gamepass", description="Show a link to a Roblox Gamepass using its ID")
+@app_commands.describe(id="The ID of the Roblox Gamepass")
 async def gamepass(interaction: discord.Interaction, id: int):
     base_url = f"https://www.roblox.com/game-pass/{id}" 
 
     embed = discord.Embed(
-        title="Gamepass Link",
         color=discord.Color.blue()
     )
     embed.add_field(
-        name="🔗 Copyable Link",
+        name="🔗 Link",
         value=f"`{base_url}`\n\n[View Gamepass]({base_url})",
         inline=False
     )
