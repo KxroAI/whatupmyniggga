@@ -954,18 +954,18 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
     payment_info = {
         PaymentMethod.GCASH: {
             "title": "Gcash Payment",
-            "description": "Account Initials: M R G.\nAccount Number: 09550333612",
-            "image": "https://raw.githubusercontent.com/KxroAI/whatupmyniggga/c52d0cb1f626fd55d24a6181fd3821c9dd9f1455/IMG_2868.jpeg "
+            "description": "Account Initials: M R G.\nAccount Number: `09550333612`",
+            "image": "https://raw.githubusercontent.com/KxroAI/whatupmyniggga/c52d0cb1f626fd55d24a6181fd3821c9dd9f1455/IMG_2868.jpeg"
         },
         PaymentMethod.PAYMAYA: {
             "title": "PayMaya Payment",
-            "description": "Account Initials: N G.\nAccount Number: 09550333612",
-            "image": "https://raw.githubusercontent.com/KxroAI/whatupmyniggga/refs/heads/main/IMG_2869.jpeg "
+            "description": "Account Initials: N G.\nAccount Number: `09550333612`",
+            "image": "https://raw.githubusercontent.com/KxroAI/whatupmyniggga/refs/heads/main/IMG_2869.jpeg"
         },
         PaymentMethod.GOTYME: {
             "title": "GoTyme Payment",
             "description": "Account Initials: N G.\nAccount Number: HIDDEN",
-            "image": "https://raw.githubusercontent.com/KxroAI/whatupmyniggga/refs/heads/main/IMG_2870.jpeg "
+            "image": "https://raw.githubusercontent.com/KxroAI/whatupmyniggga/refs/heads/main/IMG_2870.jpeg"
         }
     }
 
