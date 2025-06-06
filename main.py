@@ -1002,7 +1002,7 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get Current  and Pending Funds of the 1cy Roblox Group")
+@bot.tree.command(name="groupfunds", description="Get current and pending funds of the 1cy Roblox group (Admin only)")
 async def group_funds(interaction: discord.Interaction):
     # Check if user has Administrator permission
     if not interaction.user.guild_permissions.administrator:
@@ -1048,8 +1048,13 @@ async def group_funds(interaction: discord.Interaction):
         title=f"💰 1cy Group Funds",
         color=discord.Color.blue()
     )
-    embed.add_field(name="Current Balance", value=f"{current_balance:,} R$", inline=False)
-    embed.add_field(name="Pending Funds", value=f"{pending_balance:,} R$" if pending_balance.isdigit() else pending_balance, inline=False)
+    
+    # Safely format values
+    current_value = f"{int(current_balance):,} R$" if current_balance.isdigit() else current_balance
+    pending_value = f"{int(pending_balance):,} R$" if pending_balance.isdigit() else pending_balance
+
+    embed.add_field(name="Current Balance", value=current_value, inline=False)
+    embed.add_field(name="Pending Funds", value=pending_value, inline=False)
     embed.set_footer(text="Fetched via Roblox Revenue Summary • Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
