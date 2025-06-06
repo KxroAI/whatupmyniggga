@@ -1,5 +1,5 @@
 import discord
-from discord import app_commands, Embed, Interaction
+from discord import app_commands, Embed
 from discord.ext import commands, tasks
 import asyncio
 import requests
