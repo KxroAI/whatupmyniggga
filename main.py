@@ -1,5 +1,5 @@
 import discord
-from discord import app_commands, Embed
+from discord import app_commands, Embed, Interaction
 from discord.ext import commands, tasks
 import asyncio
 import requests
@@ -873,7 +873,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/purge <amount>` - Delete messages (requires mod permissions)  
 - `/calculator <num1> <operation> <num2>` - Perform math operations  
 - `/group` - Show info about the 1cy Roblox group  
-- `/groupfunds` - Show Current and Pending Funds of the 1cy Group 
+- `/groupfunds` - Show Current Funds of the 1cy Group 
 - `/weather <city> [unit]` - Get weather in a city  
 - `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
 - `/announcement <message> <channel>` - Send an embedded announcement
@@ -1002,18 +1002,19 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get current and pending funds of the 1cy Roblox group (Admin only)")
-async def group_funds(interaction: discord.Interaction):
-    # Check if user has Administrator permission
+@bot.tree.command(name="groupfunds", description="Get Current Funds of the 1cy Roblox Group")
+@app_commands.guild_only()
+async def group_funds(interaction: Interaction):
+    # Check for Administrator permission
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     await interaction.response.defer()
 
-    group_id = 5838002  # ← Hardcoded Group ID
+    group_id = 5838002
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-    
+
     if not ROBLOX_COOKIE:
         await interaction.followup.send("❌ Missing `.ROBLOSECURITY` cookie in environment.")
         return
@@ -1024,7 +1025,6 @@ async def group_funds(interaction: discord.Interaction):
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        # Fetch revenue summary page
         url = f"https://www.roblox.com/communities/configure?id={group_id}#!/revenue/summary"  
         async with session.get(url) as resp:
             if resp.status != 200:
@@ -1033,32 +1033,26 @@ async def group_funds(interaction: discord.Interaction):
                     error_msg = "Forbidden: Account does not have permission to view group funds."
                 await interaction.followup.send(f"❌ Failed to fetch group funds: `{error_msg}`")
                 return
+
             html = await resp.text()
 
         # Extract current balance using regex
-        current_match = re.search(r'"BalanceAmount"[^>]*>([\d,]+)', html)
-        current_balance = current_match.group(1).replace(',', '') if current_match else "Unknown"
-
-        # Extract pending balance
-        pending_match = re.search(r'"PendingAmount"[^>]*>([\d,]+)', html)
-        pending_balance = pending_match.group(1).replace(',', '') if pending_match else "Unknown"
+        balance_match = re.search(r'"BalanceAmount"[^>]*>([\d,]+)', html)
+        current_balance = balance_match.group(1).replace(',', '') if balance_match else "Unknown"
 
     # Format response
     embed = Embed(
-        title=f"💰 1cy Group Funds",
+        title="💰 1cy Group Funds",
         color=discord.Color.blue()
     )
-    
-    # Safely format values
-    current_value = f"{int(current_balance):,} R$" if current_balance.isdigit() else current_balance
-    pending_value = f"{int(pending_balance):,} R$" if pending_balance.isdigit() else pending_balance
 
-    embed.add_field(name="Current Balance", value=current_value, inline=False)
-    embed.add_field(name="Pending Funds", value=pending_value, inline=False)
-    embed.set_footer(text="Fetched via Roblox Revenue Summary • Neroniel")
+    value = f"{int(current_balance):,} R$" if current_balance.isdigit() else current_balance
+    embed.add_field(name="Current Balance", value=value, inline=False)
+    embed.set_footer(text="Fetched via Roblox Revenue Summary | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
+
 
 # ===========================
 # Bot Events
@@ -1100,6 +1094,10 @@ async def on_message(message):
     elif content == "hi":
         reply = (
             "hi tapos ano? magiging friends tayo? lagi tayong mag-uusap mula umaga hanggang madaling araw? tas magiging close tayo? sa sobrang close natin nahuhulog na tayo sa isa't isa, tapos ano? liligawan mo ko? sasagutin naman kita. paplanuhin natin yung pangarap natin sa isa't isa tapos ano? may makikita kang iba. magsasawa ka na, iiwan mo na ako. tapos magmamakaawa ako sayo kasi mahal kita pero ano? wala kang gagawin, hahayaan mo lang akong umiiyak while begging you to stay. kaya wag na lang. thanks nalang sa hi mo"
+        )
+        elif content == "hello":
+        reply = (
+            "hello, baby"
         )
         await message.channel.send(reply)
     auto_react_channels = [
