@@ -1000,15 +1000,14 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get current and pending funds of the 1cy Roblox group (Admin only)")
 async def group_funds(interaction: discord.Interaction):
-    # Check if user has Administrator permission
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     await interaction.response.defer()
 
+    group_id = 5838002
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE:
         await interaction.followup.send("❌ Missing `.ROBLOSECURITY` cookie in environment.")
@@ -1019,39 +1018,24 @@ async def group_funds(interaction: discord.Interaction):
         "User-Agent": "Mozilla/5.0"
     }
 
-    group_id = 5838002  # ← Hardcoded Group ID
-
     async with aiohttp.ClientSession(headers=headers) as session:
-        # Get current funds
-        currency_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"  
+        # Fetch current funds
+        currency_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency" 
         async with session.get(currency_url) as resp:
             if resp.status != 200:
-                error_data = await resp.json()
-                error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
+                try:
+                    error_data = await resp.json()
+                    error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
+                except:
+                    error_msg = "Unknown error"
                 await interaction.followup.send(f"❌ Failed to fetch current funds: `{error_msg}`")
                 return
             currency_data = await resp.json()
             robux = currency_data.get("robux", 0)
 
-        # Try to get pending funds via transaction summary
-        transactions_url = f"https://www.roblox.com/groups/{group_id}/transactions#!/tab:money"  
-        async with session.get(transactions_url) as t_resp:
-            if t_resp.status != 200:
-                pending_robux = "Unknown"
-            else:
-                html = await t_resp.text()
-                try:
-                    start_tag = 'data-transaction-summary="'
-                    end_tag = '" data-group-owner='
-                    start_idx = html.find(start_tag) + len(start_tag)
-                    end_idx = html.find(end_tag, start_idx)
-                    json_str = html[start_idx:end_idx]
-                    transaction_data = json.loads(json_str.replace('&quot;', '"'))
-                    pending_robux = transaction_data.get("PendingRobux", "Unknown")
-                except Exception:
-                    pending_robux = "Unknown"
+        # Fetch pending funds
+        pending_robux = await get_pending_robux(group_id, session)
 
-    # Format response
     embed = discord.Embed(
         title=f"💰 1cy Group Funds",
         color=discord.Color.blue()
