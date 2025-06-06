@@ -18,6 +18,7 @@ from langdetect import detect, LangDetectException
 from enum import Enum
 import aiohttp
 import json
+import re
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -872,6 +873,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/purge <amount>` - Delete messages (requires mod permissions)  
 - `/calculator <num1> <operation> <num2>` - Perform math operations  
 - `/group` - Show info about the 1cy Roblox group  
+- `/groupfunds` - Show Current and Pending Funds of the 1cy Group 
 - `/weather <city> [unit]` - Get weather in a city  
 - `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
 - `/announcement <message> <channel>` - Send an embedded announcement
@@ -1000,7 +1002,7 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get current and pending funds of the 1cy Roblox group (Admin only)")
+@bot.tree.command(name="groupfunds", description="Get Current  and Pending Funds of the 1cy Roblox Group")
 async def group_funds(interaction: discord.Interaction):
     # Check if user has Administrator permission
     if not interaction.user.guild_permissions.administrator:
@@ -1022,55 +1024,36 @@ async def group_funds(interaction: discord.Interaction):
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        # Get current funds
-        currency_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"  
-        async with session.get(currency_url) as resp:
+        # Fetch revenue summary page
+        url = f"https://www.roblox.com/communities/configure?id={group_id}#!/revenue/summary"  
+        async with session.get(url) as resp:
             if resp.status != 200:
-                try:
-                    error_data = await resp.json()
-                    error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
-                except:
-                    error_msg = "Unknown error"
-                if resp.status == 401:
-                    await interaction.followup.send("❌ Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie.")
-                elif resp.status == 403:
-                    await interaction.followup.send("❌ Forbidden: Account does not have permission to view group funds.")
-                else:
-                    await interaction.followup.send(f"❌ Failed to fetch current funds: `{error_msg}`")
+                error_msg = f"HTTP {resp.status}"
+                if resp.status == 403:
+                    error_msg = "Forbidden: Account does not have permission to view group funds."
+                await interaction.followup.send(f"❌ Failed to fetch group funds: `{error_msg}`")
                 return
-            currency_data = await resp.json()
-            robux = currency_data.get("robux", 0)
+            html = await resp.text()
 
-        # Try to get pending funds via transaction summary
-        transactions_url = f"https://www.roblox.com/groups/{group_id}/transactions#!/tab:money"  
-        async with session.get(transactions_url) as t_resp:
-            if t_resp.status != 200:
-                pending_robux = "Unknown"
-            else:
-                html = await t_resp.text()
-                try:
-                    start_tag = 'data-transaction-summary="'
-                    end_tag = '" data-group-owner='
-                    start_idx = html.find(start_tag) + len(start_tag)
-                    end_idx = html.find(end_tag, start_idx)
-                    json_str = html[start_idx:end_idx]
-                    transaction_data = json.loads(json_str.replace('&quot;', '"'))
-                    pending_robux = transaction_data.get("PendingRobux", "Unknown")
-                except Exception:
-                    pending_robux = "Unknown"
+        # Extract current balance using regex
+        current_match = re.search(r'"BalanceAmount"[^>]*>([\d,]+)', html)
+        current_balance = current_match.group(1).replace(',', '') if current_match else "Unknown"
+
+        # Extract pending balance
+        pending_match = re.search(r'"PendingAmount"[^>]*>([\d,]+)', html)
+        pending_balance = pending_match.group(1).replace(',', '') if pending_match else "Unknown"
 
     # Format response
-    embed = discord.Embed(
+    embed = Embed(
         title=f"💰 1cy Group Funds",
         color=discord.Color.blue()
     )
-    embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
-    embed.add_field(name="Pending Funds", value=f"{pending_robux:,} R$" if isinstance(pending_robux, int) else pending_robux, inline=False)
-    embed.set_footer(text="Fetched via Roblox API • Neroniel")
+    embed.add_field(name="Current Balance", value=f"{current_balance:,} R$", inline=False)
+    embed.add_field(name="Pending Funds", value=f"{pending_balance:,} R$" if pending_balance.isdigit() else pending_balance, inline=False)
+    embed.set_footer(text="Fetched via Roblox Revenue Summary • Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
-
 
 # ===========================
 # Bot Events
