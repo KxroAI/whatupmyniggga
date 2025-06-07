@@ -19,6 +19,8 @@ from enum import Enum
 import aiohttp
 import json
 from dateutil.parser import isoparse
+from typing import Optional, Tuple, Dict, Any
+from urllib.parse import quote
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -1091,6 +1093,131 @@ async def gamepass(interaction: discord.Interaction, id: int):
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
+
+# ========== Check Command ==========
+@bot.tree.command(name="check", description="Check Roblox account details from a .ROBLOSECURITY cookie")
+@app_commands.describe(cookie="Your .ROBLOSECURITY cookie")
+async def check(interaction: discord.Interaction, cookie: str):
+    await interaction.response.defer(ephemeral=True)
+    session_cookie = cookie.strip()
+
+    try:
+        user_data = await get_roblox_userinfo(session_cookie)
+        embed = create_embed(user_data)
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        await interaction.followup.send("❌ Invalid cookie or error fetching data.", ephemeral=True)
+
+
+async def get_roblox_userinfo(cookie: str) -> dict:
+    headers = {
+        "Cookie": f".ROBLOSECURITY={cookie}",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        # Get User Info
+        async with session.get("https://www.roblox.com/mobileapi/userinfo")   as resp:
+            if resp.status != 200:
+                raise ValueError("Failed to fetch user info.")
+            user_info = await resp.json()
+
+        # Get Credit Balance
+        async with session.get("https://billing.roblox.com/v1/credit")   as resp:
+            credit = await resp.json()
+            user_info["CreditBalance"] = credit.get("balance", 0)
+
+        # Get Pin Info
+        async with session.get("https://auth.roblox.com/v1/account/pin")   as resp:
+            pin_info = await resp.json()
+            user_info["PinEnabled"] = pin_info.get("isEnabled", False)
+
+        # Get Privacy Settings (Phone Verified)
+        async with session.get("https://accountsettings.roblox.com/v1/privacy")   as resp:
+            privacy = await resp.json()
+            user_info["PhoneVerified"] = privacy.get("phoneDiscovery", "") == "AllUsers"
+
+        # Get Email Verification
+        async with session.get("https://web.roblox.com/my/settings/json")   as resp:
+            settings = await resp.json()
+            user_info["EmailVerified"] = settings.get("IsEmailVerified", False)
+
+        # Get Primary Group
+        user_id = user_info["UserID"]
+        group_url = f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role"  
+        async with session.get(group_url) as resp:
+            if resp.status == 200:
+                group_data = await resp.json()
+                user_info["PrimaryGroup"] = group_data.get("group", None)
+            else:
+                user_info["PrimaryGroup"] = None
+
+        # Get Inventory Access
+        inv_url = f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory"  
+        async with session.get(inv_url) as resp:
+            inv_access = await resp.json()
+            user_info["CanViewInventory"] = inv_access.get("canView", False)
+
+        # Get Total RAP
+        user_info["RAP"] = await get_total_rap(user_id, session)
+
+        return user_info
+
+
+async def get_total_rap(user_id: int, session: aiohttp.ClientSession) -> int:
+    rap_total = 0
+    cursor = None
+    while True:
+        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?sortOrder=Asc&limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                break
+            data = await resp.json()
+            for item in data.get("data", []):
+                rap_total += item.get("recentAveragePrice", 0)
+            cursor = data.get("nextPageCursor")
+            if not cursor:
+                break
+    return rap_total
+
+
+def create_embed(data: dict) -> discord.Embed:
+    embed = discord.Embed(
+        title="🧾 Roblox Account Information",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(PH_TIMEZONE)
+    )
+    embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={data['UserID']}&width=420&height=420&format=png")
+
+    embed.add_field(name="Username", value=data["UserName"], inline=True)
+    embed.add_field(name="User ID", value=str(data["UserID"]), inline=True)
+    embed.add_field(name="About", value=f"```\n{data.get('description', 'No Description')}\n```", inline=False)
+
+    embed.add_field(name="Robux", value=str(data["RobuxBalance"]), inline=True)
+    embed.add_field(name="RAP", value=str(data["RAP"]), inline=True)
+    embed.add_field(name="Credit", value=f"{data.get('CreditBalance', 0)} R$", inline=True)
+
+    embed.add_field(name="Premium", value="✅ Yes" if data["IsPremium"] else "❌ No", inline=True)
+    embed.add_field(name="Email Verified", value="✅ Yes" if data["EmailVerified"] else "❌ No", inline=True)
+    embed.add_field(name="Phone Verified", value="✅ Yes" if data["PhoneVerified"] else "❌ No", inline=True)
+
+    embed.add_field(name="PIN Enabled", value="✅ Yes" if data["PinEnabled"] else "❌ No", inline=True)
+    embed.add_field(name="Inventory", value="[View](https://www.roblox.com/users/{}/inventory/)".format(data["UserID"]) if data["CanViewInventory"] else "Private", inline=True)
+    embed.add_field(name="Rolimon's Profile", value=f"[Link](https://www.rolimons.com/player/{data['UserID']})", inline=True)
+
+    primary_group = data["PrimaryGroup"]
+    if primary_group:
+        group_name = primary_group.get("name", "Unknown")
+        group_id = primary_group.get("id", 0)
+        embed.add_field(name="Primary Group", value=f"[{group_name}](https://www.roblox.com/groups/{group_id})", inline=True)
+    else:
+        embed.add_field(name="Primary Group", value="None", inline=True)
+
+    return embed 
 
 # ===========================
 # Bot Events
