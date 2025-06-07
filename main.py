@@ -19,8 +19,6 @@ from enum import Enum
 import aiohttp
 import json
 from dateutil.parser import isoparse
-from typing import Optional, Tuple, Dict, Any
-from urllib.parse import quote
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -887,11 +885,9 @@ async def listallcommands(interaction: discord.Interaction):
         name="🛠️ Utility Tools",
         value="""
 - `/userinfo [user]` - View detailed info about a user  
-- `/purge <amount>` - Delete messages (requires mod permissions)  
-- `/calculator <num1> <operation> <num2>` - Perform math operations  
+- `/purge <amount>` - Delete messages (requires mod permissions)    
 - `/group` - Show info about the 1cy Roblox Group  
 - `/groupfunds` - Show Current Funds of the 1cy Group 
-- `/weather <city> [unit]` - Get weather in a city  
 - `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
 - `/announcement <message> <channel>` - Send an embedded announcement
 - `/gamepass <id>` - Show a link to a Roblox Gamepass using its ID
@@ -915,6 +911,9 @@ async def listallcommands(interaction: discord.Interaction):
         value="""
 - `/donate <user> <amount>` - Donate Robux to someone
 - `/say <message>` - Make the bot say something
+- `/avatar [user]` - Display a user's profile picture
+- `/calculator <num1> <operation> <num2>` - Perform math operations
+- `/weather <city> [unit]` - Get weather in a city  
         """,
         inline=False
     )
@@ -1094,163 +1093,26 @@ async def gamepass(interaction: discord.Interaction, id: int):
 
     await interaction.response.send_message(embed=embed)
 
-# ========== Check Command ==========
-@bot.tree.command(name="check", description="Check Roblox account details from a .ROBLOSECURITY cookie")
-@app_commands.describe(cookie="Your .ROBLOSECURITY cookie")
-async def check(interaction: discord.Interaction, cookie: str):
-    await interaction.response.defer(ephemeral=True)
-    session_cookie = cookie.strip()
-    try:
-        user_data = await get_roblox_userinfo(session_cookie)
-        embed = create_embed(user_data)
-        await interaction.followup.send(embed=embed)
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        await interaction.followup.send("❌ Invalid cookie or error fetching data.", ephemeral=True)
+# ========== Avatar Command ==========
+@bot.tree.command(name="avatar", description="Display the profile picture of a user")
+@app_commands.describe(user="The user whose avatar to show (defaults to you)")
+async def avatar(interaction: discord.Interaction, user: discord.User = None):
+    if user is None:
+        user = interaction.user
+    
+    avatar_url = user.display_avatar.url  # Gets the animated URL if applicable
 
-
-async def get_csrf_token(session: aiohttp.ClientSession) -> str:
-    async with session.post("https://auth.roblox.com/v2/logout")  as resp:
-        return resp.headers.get("x-csrf-token", "")
-
-
-async def get_roblox_userinfo(cookie: str) -> dict:
-    headers = {
-        "Cookie": f".ROBLOSECURITY={cookie}",
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    async with aiohttp.ClientSession(headers=headers) as session:
-        # Get CSRF Token
-        csrf_token = await get_csrf_token(session)
-        if csrf_token:
-            headers["x-csrf-token"] = csrf_token
-
-        # Get User Info
-        async with session.get("https://users.roblox.com/v1/users/authenticated")  as resp:
-            if resp.status != 200:
-                raise ValueError("Failed to fetch user info.")
-            user_info = await resp.json()
-
-        user_id = user_info["id"]
-
-        # Get Robux Balance
-        async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")  as resp:
-            if resp.status == 200:
-                econ_data = await resp.json()
-                user_info["RobuxBalance"] = econ_data.get("robux", 0)
-            else:
-                user_info["RobuxBalance"] = 0
-
-        # Get Premium Status
-        async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership")  as resp:
-            if resp.status == 200:
-                user_info["IsPremium"] = await resp.text() == "true"
-            else:
-                user_info["IsPremium"] = False
-
-        # Get Credit Balance
-        async with session.get("https://billing.roblox.com/v1/credit",  headers=headers) as resp:
-            if resp.status == 200:
-                credit = await resp.json()
-                user_info["CreditBalance"] = credit.get("balance", 0)
-            else:
-                user_info["CreditBalance"] = 0
-
-        # Get Pin Info
-        async with session.get("https://auth.roblox.com/v1/account/pin",  headers=headers) as resp:
-            if resp.status == 200:
-                pin_info = await resp.json()
-                user_info["PinEnabled"] = pin_info.get("isEnabled", False)
-            else:
-                user_info["PinEnabled"] = False
-
-        # Get Email Verification
-        async with session.get("https://accountinformation.roblox.com/v1/email",  headers=headers) as resp:
-            if resp.status == 200:
-                email_info = await resp.json()
-                user_info["EmailVerified"] = email_info.get("verified", False)
-            else:
-                user_info["EmailVerified"] = False
-
-        # Get Phone Verification
-        async with session.get("https://accountinformation.roblox.com/v1/phone",  headers=headers) as resp:
-            if resp.status == 200:
-                phone_info = await resp.json()
-                user_info["PhoneVerified"] = phone_info.get("isVerified", False)
-            else:
-                user_info["PhoneVerified"] = False
-
-        # Get Primary Group
-        group_url = f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role" 
-        async with session.get(group_url, headers=headers) as resp:
-            if resp.status == 200:
-                group_data = await resp.json()
-                user_info["PrimaryGroup"] = group_data.get("group", None)
-            else:
-                user_info["PrimaryGroup"] = None
-
-        # Get Inventory Access
-        inv_url = f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory" 
-        async with session.get(inv_url, headers=headers) as resp:
-            if resp.status == 200:
-                inv_access = await resp.json()
-                user_info["CanViewInventory"] = inv_access.get("canView", False)
-            else:
-                user_info["CanViewInventory"] = False
-
-        # Get Total RAP
-        user_info["RAP"] = await get_total_rap(user_id, session)
-
-        return user_info
-
-
-async def get_total_rap(user_id: int, session: aiohttp.ClientSession) -> int:
-    rap_total = 0
-    cursor = None
-    while True:
-        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?sortOrder=Asc&limit=100"
-        if cursor:
-            url += f"&cursor={cursor}"
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                break
-            data = await resp.json()
-            for item in data.get("data", []):
-                rap_total += item.get("recentAveragePrice", 0)
-            cursor = data.get("nextPageCursor")
-            if not cursor:
-                break
-    return rap_total
-
-
-def create_embed(data: dict) -> discord.Embed:
     embed = discord.Embed(
-        title="🧾 Roblox Account Information",
-        color=discord.Color.blue(),
-        timestamp=datetime.now(PH_TIMEZONE)
+        title=f"{user}'s Avatar",
+        color=discord.Color.blue()
     )
-    embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={data['id']}&width=420&height=420&format=png")
-    embed.add_field(name="Username", value=data["name"], inline=True)
-    embed.add_field(name="User ID", value=str(data["id"]), inline=True)
-    embed.add_field(name="Display Name", value=data["displayName"], inline=False)
-    embed.add_field(name="Robux", value=str(data["RobuxBalance"]), inline=True)
-    embed.add_field(name="RAP", value=str(data["RAP"]), inline=True)
-    embed.add_field(name="Credit", value=f"{data.get('CreditBalance', 0)} R$", inline=True)
-    embed.add_field(name="Premium", value="✅ Yes" if data["IsPremium"] else "❌ No", inline=True)
-    embed.add_field(name="Email Verified", value="✅ Yes" if data["EmailVerified"] else "❌ No", inline=True)
-    embed.add_field(name="Phone Verified", value="✅ Yes" if data["PhoneVerified"] else "❌ No", inline=True)
-    embed.add_field(name="PIN Enabled", value="✅ Yes" if data["PinEnabled"] else "❌ No", inline=True)
-    embed.add_field(name="Inventory", value="[View](https://www.roblox.com/users/{}/inventory/)".format(data["id"]) if data["CanViewInventory"] else "Private", inline=True)
-    embed.add_field(name="Rolimon's Profile", value=f"[Link](https://www.rolimons.com/player/{data['id']})", inline=True)
-    primary_group = data["PrimaryGroup"]
-    if primary_group:
-        group_name = primary_group.get("name", "Unknown")
-        group_id = primary_group.get("id", 0)
-        embed.add_field(name="Primary Group", value=f"[{group_name}](https://www.roblox.com/groups/{group_id})", inline=True)
-    else:
-        embed.add_field(name="Primary Group", value="None", inline=True)
-    return embed
+    embed.set_image(url=avatar_url)
+
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
 # ===========================
 # Bot Events
 # ===========================
