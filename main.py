@@ -1100,15 +1100,18 @@ async def gamepass(interaction: discord.Interaction, id: int):
 async def check(interaction: discord.Interaction, cookie: str):
     await interaction.response.defer(ephemeral=True)
     session_cookie = cookie.strip()
-
     try:
         user_data = await get_roblox_userinfo(session_cookie)
         embed = create_embed(user_data)
         await interaction.followup.send(embed=embed)
-
     except Exception as e:
         print(f"[ERROR] {e}")
         await interaction.followup.send("❌ Invalid cookie or error fetching data.", ephemeral=True)
+
+
+async def get_csrf_token(session: aiohttp.ClientSession) -> str:
+    async with session.post("https://auth.roblox.com/v2/logout")  as resp:
+        return resp.headers.get("x-csrf-token", "")
 
 
 async def get_roblox_userinfo(cookie: str) -> dict:
@@ -1118,36 +1121,69 @@ async def get_roblox_userinfo(cookie: str) -> dict:
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
+        # Get CSRF Token
+        csrf_token = await get_csrf_token(session)
+        if csrf_token:
+            headers["x-csrf-token"] = csrf_token
+
         # Get User Info
-        async with session.get("https://www.roblox.com/mobileapi/userinfo")   as resp:
+        async with session.get("https://users.roblox.com/v1/users/authenticated")  as resp:
             if resp.status != 200:
                 raise ValueError("Failed to fetch user info.")
             user_info = await resp.json()
 
+        user_id = user_info["id"]
+
+        # Get Robux Balance
+        async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")  as resp:
+            if resp.status == 200:
+                econ_data = await resp.json()
+                user_info["RobuxBalance"] = econ_data.get("robux", 0)
+            else:
+                user_info["RobuxBalance"] = 0
+
+        # Get Premium Status
+        async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership")  as resp:
+            if resp.status == 200:
+                user_info["IsPremium"] = await resp.text() == "true"
+            else:
+                user_info["IsPremium"] = False
+
         # Get Credit Balance
-        async with session.get("https://billing.roblox.com/v1/credit")   as resp:
-            credit = await resp.json()
-            user_info["CreditBalance"] = credit.get("balance", 0)
+        async with session.get("https://billing.roblox.com/v1/credit",  headers=headers) as resp:
+            if resp.status == 200:
+                credit = await resp.json()
+                user_info["CreditBalance"] = credit.get("balance", 0)
+            else:
+                user_info["CreditBalance"] = 0
 
         # Get Pin Info
-        async with session.get("https://auth.roblox.com/v1/account/pin")   as resp:
-            pin_info = await resp.json()
-            user_info["PinEnabled"] = pin_info.get("isEnabled", False)
-
-        # Get Privacy Settings (Phone Verified)
-        async with session.get("https://accountsettings.roblox.com/v1/privacy")   as resp:
-            privacy = await resp.json()
-            user_info["PhoneVerified"] = privacy.get("phoneDiscovery", "") == "AllUsers"
+        async with session.get("https://auth.roblox.com/v1/account/pin",  headers=headers) as resp:
+            if resp.status == 200:
+                pin_info = await resp.json()
+                user_info["PinEnabled"] = pin_info.get("isEnabled", False)
+            else:
+                user_info["PinEnabled"] = False
 
         # Get Email Verification
-        async with session.get("https://web.roblox.com/my/settings/json")   as resp:
-            settings = await resp.json()
-            user_info["EmailVerified"] = settings.get("IsEmailVerified", False)
+        async with session.get("https://accountinformation.roblox.com/v1/email",  headers=headers) as resp:
+            if resp.status == 200:
+                email_info = await resp.json()
+                user_info["EmailVerified"] = email_info.get("verified", False)
+            else:
+                user_info["EmailVerified"] = False
+
+        # Get Phone Verification
+        async with session.get("https://accountinformation.roblox.com/v1/phone",  headers=headers) as resp:
+            if resp.status == 200:
+                phone_info = await resp.json()
+                user_info["PhoneVerified"] = phone_info.get("isVerified", False)
+            else:
+                user_info["PhoneVerified"] = False
 
         # Get Primary Group
-        user_id = user_info["UserID"]
-        group_url = f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role"  
-        async with session.get(group_url) as resp:
+        group_url = f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role" 
+        async with session.get(group_url, headers=headers) as resp:
             if resp.status == 200:
                 group_data = await resp.json()
                 user_info["PrimaryGroup"] = group_data.get("group", None)
@@ -1155,10 +1191,13 @@ async def get_roblox_userinfo(cookie: str) -> dict:
                 user_info["PrimaryGroup"] = None
 
         # Get Inventory Access
-        inv_url = f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory"  
-        async with session.get(inv_url) as resp:
-            inv_access = await resp.json()
-            user_info["CanViewInventory"] = inv_access.get("canView", False)
+        inv_url = f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory" 
+        async with session.get(inv_url, headers=headers) as resp:
+            if resp.status == 200:
+                inv_access = await resp.json()
+                user_info["CanViewInventory"] = inv_access.get("canView", False)
+            else:
+                user_info["CanViewInventory"] = False
 
         # Get Total RAP
         user_info["RAP"] = await get_total_rap(user_id, session)
@@ -1191,24 +1230,19 @@ def create_embed(data: dict) -> discord.Embed:
         color=discord.Color.blue(),
         timestamp=datetime.now(PH_TIMEZONE)
     )
-    embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={data['UserID']}&width=420&height=420&format=png")
-
-    embed.add_field(name="Username", value=data["UserName"], inline=True)
-    embed.add_field(name="User ID", value=str(data["UserID"]), inline=True)
-    embed.add_field(name="About", value=f"```\n{data.get('description', 'No Description')}\n```", inline=False)
-
+    embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={data['id']}&width=420&height=420&format=png")
+    embed.add_field(name="Username", value=data["name"], inline=True)
+    embed.add_field(name="User ID", value=str(data["id"]), inline=True)
+    embed.add_field(name="Display Name", value=data["displayName"], inline=False)
     embed.add_field(name="Robux", value=str(data["RobuxBalance"]), inline=True)
     embed.add_field(name="RAP", value=str(data["RAP"]), inline=True)
     embed.add_field(name="Credit", value=f"{data.get('CreditBalance', 0)} R$", inline=True)
-
     embed.add_field(name="Premium", value="✅ Yes" if data["IsPremium"] else "❌ No", inline=True)
     embed.add_field(name="Email Verified", value="✅ Yes" if data["EmailVerified"] else "❌ No", inline=True)
     embed.add_field(name="Phone Verified", value="✅ Yes" if data["PhoneVerified"] else "❌ No", inline=True)
-
     embed.add_field(name="PIN Enabled", value="✅ Yes" if data["PinEnabled"] else "❌ No", inline=True)
-    embed.add_field(name="Inventory", value="[View](https://www.roblox.com/users/{}/inventory/)".format(data["UserID"]) if data["CanViewInventory"] else "Private", inline=True)
-    embed.add_field(name="Rolimon's Profile", value=f"[Link](https://www.rolimons.com/player/{data['UserID']})", inline=True)
-
+    embed.add_field(name="Inventory", value="[View](https://www.roblox.com/users/{}/inventory/)".format(data["id"]) if data["CanViewInventory"] else "Private", inline=True)
+    embed.add_field(name="Rolimon's Profile", value=f"[Link](https://www.rolimons.com/player/{data['id']})", inline=True)
     primary_group = data["PrimaryGroup"]
     if primary_group:
         group_name = primary_group.get("name", "Unknown")
@@ -1216,9 +1250,7 @@ def create_embed(data: dict) -> discord.Embed:
         embed.add_field(name="Primary Group", value=f"[{group_name}](https://www.roblox.com/groups/{group_id})", inline=True)
     else:
         embed.add_field(name="Primary Group", value="None", inline=True)
-
-    return embed 
-
+    return embed
 # ===========================
 # Bot Events
 # ===========================
