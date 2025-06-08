@@ -852,7 +852,7 @@ async def listallcommands(interaction: discord.Interaction):
         description="A categorized list of all commands for easy navigation.",
         color=discord.Color.from_rgb(0, 0, 0)  # Black
     )
-
+    
     # 🤖 AI Assistant
     embed.add_field(
         name="🤖 AI Assistant",
@@ -876,6 +876,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/ct <robux>` - Convert Robux to PHP at CT rate (₱340/1k)
 - `/ctreverse <php>` - Convert PHP to Robux at CT rate
 - `/convertcurrency <amount> <from> <to>` - Convert between currencies
+- `/devex [usd/robux] <amount>` - Convert USD ↔ Robux using DevEx rate
         """,
         inline=False
     )
@@ -888,9 +889,9 @@ async def listallcommands(interaction: discord.Interaction):
 - `/purge <amount>` - Delete messages (requires mod permissions)    
 - `/group` - Show info about the 1cy Roblox Group  
 - `/groupfunds` - Show Current Funds of the 1cy Group 
-- `/payment <method>` - Show payment instructions for GCash, PayMaya, or GoTyme
 - `/announcement <message> <channel>` - Send an embedded announcement
 - `/gamepass <id>` - Show a link to a Roblox Gamepass using its ID
+- `/avatar [user]` - Display a user's profile picture
         """,
         inline=False
     )
@@ -911,7 +912,6 @@ async def listallcommands(interaction: discord.Interaction):
         value="""
 - `/donate <user> <amount>` - Donate Robux to someone
 - `/say <message>` - Make the bot say something
-- `/avatar [user]` - Display a user's profile picture
 - `/calculator <num1> <operation> <num2>` - Perform math operations
 - `/weather <city> [unit]` - Get weather in a city  
         """,
@@ -926,6 +926,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/dmall <message>` - Send a direct message to all members in the server
 - `/invite` - Get the invite link for the bot  
 - `/status` - Show how many servers the bot is in and total user count
+- `/payment <method>` - Show payment instructions (Gcash/PayMaya/GoTyme)
         """,
         inline=False
     )
@@ -933,7 +934,6 @@ async def listallcommands(interaction: discord.Interaction):
     # Footer
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     await interaction.response.send_message(embed=embed)
 
 
@@ -1108,6 +1108,52 @@ async def avatar(interaction: discord.Interaction, user: discord.User = None):
     )
     embed.set_image(url=avatar_url)
 
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+# ========== Devex Command ==========
+@bot.tree.command(name="devex", description="Convert between Robux and USD using the current DevEx rate")
+@app_commands.describe(
+    conversion_type="Choose the type of value you're entering",
+    amount="The amount of Robux or USD to convert"
+)
+@app_commands.choices(conversion_type=[
+    app_commands.Choice(name="Robux to USD", value="robux"),
+    app_commands.Choice(name="USD to Robux", value="usd")
+])
+async def devex(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+    if amount <= 0:
+        await interaction.response.send_message("❗ Please enter a positive amount.", ephemeral=True)
+        return
+
+    devex_rate = 0.0035  # $0.0035 per Robux
+
+    if conversion_type.value == "robux":
+        robux = amount
+        usd = robux * devex_rate
+        embed = discord.Embed(
+            title="💎 DevEx Conversion: Robux → USD",
+            description=f"Converting **{robux} Robux** at the rate of **$0.0035/Robux**:",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Total USD Value", value=f"**${usd:.4f} USD**", inline=False)
+    else:
+        usd = amount
+        robux = usd / devex_rate
+        embed = discord.Embed(
+            title="💎 DevEx Conversion: USD → Robux",
+            description=f"Converting **${usd:.4f} USD** at the rate of **$0.0035/Robux**:",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Total Robux Value", value=f"**{int(robux)} Robux**", inline=False)
+
+    embed.add_field(
+        name="Note",
+        value="This is an estimate based on the current DevEx rate. Actual payout may vary.",
+        inline=False
+    )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
