@@ -2,9 +2,8 @@ import discord
 from discord import Embed, app_commands, Interaction
 from discord.ext import commands, tasks
 import asyncio
-import aiohttp
-import os
 import requests
+import os
 import threading
 import math
 import random
@@ -16,9 +15,10 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
+from enum import Enum
+import aiohttp
 import json
 from dateutil.parser import isoparse
-from enum import Enum
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
