@@ -19,7 +19,7 @@ from enum import Enum
 import aiohttp
 import json
 from dateutil.parser import isoparse
-from aiohttp import TCPConnector, Resolver
+from aiohttp.resolver import AsyncResolver
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -1244,11 +1244,9 @@ async def rs(
     place_id: int = None,
     archive: bool = False
 ):
-    # Defer response immediately
     if not interaction.response.is_done():
         await interaction.response.defer()
 
-    # Extract asset ID from input
     try:
         if asset_identification.isdigit():
             asset_id = int(asset_identification)
@@ -1269,9 +1267,8 @@ async def rs(
         headers["Cookie"] = ROBLOX_COOKIE
     headers["User-Agent"] = "Mozilla/5.0"
 
-    # Use Google DNS resolver
-    resolver = Resolver(nameservers=["8.8.8.8", "8.8.4.4"])
-    connector = TCPConnector(resolver=resolver, ssl=False)
+    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
@@ -1300,7 +1297,6 @@ async def rs(
             f"**Price:** {price}\n"
             f"**Description:** {description[:200]}..."
         )
-
     elif retrieve_as.value == RetrieveAsChoice.DOWNLOAD:
         download_link = f"https://www.roblox.com/library/{asset_id}"
         if place_id:
@@ -1312,12 +1308,10 @@ async def rs(
         )
         embed.set_footer(text="Some assets may require login or purchase.")
         await interaction.followup.send(embed=embed)
-
     elif retrieve_as.value == RetrieveAsChoice.JSON:
         embed = discord.Embed(title=f"🧾 Raw Metadata for {asset_id}", color=discord.Color.purple())
         embed.description = "```json\n" + json.dumps(metadata, indent=2)[:4096] + "\n```"
         await interaction.followup.send(embed=embed)
-
     elif retrieve_as.value == RetrieveAsChoice.PREVIEW:
         embed = discord.Embed(title=name, description=description[:2048], color=discord.Color.blue())
         embed.add_field(name="Asset ID", value=str(asset_id), inline=True)
@@ -1328,7 +1322,6 @@ async def rs(
         embed.set_footer(text="Neroniel • Roblox Asset Info")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.followup.send(embed=embed)
-
 
 @bot.tree.command(name="download_asset", description="Download a Roblox asset file (.rbxm, .mesh, etc.)")
 @app_commands.describe(
@@ -1345,7 +1338,6 @@ async def rs(
     app_commands.Choice(name="Decal", value="decal"),
 ])
 async def download_asset(interaction: discord.Interaction, asset_id: int, asset_type: str, version: int = None):
-    # Defer response immediately to prevent timeout
     if not interaction.response.is_done():
         await interaction.response.defer(ephemeral=True)
 
@@ -1363,9 +1355,8 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
     if version:
         base_url += f"&version={version}"
 
-    # Use Google DNS resolver 
-    resolver = Resolver(nameservers=["8.8.8.8", "8.8.4.4"])
-    connector = TCPConnector(resolver=resolver, ssl=False)
+    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         async with session.get(base_url, allow_redirects=True) as resp:
@@ -1381,7 +1372,6 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
             content_type = resp.headers.get('Content-Type')
             filename = f"{asset_id}"
 
-            # Determine file extension
             if "x-rbx-model" in content_type or asset_type == "model":
                 filename += ".rbxm"
             elif "x-rbx-mesh" in content_type or asset_type == "mesh":
@@ -1395,7 +1385,6 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
             else:
                 filename += ".unknown"
 
-            # Save file temporarily
             temp_path = f"./downloads/{filename}"
             os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 
@@ -1406,14 +1395,12 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
                         break
                     f.write(chunk)
 
-            # Send file back to user via DM
             try:
                 await interaction.user.send(file=discord.File(temp_path))
                 await interaction.followup.send("📥 File sent via DM!", ephemeral=True)
             except discord.Forbidden:
                 await interaction.followup.send("❌ Could not send DM. Please enable DMs from this server.", ephemeral=True)
 
-            # Clean up file after sending
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
