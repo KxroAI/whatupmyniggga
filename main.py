@@ -1232,23 +1232,22 @@ class AssetType(Enum):
     archive="Include archived versions?"
 )
 @app_commands.choices(retrieve_as=[
-    app_commands.Choice(name="Info Only", value=RetrieveAsChoice.INFO),
-    app_commands.Choice(name="Download Link", value=RetrieveAsChoice.DOWNLOAD),
-    app_commands.Choice(name="Raw JSON", value=RetrieveAsChoice.JSON),
-    app_commands.Choice(name="Preview Embed", value=RetrieveAsChoice.PREVIEW),
+    app_commands.Choice(name="Info Only", value="info"),
+    app_commands.Choice(name="Download Link", value="download"),
+    app_commands.Choice(name="Raw JSON", value="json"),
+    app_commands.Choice(name="Preview Embed", value="preview"),
 ])
 async def rs(
     interaction: discord.Interaction,
     asset_identification: str,
     asset_version: int = None,
-    retrieve_as: app_commands.Choice[str] = RetrieveAsChoice.INFO,
+    retrieve_as: app_commands.Choice[str] = app_commands.Choice(name="Info Only", value="info"),
     place_id: int = None,
     archive: bool = False
 ):
-    if not interaction.response.is_done():
-        await interaction.response.defer()
+    await interaction.response.defer()
 
-    # Extract asset ID from input
+    # Extract asset ID
     try:
         if asset_identification.isdigit():
             asset_id = int(asset_identification)
@@ -1263,18 +1262,22 @@ async def rs(
         await interaction.followup.send(f"❌ Invalid asset ID or URL: {str(e)}")
         return
 
-    headers = {}
+    headers = {"User-Agent": "Mozilla/5.0"}
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
     if ROBLOX_COOKIE:
         headers["Cookie"] = ROBLOX_COOKIE
-    headers["User-Agent"] = "Mozilla/5.0"
 
-    # Use Google's DNS to resolve domain
-    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
+    # Try custom resolver first, fallback to IP if needed
+    try:
+        from aiohttp.resolver import AsyncResolver
+        resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+        connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
+    except Exception:
+        # Fallback to hardcoded IP
+        connector = aiohttp.TCPConnector(hosts={"api.roblox.com": "104.20.193.152"}, ssl=False)
 
+    url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-        url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
@@ -1291,44 +1294,34 @@ async def rs(
             return
 
     name = metadata.get('Name', 'Unknown')
-    description = metadata.get('Description', 'No description.')
     creator = metadata.get('Creator', {}).get('Name', 'Unknown Creator')
     price = metadata.get('PriceInRobux') or "Free"
     asset_type = metadata.get('AssetTypeId', 'Unknown Type')
 
-    if retrieve_as.value == RetrieveAsChoice.INFO:
+    if retrieve_as.value == "info":
         await interaction.followup.send(
-            f"📄 **Asset Info for ID `{asset_id}`**\n"
-            f"**Name:** {name}\n"
+            f"📄 **{name}**\n"
             f"**Type:** {asset_type}\n"
             f"**Creator:** {creator}\n"
-            f"**Price:** {price}\n"
-            f"**Description:** {description[:200]}..."
+            f"**Price:** {price}"
         )
-    elif retrieve_as.value == RetrieveAsChoice.DOWNLOAD:
+    elif retrieve_as.value == "download":
         download_link = f"https://www.roblox.com/library/{asset_id}"
         if place_id:
             download_link += f"?PlaceID={place_id}"
-        embed = discord.Embed(
-            title="📥 Download Ready",
-            description=f"[Click here to download asset `{asset_id}`]({download_link})",
-            color=discord.Color.green()
-        )
-        embed.set_footer(text="Some assets may require login or purchase.")
+        embed = discord.Embed(description=f"[📥 Click here to download asset `{asset_id}`]({download_link})", color=discord.Color.green())
         await interaction.followup.send(embed=embed)
-    elif retrieve_as.value == RetrieveAsChoice.JSON:
-        embed = discord.Embed(title=f"🧾 Raw Metadata for {asset_id}", color=discord.Color.purple())
+    elif retrieve_as.value == "json":
+        embed = discord.Embed(title="🧾 Raw Metadata", color=discord.Color.purple())
         embed.description = "```json\n" + json.dumps(metadata, indent=2)[:4096] + "\n```"
         await interaction.followup.send(embed=embed)
-    elif retrieve_as.value == RetrieveAsChoice.PREVIEW:
-        embed = discord.Embed(title=name, description=description[:2048], color=discord.Color.blue())
+    elif retrieve_as.value == "preview":
+        embed = discord.Embed(title=name, description=metadata.get('Description', 'No description.'), color=discord.Color.blue())
         embed.add_field(name="Asset ID", value=str(asset_id), inline=True)
         embed.add_field(name="Type", value=str(asset_type), inline=True)
         embed.add_field(name="Creator", value=creator, inline=False)
         embed.add_field(name="Price", value=str(price), inline=True)
         embed.set_thumbnail(url=f"https://www.roblox.com/thumbs/asset.ashx?assetId={asset_id}&width=420&height=420")
-        embed.set_footer(text="Neroniel • Roblox Asset Info")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.followup.send(embed=embed)
 
 # ========== /download_asset Command ========== 
