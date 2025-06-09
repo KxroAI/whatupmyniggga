@@ -1159,6 +1159,227 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
 
     await interaction.response.send_message(embed=embed)
 
+# --- Constants for /getasset ---
+ASSET_DELIVERY = "https://assetdelivery-cdn.roblox.com/v1/assetId/" 
+CATALOG_API = "https://catalog.roblox.com/v1/assets/" 
+UNIVERSE_API = "https://games.roblox.com/v1/games/" 
+
+asset_types = {
+    1: 'Image',
+    2: 'T-Shirt',
+    3: 'Audio',
+    4: 'Mesh',
+    5: 'Lua code',
+    8: 'Hat',
+    9: 'Place',
+    10: 'Model',
+    11: 'Shirt',
+    12: 'Pants',
+    13: 'Decal',
+    17: 'Head',
+    18: 'Face',
+    19: 'Gear',
+    21: 'Badge',
+    24: 'Animation',
+    27: 'Torso',
+    28: 'Right Arm',
+    29: 'Left Arm',
+    30: 'Left Leg',
+    31: 'Right Leg',
+    32: 'Package',
+    34: 'GamePass',
+    38: 'Plugin',
+    40: 'Mesh Part',
+    41: 'Hair Accessory',
+    42: 'Face Accessory',
+    43: 'Neck Accessory',
+    44: 'Shoulder Accessory',
+    45: 'Front Accessory',
+    46: 'Back Accessory',
+    47: 'Waist Accessory',
+    48: 'Climb Animation',
+    49: 'Death Animation',
+    50: 'Fall Animation',
+    51: 'Idle Animation',
+    52: 'Jump Animation',
+    53: 'Run Animation',
+    54: 'Swim Animation',
+    55: 'Walk Animation',
+    56: 'Pose Animation',
+    57: 'Ear Accessory',
+    58: 'Eye Accessory',
+    61: 'Emote Animation',
+    63: 'TShirtAccessory',
+    64: 'ShirtAccessory',
+    65: 'PantsAccessory',
+    66: 'JacketAccessory',
+    67: 'SweaterAccessory',
+    68: 'ShortsAccessory',
+    69: 'LeftShoeAccessory',
+    70: 'RightShoeAccessory',
+    71: 'DressSkirtAccessory'
+}
+
+clothing_types = [
+    't-shirt', 'shirt', 'pants', 'face accessory', 'hair accessory',
+    'neck accessory', 'shoulder accessory', 'front accessory',
+    'back accessory', 'waist accessory', 'ear accessory', 'eye accessory',
+    'tshirtaccessory', 'shirtaccessory', 'pantsaccessory', 'jacketaccessory',
+    'sweateraccessory', 'shortsaccessory', 'leftshoeaccessory',
+    'rightshoeaccessory', 'dressskirtaccessory'
+]
+
+def get_type_from_id(type_id):
+    return asset_types.get(int(type_id), "Unknown")
+
+async def get_asset_location(session, asset_id):
+    async with session.get(f"{ASSET_DELIVERY}{asset_id}") as res:
+        if res.status != 200:
+            return None
+        data = await res.json()
+        return data.get("location")
+
+async def get_clothing_asset(location, session):
+    async with session.get(location) as res:
+        if res.status != 200:
+            return None
+        xml = await res.text()
+
+    try:
+        parsed = xmltodict.parse(xml)
+        content_url = parsed["roblox"]["Item"]["Properties"].get("Content", {}).get("url")
+        if content_url:
+            match = re.search(r"id=(\d+)", content_url)
+            if match:
+                texture_id = match.group(1)
+                return await get_asset_location(session, texture_id)
+    except Exception as e:
+        print("XML parse error:", e)
+
+    match = re.search(r'rbxassetid://(\d+)', xml)
+    if match:
+        return await get_asset_location(session, match.group(1))
+    return None
+
+# ===========================
+# /getasset - Fetch Roblox Assets
+# ===========================
+@bot.tree.command(name="getasset", description="Obtain an asset's content, information, and optionally associated assets.")
+@app_commands.describe(
+    asset_id="Asset ID",
+    asset_version="Optional version number",
+    retrieve_as="How to return the asset (file/json/xml)",
+    place_id="Optional game ID",
+    archive="Include dependencies (true/false)"
+)
+async def getasset(
+    interaction: discord.Interaction,
+    asset_id: str,
+    asset_version: str = "",
+    retrieve_as: str = "file",
+    place_id: str = "",
+    archive: str = "false"
+):
+    # Defer response
+    await interaction.response.defer(thinking=True)
+
+    session = aiohttp.ClientSession()
+
+    # Validate asset ID
+    if not asset_id.isdigit():
+        await interaction.followup.send("❌ Invalid asset ID.")
+        return
+
+    asset_id_int = int(asset_id)
+
+    # Fetch asset info
+    async with session.get(f"{CATALOG_API}{asset_id_int}/") as res:
+        if res.status != 200:
+            await interaction.followup.send("❌ Could not find asset.")
+            return
+        asset_info = await res.json()
+
+    asset_type = get_type_from_id(asset_info.get("assetType"))
+    name = asset_info.get("name")
+    description = asset_info.get("description", "No description")
+    creator = asset_info.get("creatorTargetId", "Unknown")
+    creator_name = asset_info.get("creatorName", "Unknown")
+    universe_id = asset_info.get("universeId")
+
+    location = await get_asset_location(session, asset_id_int)
+    if not location:
+        await interaction.followup.send("❌ Could not retrieve asset location.")
+        return
+
+    # Archive Mode: Get Dependencies
+    dependencies = []
+    if archive.lower() == "true":
+        if universe_id:
+            async with session.get(f"{UNIVERSE_API}{universe_id}/assets?assetVersionId={asset_version or ''}") as res:
+                if res.status == 200:
+                    dep_data = await res.json()
+                    dependencies = dep_data.get("assets", [])
+
+    # Handle Retrieval Format
+    if retrieve_as.lower() == "json":
+        response = {
+            "name": name,
+            "asset_id": asset_id_int,
+            "type": asset_type,
+            "creator": {"name": creator_name, "id": creator},
+            "description": description,
+            "location": location,
+            "dependencies": dependencies if archive else None
+        }
+        await interaction.followup.send(f"```json\n{response}\n```")
+        return
+
+    elif retrieve_as.lower() == "xml":
+        async with session.get(location) as res:
+            if res.status != 200:
+                await interaction.followup.send("❌ Could not retrieve asset XML.")
+                return
+            xml_data = await res.text()
+        await interaction.followup.send(f"```xml\n{xml_data}\n```")
+        return
+
+    # Default: Send File + Embed
+    modified_name = re.sub(r'[^\w]', '', name)
+
+    # Image/Clothing assets
+    if any(t in asset_type.lower() for t in clothing_types + ['image', 'decal']):
+        image_loc = await get_clothing_asset(location, session) or location
+        async with session.get(image_loc) as res:
+            if res.status != 200:
+                await interaction.followup.send("❌ Could not retrieve image.")
+                return
+            img_data = await res.read()
+        attachment = discord.File(BytesIO(img_data), filename=f"{modified_name}.png")
+        embed = discord.Embed(title=name, color=discord.Color.dark_gray())
+        embed.set_image(url=f"attachment://{modified_name}.png")
+        await interaction.followup.send(embed=embed, file=attachment)
+
+    # Audio / Video / Other Binary
+    else:
+        async with session.get(location) as res:
+            if res.status != 200:
+                await interaction.followup.send("❌ Could not retrieve file.")
+                return
+            file_data = await res.read()
+        ext = location.split(".")[-1] if "." in location else "rbxm"
+        attachment = discord.File(BytesIO(file_data), filename=f"{modified_name}.{ext}")
+        embed = discord.Embed(
+            title=name,
+            description=f"**Type:** {asset_type}\n**Description:** `{description}`",
+            color=discord.Color.dark_gray()
+        )
+        embed.add_field(name="Creator", value=f"[{creator_name}](https://www.roblox.com/users/{creator})") 
+        embed.add_field(name="Location", value=f"[Download]({location})", inline=False)
+        if archive and dependencies:
+            dep_list = "\n".join([f"`{dep['id']}` - {dep['name']}" for dep in dependencies[:5]])
+            embed.add_field(name="Dependencies", value=dep_list + ("..." if len(dependencies) > 5 else ""), inline=False)
+        await interaction.followup.send(embed=embed, file=attachment)
+
 # ===========================
 # Bot Events
 # ===========================
