@@ -19,7 +19,6 @@ from enum import Enum
 import aiohttp
 import json
 from dateutil.parser import isoparse
-from aiohttp.resolver import AsyncResolver
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -34,7 +33,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
-bot.conveations = defaultdict(list)  # In-memory cache for AI conveation
+bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
 
 # ===========================
@@ -67,8 +66,8 @@ update_thread.start()
 try:
     client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
     db = client.ai_bot
-    conveations_collection = db.conveations
-    reminde_collection = db.reminders
+    conversations_collection = db.conversations
+    reminders_collection = db.reminders
 
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
@@ -1159,221 +1158,6 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
-
-# ===========================
-# Asset Download & Retrieval
-# ===========================
-
-class RetrieveAsChoice(str, Enum):
-    INFO = "info"
-    DOWNLOAD = "download"
-    JSON = "json"
-    PREVIEW = "preview"
-
-class AssetType(Enum):
-    Image = 1
-    TShirt = 2
-    Audio = 3
-    Mesh = 4
-    Hat = 5
-    Place = 6
-    Model = 7
-    Shirt = 8
-    Pants = 9
-    Decal = 10
-    Head = 11
-    Face = 12
-    Gear = 13
-    Animation = 14
-    Arms = 15
-    Legs = 16
-    Torso = 17
-    RightArm = 18
-    LeftArm = 19
-    LeftLeg = 20
-    RightLeg = 21
-    MeshPart = 22
-    HairAccessory = 23
-    FaceAccessory = 24
-    NeckAccessory = 25
-    ShoulderAccessory = 26
-    FrontAccessory = 27
-    BackAccessory = 28
-    WaistAccessory = 29
-    ClimbAnimation = 30
-    DeathAnimation = 31
-    FallAnimation = 32
-    IdleAnimation = 33
-    JumpAnimation = 34
-    RunAnimation = 35
-    SwimAnimation = 36
-    WalkAnimation = 37
-    PoseAnimation = 38
-    EarAccessory = 39
-    EyeAccessory = 40
-    EmoteAnimation = 41
-    TShirtAccessory = 42
-    ShirtAccessory = 43
-    PantsAccessory = 44
-    JacketAccessory = 45
-    SweaterAccessory = 46
-    ShortsAccessory = 47
-    LeftShoeAccessory = 48
-    RightShoeAccessory = 49
-    DressSkirtAccessory = 50
-
-# ========== /rs Command ==========
-@bot.tree.command(name="rs", description="Retrieve Roblox asset metadata")
-@app_commands.describe(
-    asset_id="Roblox asset ID",
-    retrieve_as="How to display result"
-)
-@app_commands.choices(retrieve_as=[
-    app_commands.Choice(name="Info Only", value="info"),
-    app_commands.Choice(name="Download Link", value="download"),
-    app_commands.Choice(name="Raw JSON", value="json"),
-    app_commands.Choice(name="Preview Embed", value="preview"),
-])
-async def rs(interaction: discord.Interaction, asset_id: int, retrieve_as: str = "info"):
-    await interaction.response.defer()
-
-    # Set up headers with cookie if available
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-    headers = {"User-Agent": "Mozilla/5.0"}
-    if ROBLOX_COOKIE:
-        headers["Cookie"] = ROBLOX_COOKIE
-
-    try:
-        # Try resolving via Google DNS first
-        from aiohttp.resolver import AsyncResolver
-        resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-        connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
-    except:
-        # Fallback to hardcoded IP
-        connector = aiohttp.TCPConnector(hosts={"api.roblox.com": "104.20.193.152"}, ssl=False)
-
-    async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-        url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                try:
-                    error_data = await resp.json()
-                    msg = error_data.get("message", "Unknown error")
-                except:
-                    msg = "Access denied or invalid response."
-                await interaction.followup.send(f"❌ Failed to fetch asset metadata: `{msg}`")
-                return
-            metadata = await resp.json()
-
-    name = metadata.get('Name', 'Unknown')
-    creator = metadata.get('Creator', {}).get('Name', 'Unknown Creator')
-    price = metadata.get('PriceInRobux') or "Free"
-    description = metadata.get('Description', 'No description.')
-
-    if retrieve_as == "info":
-        await interaction.followup.send(
-            f"📄 **{name}**\n"
-            f"**Creator:** {creator}\n"
-            f"**Price:** {price}\n"
-            f"**Description:** {description[:200]}..."
-        )
-    elif retrieve_as == "download":
-        download_link = f"https://www.roblox.com/library/{asset_id}"
-        embed = discord.Embed(description=f"[📥 Click here to download]({download_link})", color=discord.Color.green())
-        await interaction.followup.send(embed=embed)
-    elif retrieve_as == "json":
-        embed = discord.Embed(title="🧾 Raw Metadata", color=discord.Color.purple())
-        embed.description = "```json\n" + json.dumps(metadata, indent=2)[:4096] + "\n```"
-        await interaction.followup.send(embed=embed)
-    elif retrieve_as == "preview":
-        embed = discord.Embed(title=name, description=description[:2048], color=discord.Color.blue())
-        embed.add_field(name="Asset ID", value=str(asset_id), inline=True)
-        embed.add_field(name="Type", value=str(metadata.get('AssetTypeId')), inline=True)
-        embed.add_field(name="Creator", value=creator, inline=False)
-        embed.add_field(name="Price", value=str(price), inline=True)
-        embed.set_thumbnail(url=f"https://www.roblox.com/thumbs/asset.ashx?assetId={asset_id}&width=420&height=420")
-        await interaction.followup.send(embed=embed)
-# ========== /download_asset Command ========== 
-@bot.tree.command(name="download_asset", description="Download a Roblox asset file (.rbxm, .mesh, etc.)")
-@app_commands.describe(
-    asset_id="The ID of the Roblox asset",
-    asset_type="Type of asset to determine correct file format",
-    version="Optional version number"
-)
-@app_commands.choices(asset_type=[
-    app_commands.Choice(name="Model", value="model"),
-    app_commands.Choice(name="Mesh", value="mesh"),
-    app_commands.Choice(name="Image", value="image"),
-    app_commands.Choice(name="Audio", value="audio"),
-    app_commands.Choice(name="Animation", value="animation"),
-    app_commands.Choice(name="Decal", value="decal"),
-])
-async def download_asset(interaction: discord.Interaction, asset_id: int, asset_type: str, version: int = None):
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
-
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-    if not ROBLOX_COOKIE:
-        await interaction.followup.send("❌ Missing `.ROBLOSECURITY` cookie in environment.")
-        return
-
-    headers = {
-        "Cookie": ROBLOX_COOKIE,
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    base_url = f"https://assetdelivery.roblox.com/v1/asset?id={asset_id}"
-    if version:
-        base_url += f"&version={version}"
-
-    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
-
-    async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-        async with session.get(base_url, allow_redirects=True) as resp:
-            if resp.status != 200:
-                try:
-                    error_data = await resp.json()
-                    msg = error_data.get("message", "Unknown error")
-                except Exception:
-                    msg = "Access denied or invalid response."
-                await interaction.followup.send(f"❌ Failed to download asset: `{msg}`")
-                return
-
-            content_type = resp.headers.get('Content-Type')
-            filename = f"{asset_id}"
-
-            if "x-rbx-model" in content_type or asset_type == "model":
-                filename += ".rbxm"
-            elif "x-rbx-mesh" in content_type or asset_type == "mesh":
-                filename += ".mesh"
-            elif "image/png" in content_type or asset_type in ["image", "decal"]:
-                filename += ".png"
-            elif "audio/mp3" in content_type or asset_type == "audio":
-                filename += ".mp3"
-            elif "x-rbx-animation" in content_type or asset_type == "animation":
-                filename += ".animation"
-            else:
-                filename += ".unknown"
-
-            temp_path = f"./downloads/{filename}"
-            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-
-            with open(temp_path, 'wb') as f:
-                while True:
-                    chunk = await resp.content.read(64 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-
-            try:
-                await interaction.user.send(file=discord.File(temp_path))
-                await interaction.followup.send("📥 File sent via DM!", ephemeral=True)
-            except discord.Forbidden:
-                await interaction.followup.send("❌ Could not send DM. Please enable DMs from this server.", ephemeral=True)
-
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
 
 # ===========================
 # Bot Events
