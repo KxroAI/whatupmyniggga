@@ -1222,12 +1222,7 @@ class AssetType(Enum):
     RightShoeAccessory = 49
     DressSkirtAccessory = 50
 
-class RetrieveAsChoice(str, Enum):
-    INFO = "info"
-    DOWNLOAD = "download"
-    JSON = "json"
-    PREVIEW = "preview"
-
+# ========== /rs Command ==========
 @bot.tree.command(name="rs", description="Retrieve Roblox asset metadata, info, or download link")
 @app_commands.describe(
     asset_identification="Asset ID or full catalog URL",
@@ -1274,17 +1269,9 @@ async def rs(
         headers["Cookie"] = ROBLOX_COOKIE
     headers["User-Agent"] = "Mozilla/5.0"
 
-    # Fallback IP resolver for Render.com
-    async def get_roblox_ip():
-        try:
-            import socket
-            ip = socket.gethostbyname("api.roblox.com")
-            return ip
-        except:
-            return "104.20.193.152"  # Known IP for api.roblox.com
-
-    roblox_ip = await get_roblox_ip()
-    connector = aiohttp.TCPConnector(hosts={"api.roblox.com": roblox_ip}, ssl=False)
+    # Use Google's DNS to resolve domain
+    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
@@ -1344,7 +1331,7 @@ async def rs(
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.followup.send(embed=embed)
 
-
+# ========== /download_asset Command ========== 
 @bot.tree.command(name="download_asset", description="Download a Roblox asset file (.rbxm, .mesh, etc.)")
 @app_commands.describe(
     asset_id="The ID of the Roblox asset",
@@ -1377,16 +1364,8 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
     if version:
         base_url += f"&version={version}"
 
-    async def get_roblox_ip():
-        try:
-            import socket
-            ip = socket.gethostbyname("assetdelivery.roblox.com")
-            return ip
-        except:
-            return "104.20.193.152"
-
-    roblox_ip = await get_roblox_ip()
-    connector = aiohttp.TCPConnector(hosts={"assetdelivery.roblox.com": roblox_ip}, ssl=False)
+    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         async with session.get(base_url, allow_redirects=True) as resp:
