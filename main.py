@@ -33,7 +33,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
-bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
+bot.conveations = defaultdict(list)  # In-memory cache for AI conveation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
 
 # ===========================
@@ -66,8 +66,8 @@ update_thread.start()
 try:
     client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
     db = client.ai_bot
-    conversations_collection = db.conversations
-    reminders_collection = db.reminders
+    conveations_collection = db.conveations
+    reminde_collection = db.reminders
 
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
@@ -1243,7 +1243,9 @@ async def rs(
     place_id: int = None,
     archive: bool = False
 ):
-    await interaction.response.defer()
+    # Defer response immediately
+    if not interaction.response.is_done():
+        await interaction.response.defer()
 
     # Extract asset ID from input
     try:
@@ -1272,11 +1274,15 @@ async def rs(
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                await interaction.followup.send("❌ Failed to fetch asset metadata.")
-                return
-            metadata = await resp.json()
+        try:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("❌ Failed to fetch asset metadata.")
+                    return
+                metadata = await resp.json()
+        except Exception as e:
+            await interaction.followup.send(f"❌ API request failed: {str(e)}")
+            return
 
     name = metadata.get('Name', 'Unknown')
     description = metadata.get('Description', 'No description.')
@@ -1338,7 +1344,9 @@ async def rs(
     app_commands.Choice(name="Decal", value="decal"),
 ])
 async def download_asset(interaction: discord.Interaction, asset_id: int, asset_type: str, version: int = None):
-    await interaction.response.defer(ephemeral=True)
+    # Defer response immediately to prevent timeout
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
 
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE:
@@ -1405,7 +1413,8 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
                 await interaction.followup.send("❌ Could not send DM. Please enable DMs from this server.", ephemeral=True)
 
             # Clean up file after sending
-            os.remove(temp_path)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
 # ===========================
 # Bot Events
