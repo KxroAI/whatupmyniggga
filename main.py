@@ -1266,7 +1266,11 @@ async def rs(
         headers["Cookie"] = ROBLOX_COOKIE
     headers["User-Agent"] = "Mozilla/5.0"
 
-    async with aiohttp.ClientSession(headers=headers) as session:
+    # Use Google DNS resolver
+    resolver = Resolver(nameservers=["8.8.8.8", "8.8.4.4"])
+    connector = TCPConnector(resolver=resolver, ssl=False)
+
+    async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
         async with session.get(url) as resp:
             if resp.status != 200:
@@ -1318,6 +1322,7 @@ async def rs(
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.followup.send(embed=embed)
 
+
 @bot.tree.command(name="download_asset", description="Download a Roblox asset file (.rbxm, .mesh, etc.)")
 @app_commands.describe(
     asset_id="The ID of the Roblox asset",
@@ -1349,7 +1354,11 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
     if version:
         base_url += f"&version={version}"
 
-    async with aiohttp.ClientSession(headers=headers) as session:
+    # Use Google DNS resolver 
+    resolver = Resolver(nameservers=["8.8.8.8", "8.8.4.4"])
+    connector = TCPConnector(resolver=resolver, ssl=False)
+
+    async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         async with session.get(base_url, allow_redirects=True) as resp:
             if resp.status != 200:
                 try:
@@ -1363,7 +1372,7 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
             content_type = resp.headers.get('Content-Type')
             filename = f"{asset_id}"
 
-            # Determine file extension 
+            # Determine file extension
             if "x-rbx-model" in content_type or asset_type == "model":
                 filename += ".rbxm"
             elif "x-rbx-mesh" in content_type or asset_type == "mesh":
