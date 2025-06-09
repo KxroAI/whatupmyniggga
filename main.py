@@ -19,6 +19,7 @@ from enum import Enum
 import aiohttp
 import json
 from dateutil.parser import isoparse
+from aiohttp import TCPConnector, Resolver
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
