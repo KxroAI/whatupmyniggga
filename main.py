@@ -1222,6 +1222,12 @@ class AssetType(Enum):
     RightShoeAccessory = 49
     DressSkirtAccessory = 50
 
+class RetrieveAsChoice(str, Enum):
+    INFO = "info"
+    DOWNLOAD = "download"
+    JSON = "json"
+    PREVIEW = "preview"
+
 @bot.tree.command(name="rs", description="Retrieve Roblox asset metadata, info, or download link")
 @app_commands.describe(
     asset_identification="Asset ID or full catalog URL",
@@ -1247,6 +1253,7 @@ async def rs(
     if not interaction.response.is_done():
         await interaction.response.defer()
 
+    # Extract asset ID from input
     try:
         if asset_identification.isdigit():
             asset_id = int(asset_identification)
@@ -1267,15 +1274,29 @@ async def rs(
         headers["Cookie"] = ROBLOX_COOKIE
     headers["User-Agent"] = "Mozilla/5.0"
 
-    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
+    # Fallback IP resolver for Render.com
+    async def get_roblox_ip():
+        try:
+            import socket
+            ip = socket.gethostbyname("api.roblox.com")
+            return ip
+        except:
+            return "104.20.193.152"  # Known IP for api.roblox.com
+
+    roblox_ip = await get_roblox_ip()
+    connector = aiohttp.TCPConnector(hosts={"api.roblox.com": roblox_ip}, ssl=False)
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    await interaction.followup.send("❌ Failed to fetch asset metadata.")
+                    try:
+                        error_data = await resp.json()
+                        msg = error_data.get("message", "Unknown error")
+                    except:
+                        msg = "Access denied or invalid response."
+                    await interaction.followup.send(f"❌ Failed to fetch asset metadata: `{msg}`")
                     return
                 metadata = await resp.json()
         except Exception as e:
@@ -1356,8 +1377,16 @@ async def download_asset(interaction: discord.Interaction, asset_id: int, asset_
     if version:
         base_url += f"&version={version}"
 
-    resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-    connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
+    async def get_roblox_ip():
+        try:
+            import socket
+            ip = socket.gethostbyname("assetdelivery.roblox.com")
+            return ip
+        except:
+            return "104.20.193.152"
+
+    roblox_ip = await get_roblox_ip()
+    connector = aiohttp.TCPConnector(hosts={"assetdelivery.roblox.com": roblox_ip}, ssl=False)
 
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         async with session.get(base_url, allow_redirects=True) as resp:
