@@ -1223,13 +1223,10 @@ class AssetType(Enum):
     DressSkirtAccessory = 50
 
 # ========== /rs Command ==========
-@bot.tree.command(name="rs", description="Retrieve Roblox asset metadata, info, or download link")
+@bot.tree.command(name="rs", description="Retrieve Roblox asset metadata")
 @app_commands.describe(
-    asset_identification="Asset ID or full catalog URL",
-    asset_version="Optional version number",
-    retrieve_as="How to display result",
-    place_id="Optional place ID (for place-specific assets)",
-    archive="Include archived versions?"
+    asset_id="Roblox asset ID",
+    retrieve_as="How to display result"
 )
 @app_commands.choices(retrieve_as=[
     app_commands.Choice(name="Info Only", value="info"),
@@ -1237,93 +1234,65 @@ class AssetType(Enum):
     app_commands.Choice(name="Raw JSON", value="json"),
     app_commands.Choice(name="Preview Embed", value="preview"),
 ])
-async def rs(
-    interaction: discord.Interaction,
-    asset_identification: str,
-    asset_version: int = None,
-    retrieve_as: app_commands.Choice[str] = app_commands.Choice(name="Info Only", value="info"),
-    place_id: int = None,
-    archive: bool = False
-):
+async def rs(interaction: discord.Interaction, asset_id: int, retrieve_as: str = "info"):
     await interaction.response.defer()
 
-    # Extract asset ID
-    try:
-        if asset_identification.isdigit():
-            asset_id = int(asset_identification)
-        else:
-            import re
-            match = re.search(r'/(\d+)', asset_identification)
-            if not match:
-                await interaction.followup.send("❌ Could not extract asset ID from URL.")
-                return
-            asset_id = int(match.group(1))
-    except Exception as e:
-        await interaction.followup.send(f"❌ Invalid asset ID or URL: {str(e)}")
-        return
-
-    headers = {"User-Agent": "Mozilla/5.0"}
+    # Set up headers with cookie if available
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+    headers = {"User-Agent": "Mozilla/5.0"}
     if ROBLOX_COOKIE:
         headers["Cookie"] = ROBLOX_COOKIE
 
-    # Try custom resolver first, fallback to IP if needed
     try:
+        # Try resolving via Google DNS first
         from aiohttp.resolver import AsyncResolver
         resolver = AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
         connector = aiohttp.TCPConnector(resolver=resolver, ssl=False)
-    except Exception:
+    except:
         # Fallback to hardcoded IP
         connector = aiohttp.TCPConnector(hosts={"api.roblox.com": "104.20.193.152"}, ssl=False)
 
-    url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-        try:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    try:
-                        error_data = await resp.json()
-                        msg = error_data.get("message", "Unknown error")
-                    except:
-                        msg = "Access denied or invalid response."
-                    await interaction.followup.send(f"❌ Failed to fetch asset metadata: `{msg}`")
-                    return
-                metadata = await resp.json()
-        except Exception as e:
-            await interaction.followup.send(f"❌ API request failed: {str(e)}")
-            return
+        url = f"https://api.roblox.com/Marketplace/ProductInfo?assetId={asset_id}"
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                try:
+                    error_data = await resp.json()
+                    msg = error_data.get("message", "Unknown error")
+                except:
+                    msg = "Access denied or invalid response."
+                await interaction.followup.send(f"❌ Failed to fetch asset metadata: `{msg}`")
+                return
+            metadata = await resp.json()
 
     name = metadata.get('Name', 'Unknown')
     creator = metadata.get('Creator', {}).get('Name', 'Unknown Creator')
     price = metadata.get('PriceInRobux') or "Free"
-    asset_type = metadata.get('AssetTypeId', 'Unknown Type')
+    description = metadata.get('Description', 'No description.')
 
-    if retrieve_as.value == "info":
+    if retrieve_as == "info":
         await interaction.followup.send(
             f"📄 **{name}**\n"
-            f"**Type:** {asset_type}\n"
             f"**Creator:** {creator}\n"
-            f"**Price:** {price}"
+            f"**Price:** {price}\n"
+            f"**Description:** {description[:200]}..."
         )
-    elif retrieve_as.value == "download":
+    elif retrieve_as == "download":
         download_link = f"https://www.roblox.com/library/{asset_id}"
-        if place_id:
-            download_link += f"?PlaceID={place_id}"
-        embed = discord.Embed(description=f"[📥 Click here to download asset `{asset_id}`]({download_link})", color=discord.Color.green())
+        embed = discord.Embed(description=f"[📥 Click here to download]({download_link})", color=discord.Color.green())
         await interaction.followup.send(embed=embed)
-    elif retrieve_as.value == "json":
+    elif retrieve_as == "json":
         embed = discord.Embed(title="🧾 Raw Metadata", color=discord.Color.purple())
         embed.description = "```json\n" + json.dumps(metadata, indent=2)[:4096] + "\n```"
         await interaction.followup.send(embed=embed)
-    elif retrieve_as.value == "preview":
-        embed = discord.Embed(title=name, description=metadata.get('Description', 'No description.'), color=discord.Color.blue())
+    elif retrieve_as == "preview":
+        embed = discord.Embed(title=name, description=description[:2048], color=discord.Color.blue())
         embed.add_field(name="Asset ID", value=str(asset_id), inline=True)
-        embed.add_field(name="Type", value=str(asset_type), inline=True)
+        embed.add_field(name="Type", value=str(metadata.get('AssetTypeId')), inline=True)
         embed.add_field(name="Creator", value=creator, inline=False)
         embed.add_field(name="Price", value=str(price), inline=True)
         embed.set_thumbnail(url=f"https://www.roblox.com/thumbs/asset.ashx?assetId={asset_id}&width=420&height=420")
         await interaction.followup.send(embed=embed)
-
 # ========== /download_asset Command ========== 
 @bot.tree.command(name="download_asset", description="Download a Roblox asset file (.rbxm, .mesh, etc.)")
 @app_commands.describe(
