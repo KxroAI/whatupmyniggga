@@ -1264,7 +1264,7 @@ async def get_clothing_asset(location, session):
 # ===========================
 # /getasset - Fetch Roblox Assets
 # ===========================
-@bot.tree.command(name="getasset", description="Obtain an asset's content, information, and optionally associated assets.")
+@bot.tree.command(name="getasset", description="Obtain an asset's content, information and optionally associated assets.")
 @app_commands.describe(
     asset_id="Asset ID",
     asset_version="Optional version number",
@@ -1280,105 +1280,129 @@ async def getasset(
     place_id: str = "",
     archive: str = "false"
 ):
-    # Defer response
-    await interaction.response.defer(thinking=True)
+    try:
+        await interaction.response.defer(thinking=True)
+    except discord.InteractionResponded:
+        # Already responded — avoid duplicate responses
+        return
+    except discord.NotFound:
+        try:
+            await interaction.followup.send("❌ Interaction expired.", ephemeral=True)
+        except Exception:
+            pass
+        return
+    except Exception as e:
+        print(f"[!] Unexpected interaction error: {e}")
+        return
 
     session = aiohttp.ClientSession()
-
+    
     # Validate asset ID
     if not asset_id.isdigit():
         await interaction.followup.send("❌ Invalid asset ID.")
+        await session.close()
         return
 
     asset_id_int = int(asset_id)
 
-    # Fetch asset info
-    async with session.get(f"{CATALOG_API}{asset_id_int}/") as res:
-        if res.status != 200:
-            await interaction.followup.send("❌ Could not find asset.")
-            return
-        asset_info = await res.json()
+    try:
+        async with session:
+            async with asyncio.timeout(15):  # Max 15 seconds total
+                # Fetch asset info
+                async with session.get(f"{CATALOG_API}{asset_id_int}/") as res:
+                    if res.status != 200:
+                        await interaction.followup.send("❌ Could not find asset.")
+                        return
+                    asset_info = await res.json()
 
-    asset_type = get_type_from_id(asset_info.get("assetType"))
-    name = asset_info.get("name")
-    description = asset_info.get("description", "No description")
-    creator = asset_info.get("creatorTargetId", "Unknown")
-    creator_name = asset_info.get("creatorName", "Unknown")
-    universe_id = asset_info.get("universeId")
+                asset_type = get_type_from_id(asset_info.get("assetType"))
+                name = asset_info.get("name")
+                description = asset_info.get("description", "No description")
+                creator = asset_info.get("creatorTargetId", "Unknown")
+                creator_name = asset_info.get("creatorName", "Unknown")
+                universe_id = asset_info.get("universeId")
 
-    location = await get_asset_location(session, asset_id_int)
-    if not location:
-        await interaction.followup.send("❌ Could not retrieve asset location.")
-        return
+                location = await get_asset_location(session, asset_id_int)
+                if not location:
+                    await interaction.followup.send("❌ Could not retrieve asset location.")
+                    return
 
-    # Archive Mode: Get Dependencies
-    dependencies = []
-    if archive.lower() == "true":
-        if universe_id:
-            async with session.get(f"{UNIVERSE_API}{universe_id}/assets?assetVersionId={asset_version or ''}") as res:
-                if res.status == 200:
-                    dep_data = await res.json()
-                    dependencies = dep_data.get("assets", [])
+                # Archive Mode: Get Dependencies
+                dependencies = []
+                if archive.lower() == "true":
+                    if universe_id:
+                        async with session.get(f"{UNIVERSE_API}{universe_id}/assets?assetVersionId={asset_version or ''}") as res:
+                            if res.status == 200:
+                                dep_data = await res.json()
+                                dependencies = dep_data.get("assets", [])
 
-    # Handle Retrieval Format
-    if retrieve_as.lower() == "json":
-        response = {
-            "name": name,
-            "asset_id": asset_id_int,
-            "type": asset_type,
-            "creator": {"name": creator_name, "id": creator},
-            "description": description,
-            "location": location,
-            "dependencies": dependencies if archive else None
-        }
-        await interaction.followup.send(f"```json\n{response}\n```")
-        return
+                # Handle Retrieval Format
+                if retrieve_as.lower() == "json":
+                    response = {
+                        "name": name,
+                        "asset_id": asset_id_int,
+                        "type": asset_type,
+                        "creator": {"name": creator_name, "id": creator},
+                        "description": description,
+                        "location": location,
+                        "dependencies": dependencies if archive else None
+                    }
+                    await interaction.followup.send(f"```json\n{response}\n```")
+                    return
 
-    elif retrieve_as.lower() == "xml":
-        async with session.get(location) as res:
-            if res.status != 200:
-                await interaction.followup.send("❌ Could not retrieve asset XML.")
-                return
-            xml_data = await res.text()
-        await interaction.followup.send(f"```xml\n{xml_data}\n```")
-        return
+                elif retrieve_as.lower() == "xml":
+                    async with session.get(location) as res:
+                        if res.status != 200:
+                            await interaction.followup.send("❌ Could not retrieve asset XML.")
+                            return
+                        xml_data = await res.text()
+                    await interaction.followup.send(f"```xml\n{xml_data}\n```")
+                    return
 
-    # Default: Send File + Embed
-    modified_name = re.sub(r'[^\w]', '', name)
+                # Default: Send File + Embed
+                modified_name = re.sub(r'[^\w]', '', name)
 
-    # Image/Clothing assets
-    if any(t in asset_type.lower() for t in clothing_types + ['image', 'decal']):
-        image_loc = await get_clothing_asset(location, session) or location
-        async with session.get(image_loc) as res:
-            if res.status != 200:
-                await interaction.followup.send("❌ Could not retrieve image.")
-                return
-            img_data = await res.read()
-        attachment = discord.File(BytesIO(img_data), filename=f"{modified_name}.png")
-        embed = discord.Embed(title=name, color=discord.Color.dark_gray())
-        embed.set_image(url=f"attachment://{modified_name}.png")
-        await interaction.followup.send(embed=embed, file=attachment)
+                # Image/Clothing assets
+                if any(t in asset_type.lower() for t in clothing_types + ['image', 'decal']):
+                    image_loc = await get_clothing_asset(location, session) or location
+                    async with session.get(image_loc) as res:
+                        if res.status != 200:
+                            await interaction.followup.send("❌ Could not retrieve image.")
+                            return
+                        img_data = await res.read()
+                    attachment = discord.File(BytesIO(img_data), filename=f"{modified_name}.png")
+                    embed = discord.Embed(title=name, color=discord.Color.dark_gray())
+                    embed.set_image(url=f"attachment://{modified_name}.png")
+                    await interaction.followup.send(embed=embed, file=attachment)
 
-    # Audio / Video / Other Binary
-    else:
-        async with session.get(location) as res:
-            if res.status != 200:
-                await interaction.followup.send("❌ Could not retrieve file.")
-                return
-            file_data = await res.read()
-        ext = location.split(".")[-1] if "." in location else "rbxm"
-        attachment = discord.File(BytesIO(file_data), filename=f"{modified_name}.{ext}")
-        embed = discord.Embed(
-            title=name,
-            description=f"**Type:** {asset_type}\n**Description:** `{description}`",
-            color=discord.Color.dark_gray()
-        )
-        embed.add_field(name="Creator", value=f"[{creator_name}](https://www.roblox.com/users/{creator})") 
-        embed.add_field(name="Location", value=f"[Download]({location})", inline=False)
-        if archive and dependencies:
-            dep_list = "\n".join([f"`{dep['id']}` - {dep['name']}" for dep in dependencies[:5]])
-            embed.add_field(name="Dependencies", value=dep_list + ("..." if len(dependencies) > 5 else ""), inline=False)
-        await interaction.followup.send(embed=embed, file=attachment)
+                # Audio / Video / Other Binary
+                else:
+                    async with session.get(location) as res:
+                        if res.status != 200:
+                            await interaction.followup.send("❌ Could not retrieve file.")
+                            return
+                        file_data = await res.read()
+                    ext = location.split(".")[-1] if "." in location else "rbxm"
+                    attachment = discord.File(BytesIO(file_data), filename=f"{modified_name}.{ext}")
+                    embed = discord.Embed(
+                        title=name,
+                        description=f"**Type:** {asset_type}\n**Description:** `{description}`",
+                        color=discord.Color.dark_gray()
+                    )
+                    embed.add_field(name="Creator", value=f"[{creator_name}](https://www.roblox.com/users/{creator})")  
+                    embed.add_field(name="Location", value=f"[Download]({location})", inline=False)
+                    if archive and dependencies:
+                        dep_list = "\n".join([f"`{dep['id']}` - {dep['name']}" for dep in dependencies[:5]])
+                        embed.add_field(name="Dependencies", value=dep_list + ("..." if len(dependencies) > 5 else ""), inline=False)
+                    await interaction.followup.send(embed=embed, file=attachment)
+
+    except TimeoutError:
+        await interaction.followup.send("⏰ Took too long to fetch data.")
+    except Exception as e:
+        print(f"[!] Error in /getasset: {e}")
+        await interaction.followup.send("❌ An unexpected error occurred.")
+    finally:
+        await session.close()
 
 # ===========================
 # Bot Events
