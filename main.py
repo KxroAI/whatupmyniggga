@@ -1077,20 +1077,20 @@ async def group_funds(interaction: discord.Interaction):
 
 # ========== Gamepass Command ==========
 @bot.tree.command(name="gamepass", description="Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL")
-@app_commands.describe(ID="The Roblox Gamepass ID", Link="Roblox Creator Dashboard URL to convert")
-async def gamepass(interaction: discord.Interaction, ID: int = None, Link: str = None):
-    if ID is not None and Link is not None:
+@app_commands.describe(id="The Roblox Gamepass ID", link="Roblox Creator Dashboard URL to convert")
+async def gamepass(interaction: discord.Interaction, id: int = None, link: str = None):
+    if id is not None and link is not None:
         await interaction.response.send_message("❌ Please provide either an ID or a Link, not both.", ephemeral=True)
         return
 
     pass_id = None
 
     # If ID is provided, use that directly
-    if ID is not None:
-        pass_id = ID
-    elif Link is not None:
+    if id is not None:
+        pass_id = id
+    elif link is not None:
         # Use regex to extract the gamepass ID from the dashboard URL
-        match = re.search(r'/passes/(\d+)/', Link)
+        match = re.search(r'/passes/(\d+)/', link)
         if match:
             pass_id = match.group(1)
         else:
@@ -1100,7 +1100,7 @@ async def gamepass(interaction: discord.Interaction, ID: int = None, Link: str =
         await interaction.response.send_message("❌ Please provide either a Gamepass ID or a Dashboard Link.", ephemeral=True)
         return
 
-    public_link = f"https://www.roblox.com/game-pass/{pass_id}"        
+    public_link = f"https://www.roblox.com/game-pass/{pass_id}"       
 
     message = (
         f"🔗 Link {public_link}\n"
