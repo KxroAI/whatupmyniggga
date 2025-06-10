@@ -891,7 +891,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/group` - Show info about the 1cy Roblox Group  
 - `/groupfunds` - Show Current Funds of the 1cy Group 
 - `/announcement <message> <channel>` - Send an embedded announcement
-- `/gamepass <id>` - Show a link to a Roblox Gamepass using its ID
+- `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
         """,
         inline=False
@@ -1089,7 +1089,7 @@ async def gamepass(interaction: discord.Interaction, id: int = None, link: str =
     if id is not None:
         pass_id = id
     elif link is not None:
-        # Use regex to extract the gamepass ID from the dashboard URL
+        # Use regex to extract the Gamepass ID from the Dashboard URL
         match = re.search(r'/passes/(\d+)/', link)
         if match:
             pass_id = match.group(1)
@@ -1100,14 +1100,20 @@ async def gamepass(interaction: discord.Interaction, id: int = None, link: str =
         await interaction.response.send_message("❌ Please provide either a Gamepass ID or a Dashboard Link.", ephemeral=True)
         return
 
-    public_link = f"https://www.roblox.com/game-pass/{pass_id}"       
+    base_url = f"https://www.roblox.com/game-pass/{pass_id}" 
 
-    message = (
-        f"🔗 Link {public_link}\n"
-        f"[View Gamepass]({public_link})"
+    embed = discord.Embed(
+        color=discord.Color.blue()
     )
+    embed.add_field(
+        name="🔗 Link",
+        value=f"`{base_url}`\n\n[View Gamepass]({base_url})",
+        inline=False
+    )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
 
-    await interaction.response.send_message(message)
+    await interaction.response.send_message(embed=embed)
 
 # ========== Devex Command ==========
 @bot.tree.command(name="devex", description="Convert between Robux and USD using the current DevEx rate")
