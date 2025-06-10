@@ -1077,7 +1077,7 @@ async def group_funds(interaction: discord.Interaction):
 
 # ========== Gamepass Command ==========
 @bot.tree.command(name="gamepass", description="Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL")
-@app_commands.describe(id="The Roblox Gamepass ID", link="Roblox Creator Dashboard URL to convert")
+@app_commands.describe(ID="The Roblox Gamepass ID", Link="Roblox Creator Dashboard URL to convert")
 async def gamepass(interaction: discord.Interaction, id: int = None, link: str = None):
     if id is not None and link is not None:
         await interaction.response.send_message("❌ Please provide either an ID or a Link, not both.", ephemeral=True)
@@ -1100,17 +1100,14 @@ async def gamepass(interaction: discord.Interaction, id: int = None, link: str =
         await interaction.response.send_message("❌ Please provide either a Gamepass ID or a Dashboard Link.", ephemeral=True)
         return
 
-    public_link = f"https://www.roblox.com/game-pass/{pass_id}"  
+    public_link = f"https://www.roblox.com/game-pass/{pass_id}"     
 
-    embed = discord.Embed(
-        title="🔗 Link",
-        description=f"[View Gamepass]({public_link})\n`{public_link}`",
-        color=discord.Color.blue()
+    message = (
+        f"🔗 Link {public_link}\n"
+        f"[View Gamepass]({public_link})"
     )
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(message)
 
 # ========== Devex Command ==========
 @bot.tree.command(name="devex", description="Convert between Robux and USD using the current DevEx rate")
