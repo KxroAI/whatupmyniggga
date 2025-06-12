@@ -1,5 +1,5 @@
 import discord
-from discord import Embed, app_commands, Interaction
+from discord import Embed, app_commands, Interaction, ui, ButtonStyle
 from discord.ext import commands, tasks
 import asyncio
 import requests
@@ -11,7 +11,7 @@ from flask import Flask
 from collections import defaultdict
 from dotenv import load_dotenv
 import certifi
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
@@ -36,6 +36,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
+giveaways_collection = db.giveaways
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -1160,6 +1161,540 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
+
+
+# ========== Giveaway Command ==========
+giveaways_collection.create_index([("message_id", ASCENDING)], unique=True)
+
+class GiveawayDurationType(str, Enum):
+    SECONDS = "seconds"
+    MINUTES = "minutes"
+    HOURS = "hours"
+    DAYS = "days"
+
+class EnterGiveawayButton(ui.View):
+    def __init__(self, *, giveaway_id: str, timeout=None):
+        super().__init__(timeout=timeout)
+        self.giveaway_id = giveaway_id
+        self.entries = set()
+
+    @ui.button(label="🎉 Enter Giveaway", style=ButtonStyle.blurple)
+    async def enter_button(self, interaction: Interaction, button: ui.Button):
+        user_id = str(interaction.user.id)
+
+        # Fetch current giveaway data from MongoDB
+        giveaway_data = giveaways_collection.find_one({"_id": ObjectId(self.giveaway_id)})
+        if not giveaway_data:
+            await interaction.response.send_message("❌ This giveaway no longer exists.", ephemeral=True)
+            return
+
+        guild = bot.get_guild(giveaway_data["guild_id"])
+        if not guild:
+            await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
+            return
+
+        channel = guild.get_channel(giveaway_data["channel_id"])
+        if not channel:
+            await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+            return
+
+        entrant_ids = giveaway_data.get("entries", [])
+
+        if user_id in entrant_ids:
+            # Remove user from entries
+            giveaways_collection.update_one(
+                {"_id": ObjectId(self.giveaway_id)},
+                {"$pull": {"entries": user_id}}
+            )
+            self.entries.discard(user_id)
+            await interaction.response.send_message("✅ You have successfully left the giveaway!", ephemeral=True)
+        else:
+            # Add user to entries
+            giveaways_collection.update_one(
+                {"_id": ObjectId(self.giveaway_id)},
+                {"$addToSet": {"entries": user_id}}
+            )
+            self.entries.add(user_id)
+            await interaction.response.send_message("✅ You've successfully entered the giveaway!", ephemeral=True)
+
+        # Update embed participant count
+        new_count = len(giveaways_collection.find_one({"_id": ObjectId(self.giveaway_id)}).get("entries", []))
+        try:
+            message = await channel.fetch_message(int(giveaway_data["message_id"]))
+            embed = message.embeds[0]
+            for i, field in enumerate(embed.fields):
+                if field.name.startswith("🔵 Participants"):
+                    embed.set_field_at(i, name=field.name, value=str(new_count))
+            await message.edit(embed=embed)
+        except Exception as e:
+            print(f"[!] Failed to update participant count: {e}")
+
+@bot.tree.command(name="giveaway", description="Start a giveaway event with custom title and button entry")
+@app_commands.describe(
+    prize="What is the prize?",
+    duration_amount="How long will the giveaway last?",
+    duration_type="Unit of time (seconds, minutes, hours, days)",
+    winners="How many winners should be selected?",
+    channel="Which channel to post the giveaway (optional)?"
+)
+@app_commands.choices(duration_type=[
+    app_commands.Choice(name="Seconds", value=GiveawayDurationType.SECONDS),
+    app_commands.Choice(name="Minutes", value=GiveawayDurationType.MINUTES),
+    app_commands.Choice(name="Hours", value=GiveawayDurationType.HOURS),
+    app_commands.Choice(name="Days", value=GiveawayDurationType.DAYS),
+])
+async def giveaway(interaction: discord.Interaction, 
+                   prize: str,
+                   duration_amount: int,
+                   duration_type: str,
+                   winners: int = 1,
+                   channel: discord.TextChannel = None):
+    
+    BOT_OWNER_ID_STR = os.getenv("BOT_OWNER_ID")
+    if not BOT_OWNER_ID_STR:
+        raise ValueError("BOT_OWNER_ID must be set in the .env file")
+    try:
+        BOT_OWNER_ID = int(BOT_OWNER_ID_STR)
+    except ValueError:
+        raise ValueError("BOT_OWNER_ID must be a valid integer")
+
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id == BOT_OWNER_ID):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    if duration_amount <= 0:
+        await interaction.response.send_message("❗ Duration must be greater than zero.", ephemeral=True)
+        return
+    
+    if winners < 1:
+        await interaction.response.send_message("❗ There must be at least one winner.", ephemeral=True)
+        return
+
+    target_channel = channel or interaction.channel
+
+    unit_seconds = {
+        "seconds": 1,
+        "minutes": 60,
+        "hours": 3600,
+        "days": 86400
+    }
+    duration_seconds = duration_amount * unit_seconds.get(duration_type, 1)
+    end_time = datetime.now(PH_TIMEZONE) + timedelta(seconds=duration_seconds)
+
+    guild = bot.get_guild(1177130289672241232)  # Your server ID
+    blue_dot = guild.get_emoji_named("blue_dot") if guild else None
+    emoji = f"{blue_dot}" if blue_dot else "🔵"
+
+    embed = discord.Embed(title=prize, color=discord.Color.gold())
+    embed.add_field(name=f"{emoji} Hosted by", value=interaction.user.mention, inline=False)
+    embed.add_field(name=f"{emoji} Ends", value=f"{duration_amount} {duration_type}", inline=False)
+    embed.add_field(name=f"{emoji} Winners", value=str(winners), inline=False)
+    embed.add_field(name=f"{emoji} Participants", value="0", inline=False)
+    embed.set_footer(text="Click the button below to enter!")
+    embed.timestamp = end_time
+
+    view = EnterGiveawayButton(giveaway_id="", timeout=duration_seconds)
+    await interaction.response.send_message(f"✅ Giveaway started in {target_channel.mention}")
+    giveaway_message = await target_channel.send(embed=embed, view=view)
+
+    giveaway_data = {
+        "message_id": str(giveaway_message.id),
+        "guild_id": interaction.guild.id,
+        "channel_id": target_channel.id,
+        "prize": prize,
+        "host_id": interaction.user.id,
+        "end_time": end_time,
+        "winners_count": winners,
+        "entries": [],
+        "ended": False
+    }
+    result = giveaways_collection.insert_one(giveaway_data)
+    giveaway_id = str(result.inserted_id)
+
+    view = EnterGiveawayButton(giveaway_id=giveaway_id, timeout=duration_seconds)
+    await giveaway_message.edit(view=view)
+
+    await asyncio.sleep(duration_seconds)
+
+    for item in view.children:
+        item.disabled = True
+    await giveaway_message.edit(view=view)
+
+    giveaway_data = giveaways_collection.find_one({"_id": ObjectId(giveaway_id)})
+    entrants = giveaway_data.get("entries", [])
+    if not entrants:
+        no_winners_embed = discord.Embed(
+            title="🎉 GIVEAWAY ENDED",
+            color=discord.Color.red()
+        )
+        no_winners_embed.add_field(name=f"{emoji} Hosted by", value=interaction.user.mention, inline=False)
+        no_winners_embed.add_field(name=f"{emoji} Ends", value=f"{duration_amount} {duration_type}", inline=False)
+        no_winners_embed.add_field(name=f"{emoji} Winners", value=str(winners), inline=False)
+        no_winners_embed.add_field(name=f"{emoji} Participants", value="0", inline=False)
+        no_winners_embed.description = "😢 No valid entries."
+        no_winners_embed.set_footer(text="Ended")
+        no_winners_embed.timestamp = datetime.now(PH_TIMEZONE)
+        await giveaway_message.edit(embed=no_winners_embed)
+        return
+
+    if len(entrants) < winners:
+        winners = len(entrants)
+    selected_users = random.sample(entrants, winners)
+
+    winner_list = "\n".join([f"<@{uid}>" for uid in selected_users])
+    result_embed = discord.Embed(
+        title="🎉 GIVEAWAY ENDED",
+        color=discord.Color.green()
+    )
+    result_embed.add_field(name=f"{emoji} Hosted by", value=interaction.user.mention, inline=False)
+    result_embed.add_field(name=f"{emoji} Ends", value=f"Ended at {end_time.strftime('%B %d, %Y • %I:%M %p GMT+8')}", inline=False)
+    result_embed.add_field(name=f"{emoji} Winners", value=winner_list, inline=False)
+    result_embed.add_field(name=f"{emoji} Participants", value=str(len(entrants)), inline=False)
+    result_embed.set_footer(text="Congratulations!")
+    result_embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await giveaway_message.edit(embed=result_embed, view=None)
+    await target_channel.send(f"🎊 Congratulations to the winner(s): {winner_list}\nPrize: **{prize}**")
+
+    giveaways_collection.update_one(
+        {"_id": ObjectId(giveaway_id)},
+        {
+            "$set": {
+                "ended": True,
+                "winners": selected_users
+            }
+        }
+    )
+
+    for entrant_id in entrants:
+        try:
+            user = await bot.fetch_user(int(entrant_id))
+            if user:
+                if entrant_id in selected_users:
+                    await user.send(f"🎉 Congratulations! You won the **{prize}** in **{interaction.guild.name}**!")
+                else:
+                    await user.send(f"😢 Better luck next time! The giveaway for **{prize}** has ended.")
+        except discord.Forbidden:
+            pass
+        except Exception as e:
+            print(f"[!] Failed to send DM: {e}")
+
+# Register persistent views on startup
+@bot.event
+async def on_ready():
+    if not bot.tree.synced:
+        await bot.tree.sync()
+        print("Commands synced!")
+
+    active_giveaways = giveaways_collection.find({"ended": False})
+    for g in active_giveaways:
+        view = EnterGiveawayButton(giveaway_id=str(g["_id"]), timeout=1)
+        bot.add_view(view)
+    print("Persistent views registered.")
+
+# /reroll - Pick new winner from same giveaway
+@bot.tree.command(name="reroll", description="Reroll a new winner for an ended giveaway")
+@app_commands.describe(message_id="The message ID of the giveaway post")
+async def reroll(interaction: discord.Interaction, message_id: str):
+    BOT_OWNER_ID_STR = os.getenv("BOT_OWNER_ID")
+    if not BOT_OWNER_ID_STR:
+        raise ValueError("BOT_OWNER_ID must be set in the .env file")
+    try:
+        BOT_OWNER_ID = int(BOT_OWNER_ID_STR)
+    except ValueError:
+        raise ValueError("BOT_OWNER_ID must be a valid integer")
+
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id == BOT_OWNER_ID):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    giveaway = giveaways_collection.find_one({"message_id": message_id, "ended": True})
+    if not giveaway:
+        await interaction.response.send_message("❌ Could not find an ended giveaway with that message ID.", ephemeral=True)
+        return
+
+    guild = bot.get_guild(giveaway["guild_id"])
+    if not guild:
+        await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
+        return
+
+    channel = guild.get_channel(giveaway["channel_id"])
+    if not channel:
+        await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+        return
+
+    try:
+        message = await channel.fetch_message(int(message_id))
+    except discord.NotFound:
+        await interaction.response.send_message("❌ Message not found.", ephemeral=True)
+        return
+
+    entrants = giveaway.get("entries", [])
+    if not entrants:
+        await interaction.response.send_message("❌ No participants to reroll from.", ephemeral=True)
+        return
+
+    winner = random.choice(entrants)
+    winner_user = guild.get_member(int(winner)) or await guild.fetch_member(int(winner))
+
+    embed = discord.Embed(
+        title="🎉 GIVEAWAY REROLLED",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="🎁 Prize", value=giveaway["prize"], inline=False)
+    embed.add_field(name="🏆 New Winner", value=winner_user.mention, inline=False)
+    embed.set_footer(text="Congratulations!")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(f"🎊 New winner: {winner_user.mention}", embed=embed)
+
+# /cancelgiveaway - Cancel ongoing giveaway
+@bot.tree.command(name="cancelgiveaway", description="Cancel an active giveaway before it ends")
+@app_commands.describe(message_id="The message ID of the giveaway post")
+async def cancelgiveaway(interaction: discord.Interaction, message_id: str):
+    BOT_OWNER_ID_STR = os.getenv("BOT_OWNER_ID")
+    if not BOT_OWNER_ID_STR:
+        raise ValueError("BOT_OWNER_ID must be set in the .env file")
+    try:
+        BOT_OWNER_ID = int(BOT_OWNER_ID_STR)
+    except ValueError:
+        raise ValueError("BOT_OWNER_ID must be a valid integer")
+
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id == BOT_OWNER_ID):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    giveaway = giveaways_collection.find_one({"message_id": message_id, "ended": False})
+    if not giveaway:
+        await interaction.response.send_message("❌ Could not find an active giveaway with that message ID.", ephemeral=True)
+        return
+
+    guild = bot.get_guild(giveaway["guild_id"])
+    if not guild:
+        await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
+        return
+
+    channel = guild.get_channel(giveaway["channel_id"])
+    if not channel:
+        await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+        return
+
+    try:
+        message = await channel.fetch_message(int(message_id))
+    except discord.NotFound:
+        await interaction.response.send_message("❌ Message not found.", ephemeral=True)
+        return
+
+    embed = message.embeds[0]
+    embed.title = "🚫 GIVEAWAY CANCELED"
+    embed.color = discord.Color.red()
+    embed.description = "This giveaway was canceled early."
+
+    for item in message.components[0].children:
+        item.disabled = True
+
+    view = discord.ui.View.from_message(message)
+    for item in view.children:
+        item.disabled = True
+
+    await message.edit(embed=embed, view=view)
+
+    giveaways_collection.update_one(
+        {"_id": giveaway["_id"]},
+        {"$set": {"ended": True}}
+    )
+
+    await interaction.response.send_message(f"✅ Giveaway `{message_id}` has been canceled.")
+
+# /editgiveaway - Edit active giveaway
+@bot.tree.command(name="editgiveaway", description="Edit an active giveaway before it ends")
+@app_commands.describe(
+    message_id="The message ID of the giveaway post",
+    prize="New prize name",
+    duration_amount="New duration amount",
+    duration_type="New unit of time",
+    winners="New number of winners"
+)
+@app_commands.choices(duration_type=[
+    app_commands.Choice(name="Seconds", value="seconds"),
+    app_commands.Choice(name="Minutes", value="minutes"),
+    app_commands.Choice(name="Hours", value="hours"),
+    app_commands.Choice(name="Days", value="days"),
+])
+async def editgiveaway(
+    interaction: discord.Interaction,
+    message_id: str,
+    prize: str = None,
+    duration_amount: int = None,
+    duration_type: str = None,
+    winners: int = None
+):
+    BOT_OWNER_ID_STR = os.getenv("BOT_OWNER_ID")
+    if not BOT_OWNER_ID_STR:
+        raise ValueError("BOT_OWNER_ID must be set in the .env file")
+    try:
+        BOT_OWNER_ID = int(BOT_OWNER_ID_STR)
+    except ValueError:
+        raise ValueError("BOT_OWNER_ID must be a valid integer")
+
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id == BOT_OWNER_ID):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    giveaway = giveaways_collection.find_one({"message_id": message_id, "ended": False})
+    if not giveaway:
+        await interaction.response.send_message("❌ Could not find an active giveaway with that message ID.", ephemeral=True)
+        return
+
+    guild = bot.get_guild(giveaway["guild_id"])
+    if not guild:
+        await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
+        return
+
+    channel = guild.get_channel(giveaway["channel_id"])
+    if not channel:
+        await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+        return
+
+    try:
+        message = await channel.fetch_message(int(message_id))
+    except discord.NotFound:
+        await interaction.response.send_message("❌ Message not found.", ephemeral=True)
+        return
+
+    update_data = {}
+    if prize:
+        update_data["prize"] = prize
+
+    if duration_amount and duration_type:
+        unit_seconds = {
+            "seconds": 1,
+            "minutes": 60,
+            "hours": 3600,
+            "days": 86400
+        }
+        duration_seconds = duration_amount * unit_seconds.get(duration_type, 1)
+        end_time = datetime.now(PH_TIMEZONE) + timedelta(seconds=duration_seconds)
+        update_data["end_time"] = end_time
+
+    if winners:
+        update_data["winners_count"] = winners
+
+    if not update_data:
+        await interaction.response.send_message("⚠️ No changes provided.", ephemeral=True)
+        return
+
+    giveaways_collection.update_one(
+        {"_id": giveaway["_id"]},
+        {"$set": update_data}
+    )
+
+    embed = message.embeds[0]
+    if "prize" in update_data:
+        embed.title = prize
+    if "end_time" in update_data:
+        for i, field in enumerate(embed.fields):
+            if field.name.startswith("🔵 Ends"):
+                embed.set_field_at(i, name=field.name, value=f"{duration_amount} {duration_type}")
+    if "winners_count" in update_data:
+        for i, field in enumerate(embed.fields):
+            if field.name.startswith("🔵 Winners"):
+                embed.set_field_at(i, name=field.name, value=str(winners))
+
+    await message.edit(embed=embed)
+    await interaction.response.send_message(f"✅ Giveaway `{message_id}` has been updated.")
+
+# /pickwinner - Manually select winners
+@bot.tree.command(name="pickwinner", description="Manually pick winner(s) for an active giveaway")
+@app_commands.describe(
+    message_id="The message ID of the giveaway post",
+    number_of_winners="How many winners to pick (optional, defaults to original)"
+)
+async def pickwinner(interaction: discord.Interaction, message_id: str, number_of_winners: int = None):
+    BOT_OWNER_ID_STR = os.getenv("BOT_OWNER_ID")
+    if not BOT_OWNER_ID_STR:
+        raise ValueError("BOT_OWNER_ID must be set in the .env file")
+    try:
+        BOT_OWNER_ID = int(BOT_OWNER_ID_STR)
+    except ValueError:
+        raise ValueError("BOT_OWNER_ID must be a valid integer")
+
+    if not (interaction.user.guild_permissions.administrator or interaction.user.id == BOT_OWNER_ID):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    giveaway = giveaways_collection.find_one({"message_id": message_id, "ended": False})
+    if not giveaway:
+        await interaction.response.send_message("❌ Could not find an active giveaway with that message ID.", ephemeral=True)
+        return
+
+    guild = bot.get_guild(giveaway["guild_id"])
+    if not guild:
+        await interaction.response.send_message("❌ Guild not found.", ephemeral=True)
+        return
+
+    channel = guild.get_channel(giveaway["channel_id"])
+    if not channel:
+        await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+        return
+
+    try:
+        message = await channel.fetch_message(int(message_id))
+    except discord.NotFound:
+        await interaction.response.send_message("❌ Message not found.", ephemeral=True)
+        return
+
+    entrant_ids = giveaway.get("entries", [])
+    if not entrant_ids:
+        await interaction.response.send_message("❌ No participants to choose from.", ephemeral=True)
+        return
+
+    if number_of_winners is None:
+        number_of_winners = giveaway.get("winners_count", 1)
+
+    if number_of_winners < 1:
+        await interaction.response.send_message("❗ Must pick at least one winner.", ephemeral=True)
+        return
+
+    if len(entrant_ids) < number_of_winners:
+        number_of_winners = len(entrant_ids)
+
+    selected_users = random.sample(entrant_ids, number_of_winners)
+
+    # Announce
+    winner_mentions = "\n".join([f"<@{uid}>" for uid in selected_users])
+    embed = discord.Embed(title="🎉 GIVEAWAY ENDED", color=discord.Color.green())
+    embed.add_field(name="🎁 Prize", value=giveaway["prize"], inline=False)
+    embed.add_field(name="🏆 Winner(s)", value=winner_mentions, inline=False)
+    embed.set_footer(text="Congratulations!")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await message.edit(embed=embed, view=None)
+    await channel.send(f"🎊 Congratulations to the winner(s): {winner_mentions}\nPrize: **{giveaway['prize']}**")
+
+    giveaways_collection.update_one(
+        {"_id": giveaway["_id"]},
+        {
+            "$set": {
+                "ended": True,
+                "winners": selected_users
+            }
+        }
+    )
+
+    # Notify users
+    for entrant_id in entrant_ids:
+        try:
+            user = await bot.fetch_user(int(entrant_id))
+            if user:
+                if entrant_id in selected_users:
+                    await user.send(f"🎉 Congratulations! You won the **{giveaway['prize']}** in **{guild.name}**!")
+                else:
+                    await user.send(f"😢 Better luck next time! The giveaway for **{giveaway['prize']}** has ended.")
+        except Exception as e:
+            print(f"[!] Failed to send DM: {e}")
+
+    await interaction.response.send_message("✅ Winners have been manually picked and notified!", ephemeral=True)
 
 
 # ===========================
