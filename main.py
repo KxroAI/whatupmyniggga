@@ -36,7 +36,6 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
-giveaways_collection = db.giveaways
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
