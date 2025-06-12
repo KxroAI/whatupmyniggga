@@ -70,10 +70,13 @@ try:
     db = client.ai_bot
     conversations_collection = db.conversations
     reminders_collection = db.reminders
+    giveaways_collection = db.giveaways
 
     # Create TTL indexes
     conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
     reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
+    giveaways_collection.create_index([("message_id", 1)], unique=True)
+    giveaways_collection.create_index("ended", expireAfterSeconds=2592000)
 except Exception as e:
     print(f"[!] Failed to connect to MongoDB: {e}")
     client = None
