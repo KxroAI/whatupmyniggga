@@ -4,10 +4,8 @@ from discord.ext import commands, tasks
 import asyncio
 import requests
 import os
-import threading
 import math
 import random
-from flask import Flask
 from collections import defaultdict
 from dotenv import load_dotenv
 import certifi
@@ -26,17 +24,6 @@ import re
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
 load_dotenv()
 
-# TEST
-uri = "mongodb+srv://itskxro:Neroniel@cluster0.5skuybc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-# Create a new client and connect to the server
-client = MongoClient(uri, server_api=ServerApi('1'))
-# Send a ping to confirm a successful connection
-try:
-    client.admin.command('ping')
-    print("Pinged your deployment. You successfully connected to MongoDB!")
-except Exception as e:
-    print(e)
-
 # ===========================
 # Bot Setup
 # ===========================
@@ -48,30 +35,6 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
-
-# ===========================
-# Flask Web Server to Keep Bot Alive
-# ===========================
-app = Flask(__name__)
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-def run_server():
-    app.run(host='0.0.0.0', port=5000)
-
-server_thread = threading.Thread(target=run_server)
-server_thread.start()
-
-# Optional: Add another threaded task
-def check_for_updates():
-    while True:
-        print("[Background] Checking for updates...")
-        time.sleep(300)  # Every 5 minutes
-
-update_thread = threading.Thread(target=check_for_updates)
-update_thread.daemon = True
-update_thread.start()
 
 # ===========================
 # MongoDB Setup (with SSL Fix)
@@ -198,16 +161,19 @@ async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
 
-    # ❗ RESPOND IMMEDIATELY TO AVOID INTERACTION EXPIRATION ❗
+    # Defer response immediately
     await interaction.response.defer()
 
-    # Rate limit: 5 messages/user/minute
+    # Rate limiting: 5 requests per minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
-    timestamps.append(current_time)
+    
+    # Clean up old timestamps before appending new one
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
-    if len(timestamps) > 5:
-        await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
+    bot.ask_rate_limit[user_id].append(current_time)
+
+    if len(bot.ask_rate_limit[user_id]) > 5:
+        await interaction.followup.send("⏳ You're being rate-limited. Please wait a minute.")
         return
 
     async with interaction.channel.typing():
@@ -226,22 +192,22 @@ async def ask(interaction: discord.Interaction, prompt: str):
             try:
                 detected_lang = detect(prompt)
             except LangDetectException:
-                detected_lang = "en"  # default to English
+                detected_lang = "en"  # Default to English
 
             lang_instruction = {
                 "tl": "Please respond in Tagalog.",
                 "es": "Por favor responde en español.",
                 "fr": "Veuillez répondre en français.",
                 "ja": "日本語で答えてください。",
-                "ko": "한국어로 답변해 주세요.",
+                "ko": "한국어로 답변해 주세요。",
                 "zh": "请用中文回答。",
-                "ru": "Пожалуйста, отвечайте на русском языке.",
-                "ar": "من فضلك أجب بالعربية.",
+                "ru": "Пожалуйста, отвечайте на русском языке。",
+                "ar": "من فضلك أجب بالعربية。",
                 "vi": "Vui lòng trả lời bằng tiếng Việt.",
                 "th": "กรุณาตอบเป็นภาษาไทย",
                 "id": "Silakan jawab dalam bahasa Indonesia"
             }.get(detected_lang, "")
-            
+
             # Load conversation history from MongoDB (if available)
             history = []
             if conversations_collection:
@@ -274,7 +240,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "temperature": 0.7
             }
 
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
                 async with session.post(
                     "https://api.together.xyz/v1/completions", 
                     headers=headers,
