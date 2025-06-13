@@ -1176,6 +1176,94 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
 
     await interaction.response.send_message(embed=embed)
 
+# ========== CheckPayout Command ==========
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payouts")
+@app_commands.describe(user_id="The Roblox user ID to check eligibility for")
+async def checkpayout(interaction: discord.Interaction, user_id: int):
+    BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
+    # Check permissions
+    if not interaction.user.guild_permissions.administrator and str(interaction.user.id) != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+    group_id = 5838002
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+    
+    if not ROBLOX_COOKIE:
+        await interaction.followup.send("❌ Missing `.ROBLOSECURITY` cookie in environment.")
+        return
+
+    headers = {
+        "Cookie": ROBLOX_COOKIE,
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        # Step 1: Get user's group affiliation
+        try:
+            async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/affiliations")  as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("❌ Failed to fetch user group data.")
+                    return
+                group_data = await resp.json()
+
+            user_in_group = any(g.group.id == group_id for g in group_data.get("groups", []))
+            if not user_in_group:
+                embed = discord.Embed(
+                    title="❌ Not Eligible",
+                    description=f"User `{user_id}` is **not in group {group_id}`.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed)
+                return
+
+            # Step 2: Fetch payout list
+            payout_list = []
+            next_page_cursor = ""
+            while True:
+                payout_url = f"https://groups.roblox.com/v1/groups/{group_id}/payouts?cursor={next_page_cursor}&limit=100"
+                async with session.get(payout_url) as resp:
+                    if resp.status != 200:
+                        try:
+                            error_data = await resp.json()
+                            error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
+                        except Exception:
+                            error_msg = "Unknown error"
+                        if resp.status == 401:
+                            await interaction.followup.send("❌ Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie.")
+                        elif resp.status == 403:
+                            await interaction.followup.send("❌ Forbidden: Account does not have permission to view group payouts.")
+                        else:
+                            await interaction.followup.send(f"❌ Failed to fetch payout list: `{error_msg}`")
+                        return
+                    payout_data = await resp.json()
+                    payout_list.extend([item["recipient"]["id"] for item in payout_data.get("data", [])])
+                    next_page_cursor = payout_data.get("nextPageCursor")
+                    if not next_page_cursor:
+                        break
+
+            # Step 3: Check if user is in payout list 
+            if user_id in payout_list:
+                embed = discord.Embed(
+                    title="✅ Eligible for Payouts",
+                    description=f"User `{user_id}` is **eligible for group payouts** in group `{group_id}`.",
+                    color=discord.Color.green()
+                )
+            else:
+                embed = discord.Embed(
+                    title="❌ Not Eligible",
+                    description=f"User `{user_id}` is in the group but **not eligible for payouts**.",
+                    color=discord.Color.orange()
+                )
+
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
+
 
 # ===========================
 # Bot Events
