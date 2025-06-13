@@ -10,7 +10,9 @@ import random
 from flask import Flask
 from collections import defaultdict
 from dotenv import load_dotenv
-import sqlite3
+import certifi
+from pymongo import MongoClient, ASCENDING
+from pymongo.server_api import ServerApi
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
@@ -23,6 +25,17 @@ import re
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
 load_dotenv()
+
+# TEST
+uri = "mongodb+srv://itskxro:Neroniel@cluster0.5skuybc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+# Create a new client and connect to the server
+client = MongoClient(uri, server_api=ServerApi('1'))
+# Send a ping to confirm a successful connection
+try:
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+except Exception as e:
+    print(e)
 
 # ===========================
 # Bot Setup
@@ -43,8 +56,10 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "Bot is alive!"
+
 def run_server():
     app.run(host='0.0.0.0', port=5000)
+
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
@@ -53,85 +68,79 @@ def check_for_updates():
     while True:
         print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
+
 update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
 
 # ===========================
-# SQLite Database Setup
+# MongoDB Setup (with SSL Fix)
 # ===========================
-conn = sqlite3.connect('bot.db')
-cursor = conn.cursor()
+try:
+    client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
+    db = client.ai_bot
+    conversations_collection = db.conversations
+    reminders_collection = db.reminders
+    giveaways_collection = db.giveaways
 
-# Create tables if they don't exist
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS conversations (
-        user_id INTEGER,
-        prompt TEXT,
-        response TEXT,
-        timestamp DATETIME
-    )
-''')
-
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS reminders (
-        user_id INTEGER,
-        guild_id INTEGER,
-        channel_id INTEGER,
-        note TEXT,
-        reminder_time DATETIME
-    )
-''')
-
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS giveaways (
-        message_id INTEGER PRIMARY KEY,
-        ended BOOLEAN DEFAULT FALSE
-    )
-''')
-
-conn.commit()
+    # Create TTL indexes
+    conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
+    reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
+    giveaways_collection.create_index([("message_id", 1)], unique=True)
+    giveaways_collection.create_index("ended", expireAfterSeconds=2592000)
+except Exception as e:
+    print(f"[!] Failed to connect to MongoDB: {e}")
+    client = None
+    conversations_collection = None
+    reminders_collection = None
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
 async def check_reminders():
-    now = datetime.now(PH_TIMEZONE)
+    if not reminders_collection:
+        return
     try:
-        cursor.execute('SELECT * FROM reminders WHERE reminder_time <= ?', (now,))
-        expired = cursor.fetchall()
+        now = datetime.now(PH_TIMEZONE)
+        expired = reminders_collection.find({"reminder_time": {"$lte": now}})
         for reminder in expired:
-            user_id = reminder[0]
-            guild_id = reminder[1]
-            channel_id = reminder[2]
-            note = reminder[3]
+            user_id = reminder["user_id"]
+            guild_id = reminder["guild_id"]
+            channel_id = reminder["channel_id"]
+            note = reminder["note"]
+
             user = bot.get_user(user_id)
             if not user:
                 user = await bot.fetch_user(user_id)
+
             guild = bot.get_guild(guild_id)
             if not guild:
                 continue
+
             channel = guild.get_channel(channel_id)
             if not channel:
                 continue
+
             try:
                 await channel.send(f"🔔 {user.mention}, reminder: {note}")
             except discord.Forbidden:
                 print(f"[!] Cannot send reminder to {user} in #{channel.name}")
+
             # Delete reminder after sending
-            cursor.execute('DELETE FROM reminders WHERE user_id = ? AND reminder_time = ?', (user_id, reminder[4]))
-            conn.commit()
+            reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
         print(f"[!] Error checking reminders: {e}")
 
 @check_reminders.before_loop
 async def before_check_reminders():
     await bot.wait_until_ready()
-check_reminders.start()
+
+if reminders_collection:
+    check_reminders.start()
 
 # ===========================
 # Owner-only Direct Message Commands
 # ===========================
-
+# Define the BOT_OWNER_ID directly in the code
 BOT_OWNER_ID = 1163771452403761193  # Replace with your actual Discord ID if different
 
 @bot.tree.command(name="dm", description="Send a direct message to a user (Owner only)")
@@ -158,9 +167,11 @@ async def dmall(interaction: discord.Interaction, message: str):
     if guild is None:
         await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
         return
+
     await interaction.response.defer(ephemeral=True)
     success_count = 0
     fail_count = 0
+
     for member in guild.members:
         if member.bot:
             continue  # Skip bots
@@ -172,6 +183,7 @@ async def dmall(interaction: discord.Interaction, message: str):
         except Exception as e:
             print(f"[!] Failed to send DM to {member}: {str(e)}")
             fail_count += 1
+
     await interaction.followup.send(
         f"✅ Successfully sent DM to **{success_count}** members. ❌ Failed to reach **{fail_count}** members."
     )
@@ -185,7 +197,11 @@ async def dmall(interaction: discord.Interaction, message: str):
 async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
     channel_id = interaction.channel.id
+
+    # ❗ RESPOND IMMEDIATELY TO AVOID INTERACTION EXPIRATION ❗
     await interaction.response.defer()
+
+    # Rate limit: 5 messages/user/minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
     timestamps.append(current_time)
@@ -193,8 +209,10 @@ async def ask(interaction: discord.Interaction, prompt: str):
     if len(timestamps) > 5:
         await interaction.followup.send("⏳ You're being rate-limited. Please wait.")
         return
+
     async with interaction.channel.typing():
         try:
+            # Custom filter for creator questions
             normalized_prompt = prompt.strip().lower()
             if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
                 embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.blue())
@@ -203,10 +221,13 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 msg = await interaction.followup.send(embed=embed)
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
+
+            # Language Detection
             try:
                 detected_lang = detect(prompt)
             except LangDetectException:
-                detected_lang = "en"
+                detected_lang = "en"  # default to English
+
             lang_instruction = {
                 "tl": "Please respond in Tagalog.",
                 "es": "Por favor responde en español.",
@@ -220,23 +241,28 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "th": "กรุณาตอบเป็นภาษาไทย",
                 "id": "Silakan jawab dalam bahasa Indonesia"
             }.get(detected_lang, "")
+            
+            # Load conversation history from MongoDB (if available)
             history = []
-            if not bot.conversations[user_id]:
-                cursor.execute('''
-                    SELECT prompt, response FROM conversations
-                    WHERE user_id = ?
-                    ORDER BY timestamp DESC LIMIT 5
-                ''', (user_id,))
-                rows = cursor.fetchall()
-                bot.conversations[user_id] = [
-                    {"user": row[0], "assistant": row[1]} for row in reversed(rows)
-                ]
-            history = bot.conversations[user_id][-5:]
+            if conversations_collection:
+                if not bot.conversations[user_id]:
+                    history_docs = conversations_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(5)
+                    for doc in history_docs:
+                        bot.conversations[user_id].append({
+                            "user": doc["prompt"],
+                            "assistant": doc["response"]
+                        })
+                    bot.conversations[user_id].reverse()  # Maintain order
+                history = bot.conversations[user_id][-5:]
+
+            # Build full prompt with language instruction
             system_prompt = f"You are a helpful and friendly AI assistant named Neroniel AI. {lang_instruction}"
             full_prompt = system_prompt
             for msg in history:
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
+
+            # Call Together AI using async aiohttp instead of requests
             headers = {
                 "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
                 "Content-Type": "application/json"
@@ -247,9 +273,10 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "max_tokens": 2048,
                 "temperature": 0.7
             }
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    "https://api.together.xyz/v1/completions",  
+                    "https://api.together.xyz/v1/completions", 
                     headers=headers,
                     json=payload
                 ) as response:
@@ -258,14 +285,21 @@ async def ask(interaction: discord.Interaction, prompt: str):
                         await interaction.followup.send(f"❌ API returned error code {response.status}: `{text}`")
                         return
                     data = await response.json()
+
             if 'error' in data:
                 await interaction.followup.send(f"❌ Error from AI API: {data['error']['message']}")
                 return
+
             ai_response = data["choices"][0]["text"].strip()
+
+            # Determine if we should reply to a previous message
             target_message_id = bot.last_message_id.get((user_id, channel_id))
+
+            # Send the AI response
             embed = discord.Embed(description=ai_response, color=discord.Color.blue())
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
+
             if target_message_id:
                 try:
                     msg = await interaction.channel.fetch_message(target_message_id)
@@ -276,16 +310,24 @@ async def ask(interaction: discord.Interaction, prompt: str):
             else:
                 msg = await interaction.followup.send(embed=embed)
                 reply = msg
+
+            # Update the last message ID for future replies
             bot.last_message_id[(user_id, channel_id)] = reply.id
+
+            # Store in memory and MongoDB
             bot.conversations[user_id].append({
                 "user": prompt,
                 "assistant": ai_response
             })
-            cursor.execute('''
-                INSERT INTO conversations (user_id, prompt, response, timestamp)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, prompt, ai_response, datetime.now(PH_TIMEZONE)))
-            conn.commit()
+
+            if conversations_collection:
+                conversations_collection.insert_one({
+                    "user_id": user_id,
+                    "prompt": prompt,
+                    "response": ai_response,
+                    "timestamp": datetime.now(PH_TIMEZONE)
+                })
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
             print(f"[EXCEPTION] /ask command error: {e}")
@@ -294,12 +336,13 @@ async def ask(interaction: discord.Interaction, prompt: str):
 @bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
     user_id = interaction.user.id
+    # Clear local memory
     if user_id in bot.conversations:
         bot.conversations[user_id].clear()
-    cursor.execute('DELETE FROM conversations WHERE user_id = ?', (user_id,))
-    conn.commit()
+    # Clear MongoDB history
+    if conversations_collection:
+        conversations_collection.delete_many({"user_id": user_id})
     await interaction.response.send_message("✅ Your AI conversation history has been cleared!", ephemeral=True)
-
 
 # ===========================
 # Utility Commands
