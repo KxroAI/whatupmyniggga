@@ -209,13 +209,14 @@ async def play(interaction: discord.Interaction, song_query: str):
         voice_client = await voice_channel.connect()
     elif voice_channel != voice_client.channel:
         await voice_client.move_to(voice_channel)
-    
+        
     ydl_options = {
-        "format": "bestaudio[abr<=96]/bestaudio",
-        "noplaylist": True,
-        "youtube_include_dash_manifest": False,
-        "youtube_include_hls_manifest": False,
-    }
+    'format': 'bestaudio[abr<=96]/bestaudio',
+    'noplaylist': True,
+    'cookiefile': 'cookies.txt',  # Load cookies from file
+    'youtube_include_dash_manifest': False,
+    'youtube_include_hls_manifest': False,
+   }
     
     query = "ytsearch1: " + song_query
     results = await search_ytdlp_async(query, ydl_options)
