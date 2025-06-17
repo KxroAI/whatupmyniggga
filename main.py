@@ -1003,6 +1003,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/purge <amount>` - Delete messages (requires mod permissions)    
 - `/group` - Show info about the 1cy Roblox Group  
 - `/groupfunds` - Show Current Funds of the 1cy Group 
+- `/stocks` - Check current Robux Stocks
 - `/announcement <message> <channel>` - Send an embedded announcement
 - `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
@@ -1186,6 +1187,57 @@ async def group_funds(interaction: discord.Interaction):
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
+    await interaction.followup.send(embed=embed)
+
+# ========== Stocks Command ==========
+@bot.tree.command(name="stocks", description="Check the current Robux Stocks")
+async def stocks(interaction: discord.Interaction):
+    BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
+    # Check if user is either an Admin or the Bot Owner
+    if not interaction.user.guild_permissions.administrator and str(interaction.user.id) != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    await interaction.response.defer()
+
+    # Load environment variables
+    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))  # Target user ID from .env
+    ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")  # Cookie for authentication
+
+    if not roblox_user_id or not ROBLOX_STOCKS:
+        await interaction.followup.send("❌ Missing required environment variables.")
+        return
+
+    headers = {
+        "Cookie": ROBLOX_STOCKS,
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    async with aiohttp.ClientSession(headers=headers) as session:
+        currency_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"       
+        async with session.get(currency_url) as resp:
+            if resp.status != 200:
+                try:
+                    error_data = await resp.json()
+                    error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
+                except Exception:
+                    error_msg = "Unknown error"
+                if resp.status == 401:
+                    await interaction.followup.send("❌ Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie.")
+                elif resp.status == 403:
+                    await interaction.followup.send("❌ Forbidden: Account does not have permission to view currency.")
+                else:
+                    await interaction.followup.send(f"❌ Failed to fetch Robux balance: `{error_msg}`")
+                return
+            currency_data = await resp.json()
+            robux = currency_data.get("robux", 0)
+
+    embed = discord.Embed(
+        title=f"💰 Current Robux Balance",
+        color=discord.Color.black()
+    )
+    embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
+    embed.set_footer(text="Fetched via Roblox API | Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.followup.send(embed=embed)
 
 # ========== Gamepass Command ==========
