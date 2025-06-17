@@ -430,7 +430,8 @@ async def payout(interaction: discord.Interaction, robux: int):
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-    embed.add_field(name="Note:", value="To be eligible for a payout, you must be a member of the group for at least 14 days. Please ensure this requirement is met before proceeding with any transaction. You can view the Group Link by typing `/group` in the chat.", inline=False)    embed.set_footer(text="Neroniel")
+    embed.add_field(name="Note:", value="To be eligible for a payout, you must be a member of the group for at least 14 days. Please ensure this requirement is met before proceeding with any transaction. You can view the Group Link by typing `/group` in the chat.", inline=False)
+    embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
