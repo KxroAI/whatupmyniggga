@@ -1003,7 +1003,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/purge <amount>` - Delete messages (requires mod permissions)    
 - `/group` - Show info about the 1cy Roblox Group  
 - `/groupfunds` - Show Current Funds of the 1cy Group 
-- `/stocks` - Check current Robux Stocks
+- `/robuxstocks` - Check current Robux Stocks
 - `/announcement <message> <channel>` - Send an embedded announcement
 - `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
@@ -1180,7 +1180,6 @@ async def group_funds(interaction: discord.Interaction):
 
     # Format Embed
     embed = discord.Embed(
-        title=f"1cy Group Funds",
         color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
@@ -1189,8 +1188,8 @@ async def group_funds(interaction: discord.Interaction):
 
     await interaction.followup.send(embed=embed)
 
-# ========== Stocks Command ==========
-@bot.tree.command(name="stocks", description="Check the current Robux Stocks")
+# ========== Robux Stocks Command ==========
+@bot.tree.command(name="robuxstocks", description="Check the current Robux Stocks")
 async def stocks(interaction: discord.Interaction):
     BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
     # Check if user is either an Admin or the Bot Owner
@@ -1232,7 +1231,6 @@ async def stocks(interaction: discord.Interaction):
             robux = currency_data.get("robux", 0)
 
     embed = discord.Embed(
-        title=f"Current Robux Balance",
         color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
