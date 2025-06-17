@@ -209,7 +209,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
             # Custom filter for creator questions
             normalized_prompt = prompt.strip().lower()
             if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
-                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.black())
+                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.from_rgb(0, 0, 0))
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 msg = await interaction.followup.send(embed=embed)
@@ -290,7 +290,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
             target_message_id = bot.last_message_id.get((user_id, channel_id))
 
             # Send the AI response
-            embed = discord.Embed(description=ai_response, color=discord.Color.black())
+            embed = discord.Embed(description=ai_response, color=discord.Color.from_rgb(0, 0, 0))
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
 
@@ -403,7 +403,7 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
     embed = discord.Embed(
         title="ANNOUNCEMENT",
         description=f"```\n{message}\n```",
-        color=discord.Color.black()
+        color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
@@ -769,7 +769,7 @@ async def weather(interaction: discord.Interaction, city: str, unit: str = "c"):
 
         embed = discord.Embed(
             title=f"🌤️ Weather in {location}, {region}, {country}",
-            color=discord.Color.black()
+            color=discord.Color.from_rgb(0, 0, 0)
         )
         embed.add_field(name="🌡️ Temperature", value=f"{temperature}{unit_label}", inline=True)
         embed.add_field(name="🧯 Feels Like", value=f"{feels_like}{unit_label}", inline=True)
@@ -827,7 +827,7 @@ async def groupinfo(interaction: discord.Interaction):
         response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
         data = response.json()
         formatted_members = "{:,}".format(data['memberCount'])
-        embed = discord.Embed(color=discord.Color.black())
+        embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{group_id})", inline=False)
         embed.add_field(name="Description", value=f"```\n{data.get('description', 'No description')}\n```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
@@ -1090,7 +1090,7 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
     embed = discord.Embed(
         title=info["title"],
         description=info["description"],
-        color=discord.Color.black()
+        color=discord.Color.from_rgb(0, 0, 0)
     )
 
     if info["image"]:
@@ -1181,7 +1181,7 @@ async def group_funds(interaction: discord.Interaction):
     # Format Embed
     embed = discord.Embed(
         title=f"1cy Group Funds",
-        color=discord.Color.black()
+        color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
@@ -1233,7 +1233,7 @@ async def stocks(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title=f"Current Robux Balance",
-        color=discord.Color.black()
+        color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
@@ -1268,7 +1268,7 @@ async def gamepass(interaction: discord.Interaction, id: int = None, link: str =
     base_url = f"https://www.roblox.com/game-pass/{pass_id}" 
 
     embed = discord.Embed(
-        color=discord.Color.black()
+        color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.add_field(
         name="🔗 Link",
@@ -1312,7 +1312,7 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
         embed = discord.Embed(
             title="💎 DevEx Conversion: USD → Robux",
             description=f"Converting **${usd:.4f} USD** at the rate of **$0.0035/Robux**:",
-            color=discord.Color.black()
+            color=discord.Color.from_rgb(0, 0, 0)
         )
         embed.add_field(name="Total Robux Value", value=f"**{int(robux)} Robux**", inline=False)
 
