@@ -1232,7 +1232,7 @@ async def stocks(interaction: discord.Interaction):
             robux = currency_data.get("robux", 0)
 
     embed = discord.Embed(
-        title=f"💰 Current Robux Balance",
+        title=f"Current Robux Balance",
         color=discord.Color.black()
     )
     embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
