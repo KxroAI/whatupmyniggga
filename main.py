@@ -1,5 +1,5 @@
 import discord
-from discord import Embed, app_commands, Interaction, ui, ButtonStyle, FFmpegOpusAudio
+from discord import Embed, app_commands, Interaction, ui, ButtonStyle, User, Member, PublicUserFlags
 from discord.ext import commands, tasks
 import asyncio
 import requests
@@ -22,7 +22,7 @@ import re
 from flask import Flask
 import threading
 import time
-import yt_dlp
+from dateutil.relativedelta import relativedelta
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -343,25 +343,131 @@ async def clearhistory(interaction: discord.Interaction):
 # ===========================
 
 # /userinfo - Display user information
+# --- Official Badge Mapping ---
+BADGE_EMOJIS = {
+    PublicUserFlags.staff: "<:discordstaff:1384838271988924487>",
+    PublicUserFlags.partner: "<:discordpartner:1384838481238425721>",
+    PublicUserFlags.hypesquad: "<:hypesquadevent:1384838525874212905>",
+    PublicUserFlags.bug_hunter: "<:bughunter:1384838149707923486>",
+    PublicUserFlags.verified_bot_developer: "<:verifieddeveloper:1384838386287644725>",
+    PublicUserFlags.bug_hunter_level_2: "<:bugbuster:1384838214153404487>",
+    PublicUserFlags.hypesquad_balance: "<:hypesquadbalance:1384835956070416517>",
+    PublicUserFlags.hypesquad_bravery: "<:hypesquadbravery:1384836083887505508>",
+    PublicUserFlags.hypesquad_brilliance: "<:hypesquadbrilliance:1384836165625970698>",
+    PublicUserFlags.discord_certified_moderator: "<:moderatorprogramsalumni:1384838587941654569>",
+    PublicUserFlags.active_developer: "<:activedeveloper:1384837998147014678>",
+    PublicUserFlags.early_supporter: "<:earlysupporter:1384838332848017501>",
+    PublicUserFlags.guild_owner: "<:servercrown:1384839228483043388>",
+}
+
+# --- Custom Badge Mapping ---
+CUSTOM_BADGES = {
+    "quest": "<:quest:1384837948444512256>",
+    "clown": "<:clown:1384838717377744918>",
+    "orbs_apprentice": "<:orbsapprentice:1384838109467775026>",
+    "legacy_username": "<:legacyusername:1384838642752688198>",
+    "supports_commands": "<:supportscommands:1384838818854731797>",
+    "premium_discord": "<:premiumdiscord:1384838864773840926>",
+    "automod": "<:automod:1384838922546184283>",
+}
+
+# --- Tiered Server Booster Emojis ---
+BOOSTER_EMOJIS = {
+    1: "<:ServerBooster1:1384836841995239494>",
+    2: "<:ServerBooster2:1384836936769863789>",
+    6: "<:ServerBooster6:1384837114210029568>",
+    9: "<:ServerBooster9:1384837181259907133>",
+    12: "<:ServerBooster12:1384837249769668659>",
+    18: "<:ServerBooster18:1384837314295107634>",
+    24: "<:ServerBooster24:1384837387229724673>",
+}
+
+# --- Nitro Tier Emojis ---
+NITRO_TIERS = {
+    "bronze": "<:NitroBronze:1384837465554026496>",
+    "silver": "<:NitroSilver:1384837543140266097>",
+    "gold": "<:NitroGold:1384837603597221970>",
+    "platinum": "<:NitroPlatinum:1384837655438819338>",
+    "diamond": "<:NitroDiamond:1384837705497710693>",
+    "emerald": "<:NitroEmerald:1384837762972123187>",
+    "ruby": "<:NitroRuby:1384837808752951457>",
+    "opal": "<:NitroOpal:1384837884690825328>",
+}
+
+# --- Dummy function to simulate checking for custom badges ---
+def get_custom_badges(user: User):
+    return ["quest", "clown"]  # Example: user has these custom badges
+
 @bot.tree.command(name="userinfo", description="Display detailed information about a user")
 @app_commands.describe(user="The user to get info for (optional, defaults to you)")
-async def userinfo(interaction: discord.Interaction, user: discord.User = None):
+async def userinfo(interaction: Interaction, user: User = None):
     if user is None:
         user = interaction.user
 
     created_at = user.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
 
-    if isinstance(user, discord.Member):
+    # Get official badges from public flags
+    official_badges = []
+    for flag, emoji in BADGE_EMOJIS.items():
+        if flag in user.public_flags.all():
+            official_badges.append(emoji)
+
+    # Get custom badges
+    custom_badges = get_custom_badges(user)
+    custom_badge_emojis = [CUSTOM_BADGES[badge] for badge in custom_badges if badge in CUSTOM_BADGES]
+
+    # Check for Nitro tier
+    nitro_tier_emoji = ""
+    if PublicUserFlags.premium_subscriber in user.public_flags.all():
+        nitro_tier_emoji = NITRO_TIERS["ruby"]  # You can customize this logic later
+        official_badges.append(nitro_tier_emoji)
+
+    boost_months = 0
+    boost_since_str = "Not Boosting"
+    boost_duration_str = ""
+    booster_emoji = ""
+
+    # Server-specific info
+    if isinstance(user, Member):
         joined_at = user.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.joined_at else "Unknown"
         roles = [role.mention for role in user.roles if not role.is_default()]
         roles_str = ", ".join(roles) if roles else "No Roles"
-        boost_since = user.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.premium_since else "Not Boosting"
         is_bot = user.bot
+
+        if user.premium_since:
+            premium_since = user.premium_since.astimezone(PH_TIMEZONE)
+            now = datetime.now(PH_TIMEZONE)
+            delta = relativedelta(now, premium_since)
+            boost_months = delta.years * 12 + delta.months
+            boost_since_str = premium_since.strftime("%B %d, %Y • %I:%M %p GMT+8")
+            boost_duration_str = f"{boost_months} month{'s' if boost_months != 1 else ''}"
+
+            # Determine which booster emoji to use
+            if boost_months >= 24:
+                booster_emoji = BOOSTER_EMOJIS[24]
+            elif boost_months >= 18:
+                booster_emoji = BOOSTER_EMOJIS[18]
+            elif boost_months >= 12:
+                booster_emoji = BOOSTER_EMOJIS[12]
+            elif boost_months >= 9:
+                booster_emoji = BOOSTER_EMOJIS[9]
+            elif boost_months >= 6:
+                booster_emoji = BOOSTER_EMOJIS[6]
+            elif boost_months >= 2:
+                booster_emoji = BOOSTER_EMOJIS[2]
+            elif boost_months == 1:
+                booster_emoji = BOOSTER_EMOJIS[1]
+
+            custom_badge_emojis.append(booster_emoji)
+
     else:
         joined_at = "Not in Server"
         roles_str = "N/A"
-        boost_since = "Not Boosting"
         is_bot = user.bot
+
+    # Combine all badge emojis
+    all_badges = official_badges + custom_badge_emojis
+    badges_str = " ".join(all_badges) if all_badges else "N/A"
 
     embed = discord.Embed(color=discord.Color.green())
     embed.add_field(name="Username", value=f"{user.mention}", inline=False)
@@ -370,10 +476,15 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
 
-    if isinstance(user, discord.Member):
+    if isinstance(user, Member):
         embed.add_field(name="Roles", value=roles_str, inline=False)
 
-    embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
+    embed.add_field(name="Server Booster Since", value=f"`{boost_since_str}`", inline=False)
+
+    if boost_duration_str:
+        embed.add_field(name="Boosting Duration", value=f"`{boost_duration_str}`", inline=False)
+
+    embed.add_field(name="Badges", value=badges_str, inline=False)
 
     if is_bot:
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
