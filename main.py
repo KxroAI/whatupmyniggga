@@ -405,28 +405,28 @@ async def userinfo(interaction: Interaction, user: User = None):
 
     created_at = user.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
 
-    # Get official badges from public flags
+    # --- Official Badges Mapping ---
     official_badges = []
     for flag, emoji in BADGE_EMOJIS.items():
-        if flag in user.public_flags.all():
+        if isinstance(flag, PublicUserFlags) and flag in user.public_flags.all():
             official_badges.append(emoji)
 
-    # Get custom badges
+    # --- Custom Badges ---
     custom_badges = get_custom_badges(user)
     custom_badge_emojis = [CUSTOM_BADGES[badge] for badge in custom_badges if badge in CUSTOM_BADGES]
 
-    # Check for Nitro tier
+    # --- Nitro Boosting Info ---
     nitro_tier_emoji = ""
-    if PublicUserFlags.premium_subscriber in user.public_flags.all():
-        nitro_tier_emoji = NITRO_TIERS["ruby"]  # You can customize this logic later
+    if user.premium_type == 2:
+        nitro_tier_emoji = NITRO_TIERS.get("ruby", "")  # or determine based on boost duration
         official_badges.append(nitro_tier_emoji)
 
+    # --- Server Specific Info ---
     boost_months = 0
     boost_since_str = "Not Boosting"
     boost_duration_str = ""
     booster_emoji = ""
 
-    # Server-specific info
     if isinstance(user, Member):
         joined_at = user.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.joined_at else "Unknown"
         roles = [role.mention for role in user.roles if not role.is_default()]
@@ -456,15 +456,18 @@ async def userinfo(interaction: Interaction, user: User = None):
                 booster_emoji = BOOSTER_EMOJIS[2]
             elif boost_months == 1:
                 booster_emoji = BOOSTER_EMOJIS[1]
-
             custom_badge_emojis.append(booster_emoji)
+
+        # Check if user is server owner
+        if user.guild.owner == user:
+            custom_badge_emojis.append(CUSTOM_BADGES.get("guild_owner", ""))
 
     else:
         joined_at = "Not in Server"
         roles_str = "N/A"
         is_bot = user.bot
 
-    # Combine all badge emojis
+    # Combine all badges
     all_badges = official_badges + custom_badge_emojis
     badges_str = " ".join(all_badges) if all_badges else "N/A"
 
@@ -479,10 +482,8 @@ async def userinfo(interaction: Interaction, user: User = None):
         embed.add_field(name="Roles", value=roles_str, inline=False)
 
     embed.add_field(name="Server Booster Since", value=f"`{boost_since_str}`", inline=False)
-
     if boost_duration_str:
         embed.add_field(name="Boosting Duration", value=f"`{boost_duration_str}`", inline=False)
-
     embed.add_field(name="Badges", value=badges_str, inline=False)
 
     if is_bot:
