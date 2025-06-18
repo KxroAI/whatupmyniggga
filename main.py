@@ -357,7 +357,6 @@ BADGE_EMOJIS = {
     PublicUserFlags.discord_certified_moderator: "<:moderatorprogramsalumni:1384838587941654569>",
     PublicUserFlags.active_developer: "<:activedeveloper:1384837998147014678>",
     PublicUserFlags.early_supporter: "<:earlysupporter:1384838332848017501>",
-    PublicUserFlags.guild_owner: "<:servercrown:1384839228483043388>",
 }
 
 # --- Custom Badge Mapping ---
