@@ -348,7 +348,9 @@ async def clearhistory(interaction: discord.Interaction):
 async def userinfo(interaction: discord.Interaction, user: discord.User = None):
     if user is None:
         user = interaction.user
+
     created_at = user.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
+
     if isinstance(user, discord.Member):
         joined_at = user.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.joined_at else "Unknown"
         roles = [role.mention for role in user.roles if not role.is_default()]
@@ -367,11 +369,15 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
     embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
+
     if isinstance(user, discord.Member):
-    embed.add_field(name="Roles", value=roles_str, inline=False)
+        embed.add_field(name="Roles", value=roles_str, inline=False)
+
     embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
+
     if is_bot:
-    embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
+        embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
+
     embed.set_thumbnail(url=user.display_avatar.url)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
