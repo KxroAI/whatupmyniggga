@@ -347,59 +347,8 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
     if user is None:
         user = interaction.user
 
-    # --- Badge Mapping Section ---
-    badge_mapping = {
-        discord.PublicUserFlags.staff: "<:DiscordStaff:1384838271988924487>",
-        discord.PublicUserFlags.partner: "<:DiscordPartner:1384838481238425721>",
-        discord.PublicUserFlags.hypesquad: "<:HypesquadBalance:1384835956070416517>",
-        discord.PublicUserFlags.hypesquad_bravery: "<:HypesquadBravery:1384836083887505508>",
-        discord.PublicUserFlags.hypesquad_brilliance: "<:HypesquadBrilliance:1384836165625970698>",
-        discord.PublicUserFlags.hypesquad_balance: "<:HypesquadBalance:1384835956070416517>",
-        discord.PublicUserFlags.bug_hunter: "<:BugHunter:1384838149707923486>",
-        discord.PublicUserFlags.bug_hunter_level_2: "<:BugBuster:1384838214153404487>",
-        discord.PublicUserFlags.premium_supporter: "<:EarlySupporter:1384838332848017501>",
-        discord.PublicUserFlags.verified_bot_developer: "<:VerifiedDeveloper:1384838386287644725>",
-        discord.PublicUserFlags.active_developer: "<:ActiveDeveloper:1384837998147014678>",
-        discord.PublicUserFlags.discord_certified_moderator: "<:ModeratorProgramsAlumni:1384838587941654569>",
-        discord.PublicUserFlags.http_interactions: "<:SupportsCommands:1384838818854731797>",
-    }
-
-    badges = []
-    for flag, emoji in badge_mapping.items():
-        if user.public_flags.__getattribute__(flag.name):
-            badges.append(emoji)
-
-    # Handle Nitro Badges
-    if user.premium_type == discord.PremiumType.nitro_classic:
-        badges.append("<:NitroBronze:1384837465554026496>")
-    elif user.premium_type == discord.PremiumType.premium:
-        badges.append("<:NitroGold:1384837603597221970>")
-
-    # Handle Server Boosting
-    if isinstance(user, discord.Member):
-        if user.premium_since:
-            boost_months = (datetime.now(tz=user.premium_since.tzinfo) - user.premium_since).days // 30
-            if boost_months >= 24:
-                badges.append("<:ServerBooster24:1384837387229724673>")
-            elif boost_months >= 18:
-                badges.append("<:ServerBooster18:1384837314295107634>")
-            elif boost_months >= 12:
-                badges.append("<:ServerBooster12:1384837249769668659>")
-            elif boost_months >= 9:
-                badges.append("<:ServerBooster9:1384837181259907133>")
-            elif boost_months >= 6:
-                badges.append("<:ServerBooster6:1384837114210029568>")
-            elif boost_months >= 3:
-                badges.append("<:ServerBooster3:1384837013886472212>")
-            elif boost_months >= 2:
-                badges.append("<:ServerBooster2:1384836936769863789>")
-            elif boost_months >= 1:
-                badges.append("<:ServerBooster1:1384836841995239494>")
-            else:
-                badges.append("<:ServerBooster:1384839120827715697>")
-
-    # Join Date and Account Creation
     created_at = user.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
+
     if isinstance(user, discord.Member):
         joined_at = user.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.joined_at else "Unknown"
         roles = [role.mention for role in user.roles if not role.is_default()]
@@ -412,25 +361,27 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
         boost_since = "Not Boosting"
         is_bot = user.bot
 
-    # Embed Construction
     embed = discord.Embed(color=discord.Color.green())
     embed.add_field(name="Username", value=f"{user.mention}", inline=False)
     embed.add_field(name="Display Name", value=f"`{user.display_name}`", inline=True)
     embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
+
     if isinstance(user, discord.Member):
         embed.add_field(name="Roles", value=roles_str, inline=False)
+
     embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
-    if badges:
-        embed.add_field(name="Badges", value=" ".join(badges), inline=False)
+
     if is_bot:
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
+
     embed.set_thumbnail(url=user.display_avatar.url)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
+
 # ===========================
 # Announcement Command
 # ===========================
