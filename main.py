@@ -380,7 +380,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
 
     # Set thumbnail to user's 
-    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_thumbnail(url=member.display_.url)
 
     # Footer and timestamp
     embed.set_footer(text="Neroniel")
@@ -1016,6 +1016,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/announcement <message> <channel>` - Send an embedded announcement
 - `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
+- `/banner [user]` - Display a user's bannner
         """,
         inline=False
     )
@@ -1122,6 +1123,46 @@ async def avatar(interaction: discord.Interaction, user: discord.Member = None):
         color=discord.Color.from_rgb(0, 0, 0)
     )
     embed.set_image(url=user.display_avatar.url)
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+# ========== Banner Command ==========
+@bot.tree.command(name="banner", description="Display a user's banner")
+@app_commands.describe(user="The user whose banner you want to see")
+async def banner(interaction: discord.Interaction, user: discord.User = None):
+    if user is None:
+        user = interaction.user
+
+    try:
+        fetched_user = await bot.fetch_user(user.id)
+    except discord.NotFound:
+        await interaction.response.send_message("❌ User not found.", ephemeral=True)
+        return
+
+    banner_url = fetched_user.banner.url if fetched_user.banner else None
+    server_banner_url = None
+
+    if interaction.guild:
+        try:
+            member = await interaction.guild.fetch_member(user.id)
+            if member.guild_avatar:
+                server_banner_url = member.guild_avatar.url
+        except discord.NotFound:
+            pass
+
+    embed = discord.Embed(
+        color=discord.Color.from_rgb(0, 0, 0)
+    )
+
+    if banner_url:
+        embed.set_image(url=banner_url)
+    elif server_banner_url:
+        embed.set_image(url=server_banner_url)
+    else:
+        embed.description = f"**{user.mention} has no banner or server banner.**"
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
