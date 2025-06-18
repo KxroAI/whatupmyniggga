@@ -344,45 +344,35 @@ async def clearhistory(interaction: discord.Interaction):
 
 # /userinfo - Display user information
 @bot.tree.command(name="userinfo", description="Display detailed information about a user")
-@app_commands.describe(member="The member to get info for (optional, defaults to you)")
-async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
-    if member is None:
-        member = interaction.user
-    # Account creation date
-    created_at = member.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
-    # Join date
-    joined_at = member.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.joined_at else "Unknown"
-    # Roles
-    roles = [role.mention for role in member.roles if not role.is_default()]
-    roles_str = ", ".join(roles) if roles else "No Roles"
-    # Boosting status
-    boost_since = member.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if member.premium_since else "Not Boosting"
+@app_commands.describe(user="The user to get info for (optional, defaults to you)")
+async def userinfo(interaction: discord.Interaction, user: discord.User = None):
+    if user is None:
+        user = interaction.user
+    created_at = user.created_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8")
+    if isinstance(user, discord.Member):
+        joined_at = user.joined_at.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.joined_at else "Unknown"
+        roles = [role.mention for role in user.roles if not role.is_default()]
+        roles_str = ", ".join(roles) if roles else "No Roles"
+        boost_since = user.premium_since.astimezone(PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8") if user.premium_since else "Not Boosting"
+        is_bot = user.bot
+    else:
+        joined_at = "Not in Server"
+        roles_str = "N/A"
+        boost_since = "Not Boosting"
+        is_bot = user.bot
 
-    embed = discord.Embed(title=f"👤 User Info for {member}", color=discord.Color.green())
-
-    # Basic Info
-    embed.add_field(name="Username", value=f"{member.mention}", inline=False)
-    embed.add_field(name="Display Name", value=f"`{member.display_name}`", inline=True)
-    embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
-
-    # Dates
+    embed = discord.Embed(title=f"👤 User Info for {user}", color=discord.Color.green())
+    embed.add_field(name="Username", value=f"{user.mention}", inline=False)
+    embed.add_field(name="Display Name", value=f"`{user.display_name}`", inline=True)
+    embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
     embed.add_field(name="Created Account", value=f"`{created_at}`", inline=False)
     embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
-
-    # Roles
+    if isinstance(user, discord.Member):
     embed.add_field(name="Roles", value=roles_str, inline=False)
-
-    # Boosting
     embed.add_field(name="Server Booster Since", value=f"`{boost_since}`", inline=False)
-
-    # Optional: Show if the user is a bot
-    if member.bot:
-        embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
-
-    # Set thumbnail to user's 
-    embed.set_thumbnail(url=member.display_.url)
-
-    # Footer and timestamp
+    if is_bot:
+    embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
+    embed.set_thumbnail(url=user.display_avatar.url)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
