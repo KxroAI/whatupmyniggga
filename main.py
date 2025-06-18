@@ -379,7 +379,7 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member = No
     if member.bot:
         embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
 
-    # Set thumbnail to user's avatar
+    # Set thumbnail to user's 
     embed.set_thumbnail(url=member.display_avatar.url)
 
     # Footer and timestamp
@@ -1105,6 +1105,23 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
     if info["image"]:
         embed.set_image(url=info["image"])
 
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+# ========== Avatar Command ==========
+@bot.tree.command(name="avatar", description="Display a user's profile picture")
+@app_commands.describe(user="The user whose avatar you want to see")
+async def avatar(interaction: discord.Interaction, user: discord.Member = None):
+    if user is None:
+        user = interaction.user  
+
+    embed = discord.Embed(
+        title=f"{user}'s Avatar",
+        color=discord.Color.from_rgb(0, 0, 0)
+    )
+    embed.set_image(url=user.display_avatar.url)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
