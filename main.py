@@ -363,7 +363,7 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
         boost_since = "Not Boosting"
         is_bot = user.bot
 
-    embed = discord.Embed(title=f"User Info for {user}", color=discord.Color.green())
+    embed = discord.Embed(color=discord.Color.green())
     embed.add_field(name="Username", value=f"{user.mention}", inline=False)
     embed.add_field(name="Display Name", value=f"`{user.display_name}`", inline=True)
     embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
