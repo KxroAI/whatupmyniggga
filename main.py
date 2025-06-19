@@ -1033,6 +1033,8 @@ async def listallcommands(interaction: discord.Interaction):
 - `/say <message>` - Make the bot say something
 - `/calculator <num1> <operation> <num2>` - Perform math operations
 - `/weather <city> [unit]` - Get weather in a city  
+- `/tiktok <link>` - Convert an Tiktok Link into a Video
+- `/instagram <link>` - Convert an Instagram Link into a Video
         """,
         inline=False
     )
@@ -1380,6 +1382,46 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
         value="This is an estimate based on the current DevEx rate. Actual payout may vary.",
         inline=False
     )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+# ========== Tiktok Command ==========
+@bot.tree.command(name="tiktok", description="Convert a TikTok Link into a Video")
+@app_commands.describe(link="The TikTok Video URL to Convert")
+async def tiktok(interaction: discord.Interaction, link: str):
+    # Basic validation for TikTok URL
+    if not (link.startswith("https://www.tiktok.com/")  or "tiktok.com" in link):
+        await interaction.response.send_message("❌ Please provide a valid TikTok link.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        color=discord.Color.from_rgb(0, 0, 0)
+    )
+    embed.set_video(url=link)
+
+    # Add footer and timestamp
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+# ========== Instagram Command ==========
+@bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video")
+@app_commands.describe(link="The Instagram Video URL to Convert")
+async def instagram(interaction: discord.Interaction, link: str):
+    # Basic validation for Instagram URL
+    if not (link.startswith("https://www.instagram.com/")  or "instagram.com" in link):
+        await interaction.response.send_message("❌ Please provide a valid Instagram link.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        color=discord.Color.from_rgb(0, 0, 0)
+    )
+    embed.set_video(url=link)
+
+    # Add footer and timestamp
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
