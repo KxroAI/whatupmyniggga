@@ -1395,7 +1395,7 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
 @bot.tree.command(name="tiktok", description="Convert a TikTok Link into a Video")
 @app_commands.describe(link="The TikTok Video URL to Convert", spoiler="Should the video be sent as a spoiler?")
 async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = False):
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)  # Changed to False
 
     try:
         # Create a temporary directory to store the downloaded video
@@ -1409,7 +1409,7 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
             # Find the downloaded MP4 file
             video_files = [f for f in os.listdir(tmpdir) if f.endswith(".mp4")]
             if not video_files:
-                await interaction.followup.send("❌ Failed to download TikTok video.", ephemeral=True)
+                await interaction.followup.send("❌ Failed to download TikTok video.")
                 return
 
             video_path = os.path.join(tmpdir, video_files[0])
@@ -1421,29 +1421,33 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 
             await interaction.followup.send(
                 file=discord.File(fp=video_path, filename=filename),
-                ephemeral=False
+                ephemeral=False  # Ensures everyone can see the message
             )
 
             os.chdir(original_dir)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Instagram Command ==========
-@bot.tree.command(name="instagram", description="Convert a Instagram Link into a Video")
-@app_commands.describe(link="The Instagram Video URL to Convert", spoiler="Should the video be sent as a spoiler?")
+@bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video/Image")
+@app_commands.describe(link="The Instagram Post URL to Convert", spoiler="Should the media be sent as a spoiler?")
 async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)  # Now visible to everyone
 
     try:
-
         # Create a temporary directory to store the downloaded media
         with tempfile.TemporaryDirectory() as tmpdir:
             original_dir = os.getcwd()
             os.chdir(tmpdir)
 
-            loader = instaloader.Instaloader(download_pictures=True, download_videos=True, dirname_pattern=tmpdir,
-                                             save_metadata=False, quiet=True)
+            loader = instaloader.Instaloader(
+                download_pictures=True,
+                download_videos=True,
+                dirname_pattern=tmpdir,
+                save_metadata=False,
+                quiet=True
+            )
 
             # Extract shortcode from URL
             shortcode = instaloader.Post.shortcode_from_url(link)
@@ -1455,7 +1459,7 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             # Find the downloaded media file (.jpg or .mp4)
             media_files = [f for f in os.listdir(tmpdir) if f.endswith(".jpg") or f.endswith(".mp4")]
             if not media_files:
-                await interaction.followup.send("❌ Failed to download Instagram media.", ephemeral=True)
+                await interaction.followup.send("❌ Failed to download Instagram media.")
                 return
 
             media_path = os.path.join(tmpdir, media_files[0])
@@ -1467,13 +1471,13 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
 
             await interaction.followup.send(
                 file=discord.File(fp=media_path, filename=filename),
-                ephemeral=False
+                ephemeral=False  # Ensures message is visible to everyone
             )
 
             os.chdir(original_dir)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 
 
