@@ -22,6 +22,10 @@ import re
 from flask import Flask
 import threading
 import time
+import pyktok as pyk
+import instaloader
+import tempfile
+
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
 load_dotenv()
@@ -1389,27 +1393,88 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
 
 # ========== Tiktok Command ==========
 @bot.tree.command(name="tiktok", description="Convert a TikTok Link into a Video")
-@app_commands.describe(link="The TikTok Video URL to Convert")
-async def tiktok(interaction: discord.Interaction, link: str):
-    # Basic validation for TikTok URL
-    if "tiktok.com" not in link:
-        await interaction.response.send_message("❌ Please provide a valid TikTok link.", ephemeral=True)
-        return
+@app_commands.describe(link="The TikTok Video URL to Convert", spoiler="Should the video be sent as a spoiler?")
+async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = False):
+    await interaction.response.defer(ephemeral=True)
 
-    # Just send the link so Discord renders the video
-    await interaction.response.send_message(link)
+    try:
+        # Create a temporary directory to store the downloaded video
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            os.chdir(tmpdir)
+
+            # Download TikTok video using pyktok
+            pyk.save_tiktok(link, save_video=True)
+
+            # Find the downloaded MP4 file
+            video_files = [f for f in os.listdir(tmpdir) if f.endswith(".mp4")]
+            if not video_files:
+                await interaction.followup.send("❌ Failed to download TikTok video.", ephemeral=True)
+                return
+
+            video_path = os.path.join(tmpdir, video_files[0])
+
+            # Prepare filename with spoiler prefix if needed
+            filename = os.path.basename(video_path)
+            if spoiler:
+                filename = f"SPOILER_{filename}"
+
+            await interaction.followup.send(
+                file=discord.File(fp=video_path, filename=filename),
+                ephemeral=False
+            )
+
+            os.chdir(original_dir)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
 
 # ========== Instagram Command ==========
-@bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video")
-@app_commands.describe(link="The Instagram Video URL to Convert")
-async def instagram(interaction: discord.Interaction, link: str):
-    # Basic validation for Instagram URL
-    if "instagram.com" not in link:
-        await interaction.response.send_message("❌ Please provide a valid Instagram link.", ephemeral=True)
-        return
+@bot.tree.command(name="instagram", description="Convert a Instagram Link into a Video")
+@app_commands.describe(link="The Instagram Video URL to Convert", spoiler="Should the video be sent as a spoiler?")
+async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
+    await interaction.response.defer(ephemeral=True)
 
-    # Just send the link so Discord renders the video
-    await interaction.response.send_message(link)
+    try:
+
+        # Create a temporary directory to store the downloaded media
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            os.chdir(tmpdir)
+
+            loader = instaloader.Instaloader(download_pictures=True, download_videos=True, dirname_pattern=tmpdir,
+                                             save_metadata=False, quiet=True)
+
+            # Extract shortcode from URL
+            shortcode = instaloader.Post.shortcode_from_url(link)
+            post = instaloader.Post.from_shortcode(loader.context, shortcode)
+
+            # Download the post
+            loader.download_post(post, target="ig_post")
+
+            # Find the downloaded media file (.jpg or .mp4)
+            media_files = [f for f in os.listdir(tmpdir) if f.endswith(".jpg") or f.endswith(".mp4")]
+            if not media_files:
+                await interaction.followup.send("❌ Failed to download Instagram media.", ephemeral=True)
+                return
+
+            media_path = os.path.join(tmpdir, media_files[0])
+
+            # Prepare filename with spoiler prefix if needed
+            filename = os.path.basename(media_path)
+            if spoiler:
+                filename = f"SPOILER_{filename}"
+
+            await interaction.followup.send(
+                file=discord.File(fp=media_path, filename=filename),
+                ephemeral=False
+            )
+
+            os.chdir(original_dir)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
+
 
 
 # ===========================
