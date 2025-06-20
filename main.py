@@ -127,7 +127,7 @@ async def check_reminders():
 async def before_check_reminders():
     await bot.wait_until_ready()
 
-if reminders_collection is not None:
+if reminders_collection:
     check_reminders.start()
 
 # ===========================
@@ -1594,10 +1594,15 @@ async def on_ready():
     await bot.tree.sync()
     print("All commands synced!")
 
+    # Start background tasks after bot is ready
+    if reminders_collection is not None:
+        if not check_reminders.is_running():
+            check_reminders.start()
+
     group_id = 5838002
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/ {group_id}")
+            response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}") 
             data = response.json()
             member_count = data['memberCount']
             await bot.change_presence(status=discord.Status.dnd,
