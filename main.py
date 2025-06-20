@@ -1632,7 +1632,6 @@ async def unlink(interaction: discord.Interaction):
 # ===========================
 # Bot Events
 # ===========================
-
 @bot.event
 async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
@@ -1642,12 +1641,13 @@ async def on_ready():
     # Start background tasks after bot is ready
     if reminders_collection is not None:
         if not check_reminders.is_running():
+            print("✅ Starting reminder checker...")
             check_reminders.start()
-
+    
     group_id = 5838002
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}") 
+            response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")  
             data = response.json()
             member_count = data['memberCount']
             await bot.change_presence(status=discord.Status.dnd,
@@ -1661,6 +1661,7 @@ async def on_ready():
                                        type=discord.ActivityType.watching,
                                        name="1cy"))
         await asyncio.sleep(60)
+
 
 @bot.event
 async def on_message(message):
