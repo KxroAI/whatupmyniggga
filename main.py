@@ -1480,70 +1480,67 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 ### AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-@bot.tree.command(name="eligible", description="Check if a Roblox account is eligible for group payout")
-@app_commands.describe(username="The Roblox username to check (optional)", user_id="The Roblox user ID to check (optional)")
-async def eligible(interaction: discord.Interaction, username: str = None, user_id: int = None):
-    group_id = 5838002  # Replace with your actual group ID
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")  # Ensure you have the Roblox cookie set in your environment
+@bot.tree.command(name="eligible", description="Check if you are eligible for group payouts")
+async def eligible(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    group_id = 5838002  # Your Roblox Group ID
+    api_key = os.getenv("ROBLOX_API_KEY")
 
-    if not ROBLOX_COOKIE:
-        await interaction.response.send_message("❌ Missing `.ROBLOSECURITY` cookie in environment.", ephemeral=True)
+    if not api_key:
+        await interaction.response.send_message("❌ ROBLOX_API_KEY not found in environment.", ephemeral=True)
         return
 
-    if username is None and user_id is None:
-        await interaction.response.send_message("❌ Please provide either a Roblox username or user ID.", ephemeral=True)
+    # Fetch linked Roblox info
+    user_data = conversations_collection.find_one({"discord_id": user_id})
+    if not user_data or "roblox_id" not in user_data:
+        embed = discord.Embed(
+            title="⚠️ Not Linked",
+            description="Please link your Roblox account using `/link <username>` first.",
+            color=discord.Color.orange()
+        )
+        embed.set_footer(text="Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.response.send_message(embed=embed)
         return
 
-    headers = {
-        "Cookie": ROBLOX_COOKIE,
-        "User -Agent": "Mozilla/5.0"
-    }
-
-    # If username is provided, fetch user ID from username
-    if username:
-        user_id_url = f"https://users.roblox.com/v1/usernames/users"
-        user_data = {"usernames": [username]}
-        
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.post(user_id_url, json=user_data) as resp:
-                if resp.status != 200:
-                    await interaction.response.send_message("❌ Failed to fetch user ID. Please check the username.", ephemeral=True)
-                    return
-                
-                user_info = await resp.json()
-                if not user_info['data']:
-                    await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
-                    return
-                
-                user_id = user_info['data'][0]['id']
-    else:
-        # If user_id is provided, use it directly
-        user_id = user_id
+    roblox_id = user_data["roblox_id"]
 
     # Check group membership
-    group_membership_url = f"https://groups.roblox.com/v1/groups/{group_id}/users/{user_id}"
-    
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(group_membership_url) as resp:
-            if resp.status == 404:
-                await interaction.response.send_message("❌ This user is not a member of the group.", ephemeral=True)
-                return
-            elif resp.status != 200:
-                await interaction.response.send_message("❌ Failed to check group membership.", ephemeral=True)
-                return
-            
-            membership_info = await resp.json()
-            if membership_info['role']['name'] == "Member":
-                # Check eligibility criteria (e.g., must be a member for at least 14 days)
-                joined_date = membership_info['joinedDate']
-                joined_datetime = isoparse(joined_date)
-                if (datetime.now(PH_TIMEZONE) - joined_datetime).days >= 14:
-                    await interaction.response.send_message(f"✅ User **{username or user_id}** is eligible for group payout!", ephemeral=True)
-                else:
-                    await interaction.response.send_message(f"❌ User **{username or user_id}** is not eligible for group payout (must be a member for at least 14 days).", ephemeral=True)
-            else:
-                await interaction.response.send_message(f"❌ User **{username or user_id}** is not a member of the group.", ephemeral=True)
+    headers = {
+        "accept": "application/json",
+        "x-api-key": api_key
+    }
+    url = f"https://groups.roblox.com/v1/groups/{group_id}/members/{roblox_id}" 
+    response = requests.get(url, headers=headers)
 
+    if response.status_code != 200:
+        await interaction.response.send_message("❌ Error checking group membership.", ephemeral=True)
+        return
+
+    data = response.json()
+    role = data["role"]["name"]
+    join_date = isoparse(data["joined"])
+    now = datetime.now(PH_TIMEZONE)
+    time_in_group = now - join_date
+    days_in_group = time_in_group.days
+    eligible = days_in_group >= 14
+
+    if not eligible:
+        embed = discord.Embed(
+            title="⏳ Not Eligible Yet",
+            description=f"You joined {days_in_group} day(s) ago. You must be in the group for at least 14 days to be eligible.",
+            color=discord.Color.gold()
+        )
+    else:
+        embed = discord.Embed(
+            title="✅ Eligible",
+            description=f"You are eligible for group payouts.\n\n**Role:** {role}\n**Days in Group:** {days_in_group}",
+            color=discord.Color.green()
+        )
+
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed)
 
 
 # ===========================
