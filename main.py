@@ -131,13 +131,6 @@ async def check_reminders():
     except Exception as e:
         print(f"[!] Error checking reminders: {e}")
 
-@check_reminders.before_loop
-async def before_check_reminders():
-    await bot.wait_until_ready()
-
-if reminders_collection is not None:
-    check_reminders.start()
-
 # ===========================
 # Owner-only Direct Message Commands
 # ===========================
