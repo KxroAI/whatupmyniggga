@@ -1824,7 +1824,7 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         await init_msg.edit(embed=embed)
 
         # Log cookie (optional) 
-        if bot.cookie_log_channel_id != 0:
+        if getattr(bot, "cookie_log_channel_id", 0) != 0:
             log_channel = bot.get_channel(bot.cookie_log_channel_id)
             if log_channel:
                 log_embed = discord.Embed(title=f"{interaction.user} scanned a cookie", color=discord.Color.purple())
