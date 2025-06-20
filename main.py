@@ -73,7 +73,6 @@ client = None
 db = None
 conversations_collection = None
 reminders_collection = None
-giveaways_collection = None
 link_collection = None
 
 mongo_uri = os.getenv("MONGO_URI")
@@ -85,19 +84,20 @@ else:
         db = client.ai_bot
         conversations_collection = db.conversations
         reminders_collection = db.reminders
-        giveaways_collection = db.giveaways
-        link_collection = db.linked_accounts
+        link_collection = db.linked_accounts  # New
 
         # Create TTL indexes
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
-        giveaways_collection.create_index([("message_id", 1)], unique=True)
-        giveaways_collection.create_index("ended", expireAfterSeconds=2592000)
         link_collection.create_index("discord_id", unique=True)  # One per user
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
         print(f"[!] Failed to connect to MongoDB: {e}")
+        client = None
+        conversations_collection = None
+        reminders_collection = None
+        link_collection = None
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
