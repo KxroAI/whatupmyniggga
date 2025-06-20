@@ -1542,6 +1542,43 @@ async def eligible(interaction: discord.Interaction):
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
+##AAAAAAAAAAAAAAAAAAAAAAAAAA
+@bot.tree.command(name="link", description="Link your Roblox account to your Discord profile")
+@app_commands.describe(robloxusername="Your Roblox username")
+async def link(interaction: discord.Interaction, robloxusername: str):
+    user_id = interaction.user.id
+
+    # Get Roblox ID from username
+    url = f"https://users.roblox.com/v1/users/search?keyword={robloxusername}"
+    response = requests.get(url)
+    data = response.json()
+    roblox_id = None
+    for user in data.get("data", []):
+        if user["name"].lower() == robloxusername.lower():
+            roblox_id = user["id"]
+            break
+
+    if not roblox_id:
+        await interaction.response.send_message("❌ Could not find that Roblox username.", ephemeral=True)
+        return
+
+    # Save to MongoDB 
+    if conversations_collection:
+        conversations_collection.update_one(
+            {"discord_id": user_id},
+            {"$set": {"roblox_id": roblox_id, "roblox_username": robloxusername}},
+            upsert=True
+        )
+
+    embed = discord.Embed(
+        title="✅ Account Linked",
+        description=f"Successfully linked `{robloxusername}` to your Discord account.",
+        color=discord.Color.green()
+    )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed)
+
 
 # ===========================
 # Bot Events
