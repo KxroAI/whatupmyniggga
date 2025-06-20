@@ -69,23 +69,31 @@ update_thread.start()
 # ===========================
 # MongoDB Setup (with SSL Fix)
 # ===========================
-try:
-    client = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
-    db = client.ai_bot
-    conversations_collection = db.conversations
-    reminders_collection = db.reminders
-    giveaways_collection = db.giveaways
+client = None
+db = None
+conversations_collection = None
+reminders_collection = None
+link_collection = None  # New collection for /link command
 
-    # Create TTL indexes
-    conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
-    reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
-    giveaways_collection.create_index([("message_id", 1)], unique=True)
-    giveaways_collection.create_index("ended", expireAfterSeconds=2592000)
-except Exception as e:
-    print(f"[!] Failed to connect to MongoDB: {e}")
-    client = None
-    conversations_collection = None
-    reminders_collection = None
+mongo_uri = os.getenv("MONGO_URI")
+if not mongo_uri:
+    print("[!] MONGO_URI not found in environment. MongoDB will be disabled.")
+else:
+    try:
+        client = MongoClient(mongo_uri, tlsCAFile=certifi.where())
+        db = client.ai_bot
+        conversations_collection = db.conversations
+        reminders_collection = db.reminders
+        link_collection = db.linked_accounts  # Dedicated collection
+        
+        # Create TTL indexes (only for temporary collections)
+        conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
+        reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
+        link_collection.create_index("discord_id", unique=True)  # Ensure one entry per user
+
+        print("✅ Successfully connected to MongoDB")
+    except Exception as e:
+        print(f"[!] Failed to connect to MongoDB: {e}")
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
@@ -134,7 +142,7 @@ if reminders_collection:
 # Owner-only Direct Message Commands
 # ===========================
 # Define the BOT_OWNER_ID directly in the code
-BOT_OWNER_ID = 1163771452453761193  # Replace with your actual Discord ID if different
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
 
 @bot.tree.command(name="dm", description="Send a direct message to a user (Owner only)")
 @app_commands.describe(user="The user you want to message", message="The message to send")
@@ -392,7 +400,7 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
 @bot.tree.command(name="announcement", description="Send an embedded announcement to a specific channel")
 @app_commands.describe(message="The message to include in the announcement", channel="The channel to send the announcement to")
 async def announcement(interaction: discord.Interaction, message: str, channel: discord.TextChannel):
-    BOT_OWNER_ID = 1163771452453761193  # Update if needed
+    BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
     if not is_owner and not is_admin:
@@ -1485,17 +1493,17 @@ async def eligible(interaction: discord.Interaction):
     user_id = interaction.user.id
     group_id = 5838002  # Your Roblox Group ID
     api_key = os.getenv("ROBLOX_API_KEY")
-
+    
     if not api_key:
         await interaction.response.send_message("❌ ROBLOX_API_KEY not found in environment.", ephemeral=True)
         return
 
-    if conversations_collection is None:
+    if link_collection is None:
         await interaction.response.send_message("❌ Database is currently unavailable. Please try again later.", ephemeral=True)
         return
 
     # Fetch linked Roblox info
-    user_data = conversations_collection.find_one({"discord_id": user_id})
+    user_data = link_collection.find_one({"discord_id": user_id})
     if not user_data or "roblox_id" not in user_data:
         embed = discord.Embed(
             title="⚠️ Not Linked",
@@ -1514,9 +1522,9 @@ async def eligible(interaction: discord.Interaction):
         "accept": "application/json",
         "x-api-key": api_key
     }
-    url = f"https://groups.roblox.com/v1/groups/{group_id}/members/{roblox_id}" 
+    url = f"https://groups.roblox.com/v1/groups/{group_id}/members/{roblox_id}"  
     response = requests.get(url, headers=headers)
-
+    
     if response.status_code != 200:
         await interaction.response.send_message("❌ Error checking group membership.", ephemeral=True)
         return
@@ -1538,24 +1546,28 @@ async def eligible(interaction: discord.Interaction):
     else:
         embed = discord.Embed(
             title="✅ Eligible",
-            description=f"You are eligible for group payouts.\n\n**Role:** {role}\n**Days in Group:** {days_in_group}",
+            description=f"You are eligible for group payouts.\n"
+                        f"**Role:** {role}\n"
+                        f"**Days in Group:** {days_in_group}",
             color=discord.Color.green()
         )
-
+    
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
-# ========== Link Command ==========v
+
+# ========== Link Command ==========
 @bot.tree.command(name="link", description="Link your Roblox account to your Discord profile")
 @app_commands.describe(robloxusername="Your Roblox username")
 async def link(interaction: discord.Interaction, robloxusername: str):
     user_id = interaction.user.id
-
+    
     # Get Roblox ID from username
     url = f"https://users.roblox.com/v1/users/search?keyword={robloxusername}"
     response = requests.get(url)
     data = response.json()
+    
     roblox_id = None
     for user in data.get("data", []):
         if user["name"].lower() == robloxusername.lower():
@@ -1566,11 +1578,16 @@ async def link(interaction: discord.Interaction, robloxusername: str):
         await interaction.response.send_message("❌ Could not find that Roblox username.", ephemeral=True)
         return
 
-    # Save to MongoDB 
-    if conversations_collection:
-        conversations_collection.update_one(
+    # Save to link_collection 
+    if link_collection:
+        link_collection.update_one(
             {"discord_id": user_id},
-            {"$set": {"roblox_id": roblox_id, "roblox_username": robloxusername}},
+            {
+                "$set": {
+                    "roblox_id": roblox_id,
+                    "roblox_username": robloxusername
+                }
+            },
             upsert=True
         )
 
@@ -1579,6 +1596,34 @@ async def link(interaction: discord.Interaction, robloxusername: str):
         description=f"Successfully linked `{robloxusername}` to your Discord account.",
         color=discord.Color.green()
     )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed)
+
+# ========== Unlink Command ==========
+@bot.tree.command(name="unlink", description="Unlink your Roblox account from your Discord profile")
+async def unlink(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    
+    if link_collection is None:
+        await interaction.response.send_message("❌ Database is currently unavailable. Please try again later.", ephemeral=True)
+        return
+
+    result = link_collection.delete_one({"discord_id": user_id})
+
+    if result.deleted_count > 0:
+        embed = discord.Embed(
+            title="✅ Account Unlinked",
+            description="Your Roblox account has been successfully unlinked.",
+            color=discord.Color.green()
+        )
+    else:
+        embed = discord.Embed(
+            title="⚠️ Not Linked",
+            description="You don't have a Roblox account linked to your Discord profile.",
+            color=discord.Color.orange()
+        )
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
