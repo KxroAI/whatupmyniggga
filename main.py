@@ -135,7 +135,7 @@ async def check_reminders():
 async def before_check_reminders():
     await bot.wait_until_ready()
 
-if reminders_collection:
+if reminders_collection is not None:
     check_reminders.start()
 
 # ===========================
