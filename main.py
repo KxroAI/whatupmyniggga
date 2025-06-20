@@ -1824,8 +1824,13 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
 
         if info["group"]:
             group = info["group"]
-            embed.add_field(name="Primary Group", value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})",  inline=True)
-                else:
+            embed.add_field(
+                name="Primary Group",
+                value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})",  
+                inline=True
+            )
+        else:
+            embed.add_field(name="Primary Group", value="N/A", inline=True)
             embed.add_field(name="Primary Group", value="N/A", inline=True)
 
         embed.set_footer(text="Neroniel")
