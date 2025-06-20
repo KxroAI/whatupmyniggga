@@ -1566,8 +1566,8 @@ async def link(interaction: discord.Interaction, robloxusername: str):
         await interaction.response.send_message("❌ Could not find that Roblox username.", ephemeral=True)
         return
 
-    # Save to link_collection 
-    if link_collection:
+    # Save to MongoDB 
+    if link_collection is not None:
         link_collection.update_one(
             {"discord_id": user_id},
             {
@@ -1587,6 +1587,7 @@ async def link(interaction: discord.Interaction, robloxusername: str):
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
+
 
 # ========== Unlink Command ==========
 @bot.tree.command(name="unlink", description="Unlink your Roblox account from your Discord profile")
