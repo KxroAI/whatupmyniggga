@@ -1481,8 +1481,8 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
 
 ### AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 @bot.tree.command(name="eligible", description="Check if a Roblox account is eligible for group payout")
-@app_commands.describe(username="The Roblox username or user ID to check")
-async def eligible(interaction: discord.Interaction, username: str):
+@app_commands.describe(username="The Roblox username to check (optional)", user_id="The Roblox user ID to check (optional)")
+async def eligible(interaction: discord.Interaction, username: str = None, user_id: int = None):
     group_id = 5838002  # Replace with your actual group ID
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")  # Ensure you have the Roblox cookie set in your environment
 
@@ -1490,27 +1490,35 @@ async def eligible(interaction: discord.Interaction, username: str):
         await interaction.response.send_message("❌ Missing `.ROBLOSECURITY` cookie in environment.", ephemeral=True)
         return
 
+    if username is None and user_id is None:
+        await interaction.response.send_message("❌ Please provide either a Roblox username or user ID.", ephemeral=True)
+        return
+
     headers = {
         "Cookie": ROBLOX_COOKIE,
         "User -Agent": "Mozilla/5.0"
     }
 
-    # Fetch user ID from username
-    user_id_url = f"https://users.roblox.com/v1/usernames/users"
-    user_data = {"usernames": [username]}
-    
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.post(user_id_url, json=user_data) as resp:
-            if resp.status != 200:
-                await interaction.response.send_message("❌ Failed to fetch user ID. Please check the username.", ephemeral=True)
-                return
-            
-            user_info = await resp.json()
-            if not user_info['data']:
-                await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
-                return
-            
-            user_id = user_info['data'][0]['id']
+    # If username is provided, fetch user ID from username
+    if username:
+        user_id_url = f"https://users.roblox.com/v1/usernames/users"
+        user_data = {"usernames": [username]}
+        
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.post(user_id_url, json=user_data) as resp:
+                if resp.status != 200:
+                    await interaction.response.send_message("❌ Failed to fetch user ID. Please check the username.", ephemeral=True)
+                    return
+                
+                user_info = await resp.json()
+                if not user_info['data']:
+                    await interaction.response.send_message("❌ User not found. Please check the username.", ephemeral=True)
+                    return
+                
+                user_id = user_info['data'][0]['id']
+    else:
+        # If user_id is provided, use it directly
+        user_id = user_id
 
     # Check group membership
     group_membership_url = f"https://groups.roblox.com/v1/groups/{group_id}/users/{user_id}"
@@ -1530,11 +1538,11 @@ async def eligible(interaction: discord.Interaction, username: str):
                 joined_date = membership_info['joinedDate']
                 joined_datetime = isoparse(joined_date)
                 if (datetime.now(PH_TIMEZONE) - joined_datetime).days >= 14:
-                    await interaction.response.send_message(f"✅ User **{username}** is eligible for group payout!", ephemeral=True)
+                    await interaction.response.send_message(f"✅ User **{username or user_id}** is eligible for group payout!", ephemeral=True)
                 else:
-                    await interaction.response.send_message(f"❌ User **{username}** is not eligible for group payout (must be a member for at least 14 days).", ephemeral=True)
+                    await interaction.response.send_message(f"❌ User **{username or user_id}** is not eligible for group payout (must be a member for at least 14 days).", ephemeral=True)
             else:
-                await interaction.response.send_message(f"❌ User **{username}** is not a member of the group.", ephemeral=True)
+                await interaction.response.send_message(f"❌ User **{username or user_id}** is not a member of the group.", ephemeral=True)
 
 
 
