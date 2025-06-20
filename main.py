@@ -1483,15 +1483,15 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
 @bot.tree.command(name="eligible", description="Check if you are eligible for group payouts")
 async def eligible(interaction: discord.Interaction):
     user_id = interaction.user.id
-    group_id = 5838002  # Your Roblox Group ID
-    api_key = os.getenv("ROBLOX_API_KEY")
+    group_id = 5838002  # ← Replace with your actual group ID
+    roblox_cookie = os.getenv("ROBLOX_COOKIE")
     
-    if not api_key:
-        await interaction.response.send_message("❌ ROBLOX_API_KEY not found in environment.", ephemeral=True)
+    if not roblox_cookie:
+        await interaction.response.send_message("❌ ROBLOX_COOKIE not found in environment.", ephemeral=True)
         return
-
+    
     if link_collection is None:
-        await interaction.response.send_message("❌ Database is currently unavailable. Please try again later.", ephemeral=True)
+        await interaction.response.send_message("❌ Database is currently unavailable.", ephemeral=True)
         return
 
     # Fetch linked Roblox info
@@ -1509,16 +1509,24 @@ async def eligible(interaction: discord.Interaction):
 
     roblox_id = user_data["roblox_id"]
 
-    # Check group membership
+    # Set headers with cookie
     headers = {
-        "accept": "application/json",
-        "x-api-key": api_key
+        "Cookie": roblox_cookie,
+        "User-Agent": "Mozilla/5.0"
     }
-    url = f"https://groups.roblox.com/v1/groups/{group_id}/members/{roblox_id}"  
+
+    # Check group membership
+    url = f"https://groups.roblox.com/v1/groups/{group_id}/members/{roblox_id}" 
     response = requests.get(url, headers=headers)
-    
-    if response.status_code != 200:
-        await interaction.response.send_message("❌ Error checking group membership.", ephemeral=True)
+
+    if response.status_code == 401:
+        await interaction.response.send_message("❌ Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie.", ephemeral=True)
+        return
+    elif response.status_code == 404:
+        await interaction.response.send_message("❌ You are not a member of the group.", ephemeral=True)
+        return
+    elif response.status_code != 200:
+        await interaction.response.send_message(f"❌ Error {response.status_code}: `{response.text}`", ephemeral=True)
         return
 
     data = response.json()
@@ -1543,7 +1551,7 @@ async def eligible(interaction: discord.Interaction):
                         f"**Days in Group:** {days_in_group}",
             color=discord.Color.green()
         )
-    
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
