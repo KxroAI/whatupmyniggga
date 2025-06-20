@@ -1795,21 +1795,18 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         # Get user info
         info = await fetch_roblox_info(auth_result["cookie"])
 
-        embed = discord.Embed(title="Roblox Account Info", color=discord.Color.green())
+        embed = discord.Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
 
+ 
         embed.add_field(name="Username", value=info["username"], inline=True)
-        embed.add_field(name="User ID", value=str(info["userid"]), inline=True)
+        embed.add_field(name="UserID", value=str(info["userid"]), inline=True)
 
         description = info['description'] if info['description'] else "N/A"
         embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
 
         embed.add_field(name="Robux", value=str(info["robux"]), inline=True)
-        embed.add_field(name="RAP", value=str(info["rap"]), inline=True)
         embed.add_field(name="Credit", value=f"${info['credit']}", inline=True)
-
-        premium_status = "Premium" if info["premium"] else "Non Premium"
-        embed.add_field(name="Membership", value=premium_status, inline=True)
 
         email_status = "Verified" if info["email_verified"] else "Add Email"
         embed.add_field(name="Email", value=email_status, inline=True)
@@ -1817,13 +1814,18 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         phone_status = "Verified" if info["phone_verified"] else "Add Phone"
         embed.add_field(name="Phone", value=phone_status, inline=True)
 
-        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"]) if info["inv_public"] else "Private"
+        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"])  if info["inv_public"] else "Private"
         embed.add_field(name="Inventory", value=inventory_status, inline=True)
+
+        embed.add_field(name="RAP", value=str(info["rap"]), inline=True)
+
+        premium_status = "Premium" if info["premium"] else "Non Premium"
+        embed.add_field(name="Membership", value=premium_status, inline=True)
 
         if info["group"]:
             group = info["group"]
-            embed.add_field(name="Primary Group", value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})", inline=True)
-        else:
+            embed.add_field(name="Primary Group", value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})",  inline=True)
+                else:
             embed.add_field(name="Primary Group", value="N/A", inline=True)
 
         embed.set_footer(text="Neroniel")
