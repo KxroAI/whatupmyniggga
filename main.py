@@ -98,7 +98,7 @@ else:
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
 async def check_reminders():
-    if not reminders_collection:
+    if reminders_collection is None:
         return
     try:
         now = datetime.now(PH_TIMEZONE)
@@ -108,24 +108,19 @@ async def check_reminders():
             guild_id = reminder["guild_id"]
             channel_id = reminder["channel_id"]
             note = reminder["note"]
-
             user = bot.get_user(user_id)
             if not user:
                 user = await bot.fetch_user(user_id)
-
             guild = bot.get_guild(guild_id)
             if not guild:
                 continue
-
             channel = guild.get_channel(channel_id)
             if not channel:
                 continue
-
             try:
                 await channel.send(f"🔔 {user.mention}, reminder: {note}")
             except discord.Forbidden:
                 print(f"[!] Cannot send reminder to {user} in #{channel.name}")
-
             # Delete reminder after sending
             reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
