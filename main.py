@@ -1479,7 +1479,7 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
-### AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+# ========== Eligible Command ==========
 @bot.tree.command(name="eligible", description="Check if you are eligible for group payouts")
 async def eligible(interaction: discord.Interaction):
     user_id = interaction.user.id
@@ -1488,6 +1488,10 @@ async def eligible(interaction: discord.Interaction):
 
     if not api_key:
         await interaction.response.send_message("❌ ROBLOX_API_KEY not found in environment.", ephemeral=True)
+        return
+
+    if conversations_collection is None:
+        await interaction.response.send_message("❌ Database is currently unavailable. Please try again later.", ephemeral=True)
         return
 
     # Fetch linked Roblox info
@@ -1542,7 +1546,7 @@ async def eligible(interaction: discord.Interaction):
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
-##AAAAAAAAAAAAAAAAAAAAAAAAAA
+# ========== Link Command ==========v
 @bot.tree.command(name="link", description="Link your Roblox account to your Discord profile")
 @app_commands.describe(robloxusername="Your Roblox username")
 async def link(interaction: discord.Interaction, robloxusername: str):
