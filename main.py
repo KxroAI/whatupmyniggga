@@ -73,7 +73,8 @@ client = None
 db = None
 conversations_collection = None
 reminders_collection = None
-link_collection = None  # New collection for /link command
+giveaways_collection = None
+link_collection = None
 
 mongo_uri = os.getenv("MONGO_URI")
 if not mongo_uri:
@@ -84,12 +85,15 @@ else:
         db = client.ai_bot
         conversations_collection = db.conversations
         reminders_collection = db.reminders
-        link_collection = db.linked_accounts  # Dedicated collection
-        
-        # Create TTL indexes (only for temporary collections)
+        giveaways_collection = db.giveaways
+        link_collection = db.linked_accounts
+
+        # Create TTL indexes
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
-        link_collection.create_index("discord_id", unique=True)  # Ensure one entry per user
+        giveaways_collection.create_index([("message_id", 1)], unique=True)
+        giveaways_collection.create_index("ended", expireAfterSeconds=2592000)
+        link_collection.create_index("discord_id", unique=True)  # One per user
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
@@ -1566,7 +1570,7 @@ async def link(interaction: discord.Interaction, robloxusername: str):
         await interaction.response.send_message("❌ Could not find that Roblox username.", ephemeral=True)
         return
 
-    # Save to MongoDB 
+    # Save to link_collection 
     if link_collection is not None:
         link_collection.update_one(
             {"discord_id": user_id},
@@ -1593,9 +1597,9 @@ async def link(interaction: discord.Interaction, robloxusername: str):
 @bot.tree.command(name="unlink", description="Unlink your Roblox account from your Discord profile")
 async def unlink(interaction: discord.Interaction):
     user_id = interaction.user.id
-    
+
     if link_collection is None:
-        await interaction.response.send_message("❌ Database is currently unavailable. Please try again later.", ephemeral=True)
+        await interaction.response.send_message("❌ Database is currently unavailable.", ephemeral=True)
         return
 
     result = link_collection.delete_one({"discord_id": user_id})
