@@ -1458,10 +1458,8 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-# Group ID for the Roblox group
-GROUP_ID = 5838002  # Replace with your Roblox Group ID
+GROUP_ID = 5838002  # Your group ID
 
-# Command: /eligible
 @bot.tree.command(name="eligible", description="Check if a Roblox account is eligible for group payouts")
 @app_commands.describe(username="Roblox username to check")
 async def eligible(interaction: discord.Interaction, username: str):
@@ -1471,11 +1469,13 @@ async def eligible(interaction: discord.Interaction, username: str):
     url = f"https://users.roblox.com/v1/users/search?keyword={username}"
     response = requests.get(url)
     data = response.json()
+
     roblox_id = None
     for user in data.get("data", []):
         if user["name"].lower() == username.lower():
             roblox_id = user["id"]
             break
+
     if not roblox_id:
         embed = discord.Embed(
             title="⚠️ User Not Found",
@@ -1487,30 +1487,42 @@ async def eligible(interaction: discord.Interaction, username: str):
         await interaction.followup.send(embed=embed)
         return
 
-    # Step 2: Check group membership 
+    # Step 2: Check group membership using ROBLOX_COOKIE 
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")  # Load from .env
+    if not ROBLOX_COOKIE:
+        await interaction.followup.send("❌ Missing ROBLOX_COOKIE in environment variables.")
+        return
+
     headers = {
         "accept": "application/json",
-        "x-api-key": ROBLOX_API_KEY
+        "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}"
     }
+
     url = f"https://groups.roblox.com/v1/groups/{GROUP_ID}/members/{roblox_id}" 
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        embed = discord.Embed(
-            title="❌ Error Checking Membership",
-            description=f"Failed to check group membership for `{username}`.",
-            color=discord.Color.red()
-        )
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-        await interaction.followup.send(embed=embed)
-        return
-    data = response.json()
-    role = data["role"]["name"]
-    join_date = isoparse(data["joined"])
-    now = datetime.now(PH_TIMEZONE)
-    time_in_group = now - join_date
-    days_in_group = time_in_group.days
-    eligible = days_in_group >= 14
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                try:
+                    error_data = await resp.json()
+                    error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
+                except:
+                    error_msg = "Unknown error"
+                embed = discord.Embed(
+                    title="❌ Error Checking Membership",
+                    description=f"Failed to check group membership for `{username}`.\nError: `{error_msg}`",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed)
+                return
+
+            data = await resp.json()
+            role = data["role"]["name"]
+            join_date = isoparse(data["joined"])
+            now = datetime.now(PH_TIMEZONE)
+            time_in_group = now - join_date
+            days_in_group = time_in_group.days
+            eligible = days_in_group >= 14
 
     # Step 3: Build and send the response
     if eligible:
@@ -1529,8 +1541,12 @@ async def eligible(interaction: discord.Interaction, username: str):
         )
         embed.add_field(name="Days in Group", value=f"{days_in_group} days", inline=False)
         embed.add_field(name="Role", value=role, inline=False)
-        embed.add_field(name="Requirement", value="You must be in the group for at least **14 days** to be eligible.", inline=False)
 
+    embed.add_field(
+        name="Requirement",
+        value="You must be in the group for at least **14 days** to be eligible.",
+        inline=False
+    )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.followup.send(embed=embed)
