@@ -1858,6 +1858,8 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
 # ===========================
 @bot.event
 async def on_ready():
+    bot.xcsrf_token = None
+
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
