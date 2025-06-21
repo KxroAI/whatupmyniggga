@@ -26,7 +26,6 @@ import pyktok as pyk
 import instaloader
 import tempfile
 from urllib.parse import urlencode
-from roblox import Client, UserNotFound
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
