@@ -1453,19 +1453,25 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
+from datetime import datetime, timedelta
+import requests
+from dateutil.parser import isoparse
+import pytz
+
+PH_TIMEZONE = pytz.timezone("Asia/Manila")
+
 @bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for payouts (14 days in group)")
 @app_commands.describe(username="Roblox username")
 async def eligible(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
 
-    # Get GROUP_ID from .env
     GROUP_ID = os.getenv("GROUP_ID")
     if not GROUP_ID:
         await interaction.followup.send("❌ GROUP_ID not found in environment variables.")
         return
 
-    # Step 1: Get User ID from Username
     try:
+        # Step 1: Get User ID from Username
         search_url = f"https://users.roblox.com/v1/users/search?keyword={username}"
         response = requests.get(search_url)
         data = response.json()
@@ -1477,11 +1483,11 @@ async def eligible(interaction: discord.Interaction, username: str):
         await interaction.followup.send(f"❌ Error fetching user ID: {str(e)}")
         return
 
-    # Step 2: Get Join Date from Latest Groups API  
+    # Step 2: Get Join Date from Latest Groups API 
     try:
         api_key = os.getenv("ROBLOX_API_KEY")
         headers = {"Authorization": f"Bearer {api_key}"}
-        join_url = f"https://apis.roblox.com/groups/v1/groups/{GROUP_ID}/users/{user_id}"  
+        join_url = f"https://apis.roblox.com/groups/v1/groups/{GROUP_ID}/users/{user_id}" 
         response = requests.get(join_url, headers=headers)
 
         if response.status_code != 200:
