@@ -1453,14 +1453,7 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-from datetime import datetime, timedelta
-import requests
-from dateutil.parser import isoparse
-import pytz
-
-PH_TIMEZONE = pytz.timezone("Asia/Manila")
-
-@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible (in group for 14 days)")
+@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for payouts (14 days in group)")
 @app_commands.describe(username="Roblox username")
 async def eligible(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
@@ -1494,15 +1487,22 @@ async def eligible(interaction: discord.Interaction, username: str):
         if response.status_code != 200:
             error_data = response.json()
             if "Member not found" in error_data.get("message", ""):
-                await interaction.followup.send("❌ You must join the group first.")
+                embed = discord.Embed(
+                    title="❌ Not Eligible",
+                    description=f"{username} must join the group first.",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="Neroniel")
+                embed.timestamp = datetime.now(PH_TIMEZONE)
+                await interaction.followup.send(embed=embed)
             else:
-                await interaction.followup.send(f"❌ Failed to fetch group membership: {error_data.get('message', 'Unknown error')}")
+                await interaction.followup.send(f"❌ Failed to fetch group membership: `{error_data.get('message', 'Unknown error')}`")
             return
 
         join_data = response.json()
         joined_at = join_data.get("memberSince")
         if not joined_at:
-            await interaction.followup.send("❌ You are not a member of this group.")
+            await interaction.followup.send("❌ Could not retrieve join date.")
             return
 
     except Exception as e:
@@ -1523,7 +1523,7 @@ async def eligible(interaction: discord.Interaction, username: str):
     if time_in_group >= required_days:
         embed = discord.Embed(
             title="✅ Eligible",
-            description=f"{username} has been in the group since **{join_date.strftime('%B %d, %Y')}**.",
+            description=f"{username} joined on **{join_date.strftime('%B %d, %Y')}**.",
             color=discord.Color.green()
         )
         embed.set_footer(text="Neroniel")
@@ -1535,7 +1535,7 @@ async def eligible(interaction: discord.Interaction, username: str):
             title="❌ Not Currently Eligible",
             description=f"{username} joined on **{join_date.strftime('%B %d, %Y')}**.\n"
                         f"Days needed: **14**\n"
-                        f"Days remaining: **{remaining_days}**",
+                        f"Days left: **{remaining_days}**",
             color=discord.Color.red()
         )
         embed.set_footer(text="Neroniel")
