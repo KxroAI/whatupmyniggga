@@ -1477,16 +1477,17 @@ async def eligible(interaction: discord.Interaction, username: str):
         await interaction.followup.send(f"❌ Error fetching user ID: {str(e)}")
         return
 
-    # Step 2: Get Join Date from Latest Groups API 
+    # Step 2: Get Join Date from Latest Groups API  
     try:
         api_key = os.getenv("ROBLOX_API_KEY")
         headers = {"Authorization": f"Bearer {api_key}"}
-        join_url = f"https://apis.roblox.com/groups/v1/groups/{GROUP_ID}/users/{user_id}" 
+        join_url = f"https://apis.roblox.com/groups/v1/groups/{GROUP_ID}/users/{user_id}"  
         response = requests.get(join_url, headers=headers)
 
         if response.status_code != 200:
             error_data = response.json()
-            if "Member not found" in error_data.get("message", ""):
+            error_message = error_data.get("message", "Unknown error")
+            if "Member not found" in error_message:
                 embed = discord.Embed(
                     title="❌ Not Eligible",
                     description=f"{username} must join the group first.",
@@ -1496,7 +1497,7 @@ async def eligible(interaction: discord.Interaction, username: str):
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 await interaction.followup.send(embed=embed)
             else:
-                await interaction.followup.send(f"❌ Failed to fetch group membership: `{error_data.get('message', 'Unknown error')}`")
+                await interaction.followup.send(f"❌ Failed to fetch group membership: `{error_message}`")
             return
 
         join_data = response.json()
