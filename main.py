@@ -1454,22 +1454,16 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-GROUP_ID = 5838002
-MINIMUM_DAYS_IN_GROUP = 14
+GROUP_ID = 5838002  # ← Already defined in your code
+MINIMUM_DAYS_IN_GROUP = 14  # ← Eligibility requirement
 
 @bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for payout.")
 @app_commands.describe(username="The Roblox username to check")
 async def eligible(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
 
-    # Get the cookie from .env
-    roblox_cookie = os.getenv("ROBLOX_COOKIE")
-    if not roblox_cookie:
-        await interaction.followup.send("❌ ROBLOX_COOKIE not found in environment.")
-        return
-
-    try:
-        async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession() as session:
+        try:
             # Step 1: Get user by name
             user_url = f"https://users.roblox.com/v1/users/by-name?username={username}"
             async with session.get(user_url) as resp:
@@ -1479,15 +1473,17 @@ async def eligible(interaction: discord.Interaction, username: str):
                 user_data = await resp.json()
                 user_id = user_data["id"]
 
-            # Step 2: Get user's group role 
+            # Step 2: Get group role 
             group_url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles" 
-            async with session.get(group_url) as resp:
+            headers = {
+                "Cookie": f".ROBLOSECURITY={os.getenv('ROBLOX_COOKIE')}"
+            }
+            async with session.get(group_url, headers=headers) as resp:
                 if resp.status != 200:
                     await interaction.followup.send("❌ No")
                     return
                 groups_data = await resp.json()
 
-            # Check if user is in the target group
             target_group = None
             for group in groups_data["data"]:
                 if group["group"]["id"] == GROUP_ID:
@@ -1508,8 +1504,8 @@ async def eligible(interaction: discord.Interaction, username: str):
             else:
                 await interaction.followup.send("❌ No")
 
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ Error: {str(e)}")
+        except Exception as e:
+            await interaction.followup.send(f"⚠️ Error: {str(e)}")
 
 # ========== Check Command ==========
 async def get_csrf_token(session):
