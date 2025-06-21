@@ -1202,8 +1202,8 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Group Funds Command ==========
-@bot.tree.command(name="groupfunds", description="Get current Funds of the 1cy Roblox Group")
-async def group_funds(interaction: discord.Interaction):
+@bot.tree.command(name="stocks", description="Check both Robux Stocks and Group Funds in one command")
+async def stocks(interaction: discord.Interaction):
     BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
 
     # Check if user is either an Admin or the Bot Owner
@@ -1213,97 +1213,73 @@ async def group_funds(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    group_id = 5838002  # ← Replace with your group ID if needed
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-
-    if not ROBLOX_COOKIE:
-        await interaction.followup.send("❌ Missing `.ROBLOSECURITY` cookie in environment.")
-        return
-
     headers = {
-        "Cookie": ROBLOX_COOKIE,
         "User-Agent": "Mozilla/5.0"
     }
 
-    async with aiohttp.ClientSession(headers=headers) as session:
-        currency_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"      
-        async with session.get(currency_url) as resp:
-            if resp.status != 200:
-                try:
-                    error_data = await resp.json()
-                    error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
-                except Exception:
-                    error_msg = "Unknown error"
+    group_id = 5838002  # ← Replace with your group ID if needed
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")  # Cookie for group funds
+    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))  # Target user ID for account balance
+    ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")  # Cookie for account balance
 
-                if resp.status == 401:
-                    await interaction.followup.send("❌ Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie.")
-                elif resp.status == 403:
-                    await interaction.followup.send("❌ Forbidden: Account does not have permission to view group funds.")
-                else:
-                    await interaction.followup.send(f"❌ Failed to fetch group funds: `{error_msg}`")
-                return
-
-            currency_data = await resp.json()
-            robux = currency_data.get("robux", 0)
-
-    # Format Embed
-    embed = discord.Embed(
-        color=discord.Color.from_rgb(0, 0, 0)
-    )
-    embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
-    embed.set_footer(text="Fetched via Roblox API | Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
-
-    await interaction.followup.send(embed=embed)
-
-# ========== Robux Stocks Command ==========
-@bot.tree.command(name="robuxstocks", description="Check the current Robux Stocks")
-async def stocks(interaction: discord.Interaction):
-    BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
-    # Check if user is either an Admin or the Bot Owner
-    if not interaction.user.guild_permissions.administrator and str(interaction.user.id) != BOT_OWNER_ID:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-    await interaction.response.defer()
-
-    # Load environment variables
-    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))  # Target user ID from .env
-    ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")  # Cookie for authentication
-
-    if not roblox_user_id or not ROBLOX_STOCKS:
+    if not ROBLOX_COOKIE or not ROBLOX_STOCKS or not roblox_user_id:
         await interaction.followup.send("❌ Missing required environment variables.")
         return
 
-    headers = {
-        "Cookie": ROBLOX_STOCKS,
-        "User-Agent": "Mozilla/5.0"
-    }
+    group_robux = None
+    account_robux = None
 
-    async with aiohttp.ClientSession(headers=headers) as session:
-        currency_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"       
-        async with session.get(currency_url) as resp:
-            if resp.status != 200:
+    # Fetch Group Funds
+    async with aiohttp.ClientSession() as session:
+        # Group Request
+        group_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency" 
+        headers["Cookie"] = ROBLOX_COOKIE
+        async with session.get(group_url, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                group_robux = data.get("robux", 0)
+            else:
                 try:
                     error_data = await resp.json()
                     error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
                 except Exception:
                     error_msg = "Unknown error"
                 if resp.status == 401:
-                    await interaction.followup.send("❌ Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie.")
+                    error_msg = "Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie (Group)"
                 elif resp.status == 403:
-                    await interaction.followup.send("❌ Forbidden: Account does not have permission to view currency.")
-                else:
-                    await interaction.followup.send(f"❌ Failed to fetch Robux balance: `{error_msg}`")
+                    error_msg = "Forbidden: No permission to view group funds"
+                await interaction.followup.send(f"❌ Failed to fetch Group Funds: `{error_msg}`")
                 return
-            currency_data = await resp.json()
-            robux = currency_data.get("robux", 0)
 
+        # Account Request
+        account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency" 
+        headers["Cookie"] = ROBLOX_STOCKS
+        async with session.get(account_url, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                account_robux = data.get("robux", 0)
+            else:
+                try:
+                    error_data = await resp.json()
+                    error_msg = error_data.get("errors", [{"message": "Unknown"}])[0]["message"]
+                except Exception:
+                    error_msg = "Unknown error"
+                if resp.status == 401:
+                    error_msg = "Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie (Account)"
+                elif resp.status == 403:
+                    error_msg = "Forbidden: No permission to view account balance"
+                await interaction.followup.send(f"❌ Failed to fetch Account Balance: `{error_msg}``)
+                return
+
+    # Build Embed
     embed = discord.Embed(
         color=discord.Color.from_rgb(0, 0, 0)
     )
-    embed.add_field(name="Current Balance", value=f"{robux:,} R$", inline=False)
+    embed.add_field(name="Group Funds", value=f"{group_robux:,} R$", inline=False)
+    embed.add_field(name="Account Balance", value=f"{account_robux:,} R$", inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
+
     await interaction.followup.send(embed=embed)
 
 # ========== Gamepass Command ==========
