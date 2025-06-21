@@ -1453,101 +1453,71 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-from datetime import datetime, timedelta
-import requests
-from dateutil.parser import isoparse
-import pytz
+# Global variables - Replace these with actual values from .env or config
+GROUP_ID = os.getenv("ROBLOX_GROUP_ID")  # Ensure this is set in .env
+ROBLOSECURITY = os.getenv("ROBLOX_COOKIE")  # Cookie for authenticated requests
 
-PH_TIMEZONE = pytz.timezone("Asia/Manila")
+HEADERS = {
+    "Cookie": f".ROBLOSECURITY={ROBLOSECURITY}",
+    "Content-Type": "application/json",
+    "User-Agent": "Roblox/WinInet"
+}
 
-@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for payouts (14 days in group)")
-@app_commands.describe(username="Roblox username")
-async def eligible(interaction: discord.Interaction, username: str):
-    await interaction.response.defer()
-
-    GROUP_ID = os.getenv("GROUP_ID")
-    if not GROUP_ID:
-        await interaction.followup.send("❌ GROUP_ID not found in environment variables.")
-        return
-
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for payout based on group membership duration")
+@app_commands.describe(username="The Roblox username to check")
+async def checkpayout(interaction: discord.Interaction, username: str):
     try:
-        # Step 1: Get User ID from Username
-        search_url = f"https://users.roblox.com/v1/users/search?keyword={username}"
-        response = requests.get(search_url)
-        data = response.json()
-        if not data.get("data"):
-            await interaction.followup.send("❌ User not found.")
-            return
-        user_id = data["data"][0]["id"]
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error fetching user ID: {str(e)}")
-        return
+        await interaction.response.defer(ephemeral=True)
 
-    # Step 2: Get Join Date from Latest Groups API 
-    try:
-        api_key = os.getenv("ROBLOX_API_KEY")
-        headers = {"Authorization": f"Bearer {api_key}"}
-        join_url = f"https://apis.roblox.com/groups/v1/groups/{GROUP_ID}/users/{user_id}" 
-        response = requests.get(join_url, headers=headers)
-
-        if response.status_code != 200:
-            error_data = response.json()
-            error_message = error_data.get("message", "Unknown error")
-            if "Member not found" in error_message:
-                embed = discord.Embed(
-                    title="❌ Not Eligible",
-                    description=f"{username} must join the group first.",
-                    color=discord.Color.red()
-                )
-                embed.set_footer(text="Neroniel")
-                embed.timestamp = datetime.now(PH_TIMEZONE)
-                await interaction.followup.send(embed=embed)
-            else:
-                await interaction.followup.send(f"❌ Failed to fetch group membership: `{error_message}`")
-            return
-
-        join_data = response.json()
-        joined_at = join_data.get("memberSince")
-        if not joined_at:
-            await interaction.followup.send("❌ Could not retrieve join date.")
-            return
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error fetching group membership: {str(e)}")
-        return
-
-    # Step 3: Compare Join Date with Current Date
-    try:
-        join_date = isoparse(joined_at).astimezone(PH_TIMEZONE)
-        current_date = datetime.now(PH_TIMEZONE)
-        time_in_group = current_date - join_date
-        required_days = timedelta(days=14)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error parsing dates: {str(e)}")
-        return
-
-    # Step 4: Send Result
-    if time_in_group >= required_days:
-        embed = discord.Embed(
-            title="✅ Eligible",
-            description=f"{username} joined on **{join_date.strftime('%B %d, %Y')}**.",
-            color=discord.Color.green()
+        # Step 1: Get Roblox userId from username
+        user_lookup = requests.post(
+            "https://users.roblox.com/v1/usernames/users",   
+            json={"usernames": [username], "excludeBannedUsers": True}
         )
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = current_date
-        await interaction.followup.send(embed=embed)
-    else:
-        remaining_days = (required_days - time_in_group).days
-        embed = discord.Embed(
-            title="❌ Not Currently Eligible",
-            description=f"{username} joined on **{join_date.strftime('%B %d, %Y')}**.\n"
-                        f"Days needed: **14**\n"
-                        f"Days left: **{remaining_days}**",
-            color=discord.Color.red()
+
+        if user_lookup.status_code != 200 or not user_lookup.json().get("data"):
+            await interaction.followup.send(f"❌ Could not find user `{username}`.", ephemeral=True)
+            return
+
+        user_id = user_lookup.json()["data"][0]["id"]
+
+        # Step 2: Confirm user is in the group
+        groups_resp = requests.get(
+            f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"   
         )
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = current_date
-        await interaction.followup.send(embed=embed)
+
+        if groups_resp.status_code != 200:
+            await interaction.followup.send("❌ Failed to fetch group roles.", ephemeral=True)
+            return
+
+        is_in_group = any(str(group["group"]["id"]) == GROUP_ID for group in groups_resp.json()["data"])
+        if not is_in_group:
+            await interaction.followup.send(f"❌ `{username}` is not a member of the group.", ephemeral=True)
+            return
+
+        # Step 3: Get join date (requires .ROBLOSECURITY)
+        join_resp = requests.get(
+            f"https://groups.roblox.com/v1/groups/{GROUP_ID}/users/{user_id}",   
+            headers=HEADERS
+        )
+
+        if join_resp.status_code != 200 or "joinedAt" not in join_resp.json():
+            await interaction.followup.send("❌ Could not retrieve join date (check .ROBLOSECURITY permissions).", ephemeral=True)
+            return
+
+        join_date_str = join_resp.json()["joinedAt"]
+        join_datetime = datetime.fromisoformat(join_date_str.replace("Z", "+00:00"))
+        now_utc = datetime.now(timezone.utc)
+        days_in_group = (now_utc - join_datetime).days
+
+        # Step 4: Check eligibility
+        if days_in_group >= 14:
+            await interaction.followup.send(f"✅ `{username}` is eligible for group payout (joined {days_in_group} days ago).", ephemeral=False)
+        else:
+            await interaction.followup.send(f"❌ `{username}` is NOT eligible (only {days_in_group} days in group).", ephemeral=False)
+    
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ An error occurred: `{str(e)}`", ephemeral=True)
 
 
 # ========== Check Command ==========
