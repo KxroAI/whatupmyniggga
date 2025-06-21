@@ -1010,8 +1010,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/userinfo [user]` - View detailed info about a user  
 - `/purge <amount>` - Delete messages (requires mod permissions)    
 - `/group` - Show info about the 1cy Roblox Group  
-- `/groupfunds` - Show Current Funds of the 1cy Group 
-- `/robuxstocks` - Check current Robux Stocks
+- `/stocks` - Show both Group Funds or Robux Stocks
 - `/announcement <message> <channel>` - Send an embedded announcement
 - `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
@@ -1201,8 +1200,8 @@ async def status(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-# ========== Group Funds Command ==========
-@bot.tree.command(name="stocks", description="Check both Robux Stocks and Group Funds in one command")
+# ========== Stocks Command ==========
+@bot.tree.command(name="stocks", description="Show both Group Funds or Robux Stocks")
 async def stocks(interaction: discord.Interaction):
     BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
 
@@ -1232,7 +1231,7 @@ async def stocks(interaction: discord.Interaction):
     # Fetch Group Funds
     async with aiohttp.ClientSession() as session:
         # Group Request
-        group_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency" 
+        group_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"  
         headers["Cookie"] = ROBLOX_COOKIE
         async with session.get(group_url, headers=headers) as resp:
             if resp.status == 200:
@@ -1252,7 +1251,7 @@ async def stocks(interaction: discord.Interaction):
                 return
 
         # Account Request
-        account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency" 
+        account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"  
         headers["Cookie"] = ROBLOX_STOCKS
         async with session.get(account_url, headers=headers) as resp:
             if resp.status == 200:
@@ -1268,7 +1267,7 @@ async def stocks(interaction: discord.Interaction):
                     error_msg = "Unauthorized: Invalid or expired `.ROBLOSECURITY` cookie (Account)"
                 elif resp.status == 403:
                     error_msg = "Forbidden: No permission to view account balance"
-                await interaction.followup.send(f"❌ Failed to fetch Account Balance: `{error_msg}``)
+                await interaction.followup.send(f"❌ Failed to fetch Account Balance: `{error_msg}`")
                 return
 
     # Build Embed
@@ -1281,6 +1280,7 @@ async def stocks(interaction: discord.Interaction):
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
+
 
 # ========== Gamepass Command ==========
 @bot.tree.command(name="gamepass", description="Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL")
