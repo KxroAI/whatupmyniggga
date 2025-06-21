@@ -30,6 +30,7 @@ from urllib.parse import urlencode
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
 load_dotenv()
+ROBLOX_API_KEY = os.getenv("ROBLOX_API_KEY")
 
 # ===========================
 # Bot Setup
