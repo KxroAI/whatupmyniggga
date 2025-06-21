@@ -1454,7 +1454,7 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
 
 # ========== Eligible Command ==========
 # Global variables - Replace these with actual values from .env or config
-GROUP_ID = os.getenv("ROBLOX_GROUP_ID")  # Ensure this is set in .env
+GROUP_ID = os.getenv("GROUP_ID")  # Ensure this is set in .env
 ROBLOSECURITY = os.getenv("ROBLOX_COOKIE")  # Cookie for authenticated requests
 
 HEADERS = {
