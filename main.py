@@ -84,7 +84,6 @@ else:
         db = client.ai_bot
         conversations_collection = db.conversations
         reminders_collection = db.reminders
-        link_collection = db.linked_accounts  # New
 
         # Create TTL indexes
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
@@ -1454,58 +1453,95 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-GROUP_ID = 5838002  # ← Already defined in your code
-MINIMUM_DAYS_IN_GROUP = 14  # ← Eligibility requirement
+from datetime import datetime, timedelta
+import requests
+from dateutil.parser import isoparse
+import pytz
 
-@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for payout.")
-@app_commands.describe(username="The Roblox username to check")
+PH_TIMEZONE = pytz.timezone("Asia/Manila")
+
+@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible (in group for 14 days)")
+@app_commands.describe(username="Roblox username")
 async def eligible(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            # Step 1: Get user by name
-            user_url = f"https://users.roblox.com/v1/users/by-name?username={username}"
-            async with session.get(user_url) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send("❌ No")
-                    return
-                user_data = await resp.json()
-                user_id = user_data["id"]
+    # Get GROUP_ID from .env
+    GROUP_ID = os.getenv("GROUP_ID")
+    if not GROUP_ID:
+        await interaction.followup.send("❌ GROUP_ID not found in environment variables.")
+        return
 
-            # Step 2: Get group role 
-            group_url = f"https://groups.roblox.com/v1/users/{user_id}/groups/roles" 
-            headers = {
-                "Cookie": f".ROBLOSECURITY={os.getenv('ROBLOX_COOKIE')}"
-            }
-            async with session.get(group_url, headers=headers) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send("❌ No")
-                    return
-                groups_data = await resp.json()
+    # Step 1: Get User ID from Username
+    try:
+        search_url = f"https://users.roblox.com/v1/users/search?keyword={username}"
+        response = requests.get(search_url)
+        data = response.json()
+        if not data.get("data"):
+            await interaction.followup.send("❌ User not found.")
+            return
+        user_id = data["data"][0]["id"]
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching user ID: {str(e)}")
+        return
 
-            target_group = None
-            for group in groups_data["data"]:
-                if group["group"]["id"] == GROUP_ID:
-                    target_group = group
-                    break
+    # Step 2: Get Join Date from Latest Groups API 
+    try:
+        api_key = os.getenv("ROBLOX_API_KEY")
+        headers = {"Authorization": f"Bearer {api_key}"}
+        join_url = f"https://apis.roblox.com/groups/v1/groups/{GROUP_ID}/users/{user_id}" 
+        response = requests.get(join_url, headers=headers)
 
-            if not target_group:
-                await interaction.followup.send("❌ No")
-                return
-
-            # Step 3: Check join date
-            join_date_str = target_group["user"]["created"]
-            join_date = isoparse(join_date_str)
-            days_in_group = (datetime.now(timezone.utc) - join_date).days
-
-            if days_in_group >= MINIMUM_DAYS_IN_GROUP:
-                await interaction.followup.send("✅ Yes")
+        if response.status_code != 200:
+            error_data = response.json()
+            if "Member not found" in error_data.get("message", ""):
+                await interaction.followup.send("❌ You must join the group first.")
             else:
-                await interaction.followup.send("❌ No")
+                await interaction.followup.send(f"❌ Failed to fetch group membership: {error_data.get('message', 'Unknown error')}")
+            return
 
-        except Exception as e:
-            await interaction.followup.send(f"⚠️ Error: {str(e)}")
+        join_data = response.json()
+        joined_at = join_data.get("memberSince")
+        if not joined_at:
+            await interaction.followup.send("❌ You are not a member of this group.")
+            return
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching group membership: {str(e)}")
+        return
+
+    # Step 3: Compare Join Date with Current Date
+    try:
+        join_date = isoparse(joined_at).astimezone(PH_TIMEZONE)
+        current_date = datetime.now(PH_TIMEZONE)
+        time_in_group = current_date - join_date
+        required_days = timedelta(days=14)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error parsing dates: {str(e)}")
+        return
+
+    # Step 4: Send Result
+    if time_in_group >= required_days:
+        embed = discord.Embed(
+            title="✅ Eligible",
+            description=f"{username} has been in the group since **{join_date.strftime('%B %d, %Y')}**.",
+            color=discord.Color.green()
+        )
+        embed.set_footer(text="Neroniel")
+        embed.timestamp = current_date
+        await interaction.followup.send(embed=embed)
+    else:
+        remaining_days = (required_days - time_in_group).days
+        embed = discord.Embed(
+            title="❌ Not Currently Eligible",
+            description=f"{username} joined on **{join_date.strftime('%B %d, %Y')}**.\n"
+                        f"Days needed: **14**\n"
+                        f"Days remaining: **{remaining_days}**",
+            color=discord.Color.red()
+        )
+        embed.set_footer(text="Neroniel")
+        embed.timestamp = current_date
+        await interaction.followup.send(embed=embed)
+
 
 # ========== Check Command ==========
 async def get_csrf_token(session):
