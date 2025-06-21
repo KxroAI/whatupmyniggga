@@ -1457,39 +1457,51 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-@bot.tree.command(name="eligible", description="Check if you are eligible for group payouts")
-async def eligible(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    group_id = 5838002  # Your Roblox Group ID
-    api_key = os.getenv("ROBLOX_API_KEY")
-    if not api_key:
-        await interaction.response.send_message("❌ ROBLOX_API_KEY not found in environment.", ephemeral=True)
-        return
-    if link_collection is None:
-        await interaction.response.send_message("❌ Database is currently unavailable. Please try again later.", ephemeral=True)
-        return
-    # Fetch linked Roblox info
-    user_data = link_collection.find_one({"discord_id": user_id})
-    if not user_data or "roblox_id" not in user_data:
+# Group ID for the Roblox group
+GROUP_ID = 5838002  # Replace with your Roblox Group ID
+
+# Command: /eligible
+@bot.tree.command(name="eligible", description="Check if a Roblox account is eligible for group payouts")
+@app_commands.describe(username="Roblox username to check")
+async def eligible(interaction: discord.Interaction, username: str):
+    await interaction.response.defer()
+
+    # Step 1: Get Roblox ID from username
+    url = f"https://users.roblox.com/v1/users/search?keyword={username}"
+    response = requests.get(url)
+    data = response.json()
+    roblox_id = None
+    for user in data.get("data", []):
+        if user["name"].lower() == username.lower():
+            roblox_id = user["id"]
+            break
+    if not roblox_id:
         embed = discord.Embed(
-            title="⚠️ Not Linked",
-            description="Please link your Roblox account using `/link <username>` first.",
+            title="⚠️ User Not Found",
+            description=f"Could not find Roblox username `{username}`.",
             color=discord.Color.orange()
         )
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
         return
-    roblox_id = user_data["roblox_id"]
-    # Check group membership
+
+    # Step 2: Check group membership 
     headers = {
         "accept": "application/json",
-        "x-api-key": api_key
+        "x-api-key": ROBLOX_API_KEY
     }
-    url = f"https://groups.roblox.com/v1/groups/{group_id}/members/{roblox_id}"   
+    url = f"https://groups.roblox.com/v1/groups/{GROUP_ID}/members/{roblox_id}" 
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
-        await interaction.response.send_message("❌ Error checking group membership.", ephemeral=True)
+        embed = discord.Embed(
+            title="❌ Error Checking Membership",
+            description=f"Failed to check group membership for `{username}`.",
+            color=discord.Color.red()
+        )
+        embed.set_footer(text="Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.followup.send(embed=embed)
         return
     data = response.json()
     role = data["role"]["name"]
@@ -1498,23 +1510,29 @@ async def eligible(interaction: discord.Interaction):
     time_in_group = now - join_date
     days_in_group = time_in_group.days
     eligible = days_in_group >= 14
-    if not eligible:
+
+    # Step 3: Build and send the response
+    if eligible:
         embed = discord.Embed(
-            title="⏳ Not Eligible Yet",
-            description=f"You joined {days_in_group} day(s) ago. You must be in the group for at least 14 days to be eligible.",
-            color=discord.Color.gold()
-        )
-    else:
-        embed = discord.Embed(
-            title="✅ Eligible",
-            description=f"You are eligible for group payouts.\n"
-                        f"**Role:** {role}\n"
-                        f"**Days in Group:** {days_in_group}",
+            title="✅ Eligible for Payouts",
+            description=f"The Roblox account `{username}` is eligible for group payouts.",
             color=discord.Color.green()
         )
+        embed.add_field(name="Days in Group", value=f"{days_in_group} days", inline=False)
+        embed.add_field(name="Role", value=role, inline=False)
+    else:
+        embed = discord.Embed(
+            title="⏳ Not Eligible Yet",
+            description=f"The Roblox account `{username}` is not yet eligible for group payouts.",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="Days in Group", value=f"{days_in_group} days", inline=False)
+        embed.add_field(name="Role", value=role, inline=False)
+        embed.add_field(name="Requirement", value="You must be in the group for at least **14 days** to be eligible.", inline=False)
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 # ========== Link Command ==========
 @bot.tree.command(name="link", description="Link your Roblox account to your Discord profile")
