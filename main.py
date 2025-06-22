@@ -826,13 +826,13 @@ async def purge(interaction: discord.Interaction, amount: int):
 # Group Info Command
 @bot.tree.command(name="group", description="Display information about the 1cy Roblox group")
 async def groupinfo(interaction: discord.Interaction):
-    group_id = 5838002
+    GROUP_ID = int(os.getenv("GROUP_ID"))
     try:
-        response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")
+        response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")
         data = response.json()
         formatted_members = "{:,}".format(data['memberCount'])
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{group_id})", inline=False)
+        embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})", inline=False)
         embed.add_field(name="Description", value=f"```\n{data.get('description', 'No description')}\n```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
         owner = data.get('owner')
@@ -1212,7 +1212,7 @@ async def stocks(interaction: discord.Interaction):
         "User-Agent": "Mozilla/5.0"
     }
 
-    group_id = 5838002  # ← Replace with your group ID if needed
+    GROUP_ID = int(os.getenv("GROUP_ID"))  # ← Replace with your group ID if needed
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")  # Cookie for group funds
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))  # Target user ID for account balance
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")  # Cookie for account balance
@@ -1227,7 +1227,7 @@ async def stocks(interaction: discord.Interaction):
     # Fetch Group Funds
     async with aiohttp.ClientSession() as session:
         # Group Request
-        group_url = f"https://economy.roblox.com/v1/groups/{group_id}/currency"  
+        group_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/currency"  
         headers["Cookie"] = ROBLOX_COOKIE
         async with session.get(group_url, headers=headers) as resp:
             if resp.status == 200:
@@ -1471,7 +1471,7 @@ async def checkpayout(interaction: discord.Interaction, username: str):
         user_id = data["data"][0]["id"]
 
         # Step 3: Get group join info using Open Cloud API
-        GROUP_ID = 5838002  # ← Replace with your actual group ID if needed
+        GROUP_ID = int(os.getenv("GROUP_ID"))  # ← Replace with your actual group ID if needed
         url = f"https://apis.roblox.com/groups/v2/groups/{GROUP_ID}/users/{user_id}" 
         API_KEY = os.getenv("ROBLOX_API_KEY")  # Make sure this is set in .env
         headers = {
@@ -1754,10 +1754,10 @@ async def on_ready():
             print("✅ Starting reminder checker...")
             check_reminders.start()
     
-    group_id = 5838002
+    GROUP_ID = int(os.getenv("GROUP_ID"))
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{group_id}")  
+            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")  
             data = response.json()
             member_count = data['memberCount']
             await bot.change_presence(status=discord.Status.dnd,
