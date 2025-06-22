@@ -1662,13 +1662,11 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
         else:
             bot.xcsrf_token = None
             async with aiohttp.ClientSession() as session:
-                async with session.get("https://auth.roblox.com/v2/logout") as r:
+                async with session.get("https://auth.roblox.com/v2/logout")  as r:
                     bot.xcsrf_token = r.headers.get("x-csrf-token")
-
             auth_result = await get_cookie_from_login(username, password, interaction)
-
             if auth_result.get("captcha"):
-                captcha_url = "https://arkoselabs.com/demo"
+                captcha_url = "https://arkoselabs.com/demo" 
                 captcha_embed = Embed(
                     title="🔐 Solve Captcha",
                     description=f"[Click here to solve captcha]({captcha_url})\nReact with ✅ once solved.",
@@ -1676,23 +1674,18 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
                 )
                 await init_msg.edit(embed=captcha_embed)
                 await init_msg.add_reaction("✅")
-
                 def check_reaction(reaction, user):
                     return reaction.message.id == init_msg.id and user == interaction.user and str(reaction.emoji) == "✅"
-
                 try:
                     await bot.wait_for("reaction_add", timeout=90.0, check=check_reaction)
                 except asyncio.TimeoutError:
                     await init_msg.edit(embed=Embed(title="⏰ Timed Out", color=discord.Color.red()))
                     return
-
                 await init_msg.remove_reaction("✅", interaction.user)
-
                 auth_result = await get_cookie_from_login(
                     username, password, interaction,
                     {"token": "manual_captcha_solved", "id": auth_result["captcha_id"]}
                 )
-
             if not auth_result.get("cookie"):
                 await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
                 return
@@ -1701,7 +1694,7 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
 
         embed = Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
-        
+
         # First row - Username and UserID 
         embed.add_field(name="Username", value=info["username"], inline=True)
         embed.add_field(name="UserID", value=str(info["userid"]), inline=True)
@@ -1730,10 +1723,13 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
         # Sixth row - Description
         description = info['description'] if info['description'] else "N/A"
         embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
-        
+
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await init_msg.edit(embed=embed)
+
+    except Exception as e:
+        await init_msg.edit(embed=Embed(title="❌ Error", description=f"An error occurred:\n{str(e)}", color=discord.Color.red()))
         print(f"[ERROR] /check: {e}")
 
 
@@ -1743,21 +1739,18 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
 @bot.event
 async def on_ready():
     bot.xcsrf_token = None
-
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
-
     # Start background tasks after bot is ready
     if reminders_collection is not None:
         if not check_reminders.is_running():
             print("✅ Starting reminder checker...")
             check_reminders.start()
-    
-    GROUP_ID = 5838002
+    GROUP_ID = int(os.getenv("GROUP_ID"))
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")  
+            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")   
             data = response.json()
             member_count = data['memberCount']
             await bot.change_presence(status=discord.Status.dnd,
