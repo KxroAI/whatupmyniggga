@@ -1754,7 +1754,7 @@ async def on_ready():
             print("✅ Starting reminder checker...")
             check_reminders.start()
     
-    GROUP_ID = int(os.getenv("GROUP_ID"))
+    GROUP_ID = 5838002
     while True:
         try:
             response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")  
