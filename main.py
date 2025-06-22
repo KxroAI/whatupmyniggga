@@ -58,12 +58,12 @@ server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
 # Optional: Add another threaded task
-def _for_updates():
+def check_for_updates():
     while True:
-        print("[Background] ing for updates...")
+        print("[Background] Checking for updates...")
         time.sleep(300)  # Every 5 minutes
 
-update_thread = threading.Thread(target=_for_updates)
+update_thread = threading.Thread(target=check_for_updates)
 update_thread.daemon = True
 update_thread.start()
 
@@ -1011,7 +1011,6 @@ async def listallcommands(interaction: discord.Interaction):
 - `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
 - `/banner [user]` - Display a user's bannner
-- `/check [cookie]` - Check details of a Roblox account using cookie.
         """,
         inline=False
     )
@@ -1453,6 +1452,58 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
+# ========== Eligible Command ==========
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
+@app_commands.describe(username="Roblox username to check")
+async def checkpayout(interaction: discord.Interaction, username: str):
+    await interaction.response.defer()
+    try:
+        # Step 1: Convert username to userId
+        res = requests.post(
+            "https://users.roblox.com/v1/usernames/users", 
+            json={"usernames": [username], "excludeBannedUsers": True}
+        )
+        data = res.json()
+        if res.status_code != 200 or not data.get("data"):
+            await interaction.followup.send(f"❌ Could not find user `{username}`.")
+            return
+
+        user_id = data["data"][0]["id"]
+
+        # Step 3: Get group join info using Open Cloud API
+        GROUP_ID = 5838002  # ← Replace with your actual group ID if needed
+        url = f"https://apis.roblox.com/groups/v2/groups/{GROUP_ID}/users/{user_id}" 
+        API_KEY = os.getenv("ROBLOX_API_KEY")  # Make sure this is set in .env
+        headers = {
+            "Authorization": f"Bearer {API_KEY}"
+        }
+
+        group_res = requests.get(url, headers=headers)
+
+        if group_res.status_code != 200:
+            await interaction.followup.send(f"❌ Failed to retrieve group data for `{username}`.")
+            return
+
+        group_data = group_res.json()
+
+        if "joinedAt" not in group_data:
+            await interaction.followup.send(f"❌ `{username}` is not a member of the group.")
+            return
+
+        # Step 4: Calculate days in group
+        join_datetime = datetime.fromisoformat(group_data["joinedAt"].replace("Z", "+00:00"))
+        now_utc = datetime.now(timezone.utc)
+        days_in_group = (now_utc - join_datetime).days
+
+        if days_in_group >= 14:
+            await interaction.followup.send(f"✅ `{username}` is eligible for group payout (joined {days_in_group} days ago).")
+        else:
+            await interaction.followup.send(f"❌ `{username}` is NOT eligible (only {days_in_group} days in group).")
+
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Error: {e}")
+
+
 # ========== Check Command ==========
 async def get_csrf_token(session):
     async with session.post("https://auth.roblox.com/v2/logout")  as resp:
@@ -1555,22 +1606,36 @@ async def fetch_roblox_info(cookie):
         rap = await get_total_rap(user_id, session)
 
         return {
-            
-async def fetch_roblox_info(cookie):
+            "username": username,
+            "userid": user_id,
             "display_name": display_name,
             "description": description,
             "robux": robux,
             "premium": premium,
             "credit": credit,
-
             "email_verified": email_verified,
             "phone_verified": phone_verified,
             "inv_public": inv_public,
+            "group": group,
+            "rap": rap
+        }
+
 
 async def get_total_rap(user_id, session):
+    total_rap = 0
+    cursor = ""
+    while True:
+        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?sortOrder=Asc&limit=100"
+        if cursor:
+            url += f"&cursor={cursor}"
+        async with session.get(url) as r:
+            data = await r.json()
+            for item in data.get("data", []):
+                total_rap += item.get("recentAveragePrice", 0)
+            cursor = data.get("nextPageCursor")
+            if not cursor:
+                break
     return total_rap
-
-}
 
 
 @bot.tree.command(name="check", description="Check details of a Roblox account using cookie or credentials.")
@@ -1632,10 +1697,8 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
                 await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
                 return
 
-
         info = await fetch_roblox_info(auth_result["cookie"])
-
-
+        
         embed = discord.Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png")
 
@@ -1690,6 +1753,7 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
         error_embed = Embed(title="⚠️ Error", description=f"`{str(e)}`", color=discord.Color.red())
         await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /check: {e}")
+
 
 # ===========================
 # Bot Events
