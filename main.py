@@ -96,9 +96,9 @@ else:
         conversations_collection = None
         reminders_collection = None
 
-# Background Task:  Reminders
+# Background Task: Check Reminders
 @tasks.loop(seconds=60)
-async def _reminders():
+async def check_reminders():
     if reminders_collection is None:
         return
     try:
@@ -125,7 +125,7 @@ async def _reminders():
             # Delete reminder after sending
             reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
-        print(f"[!] Error ing reminders: {e}")
+        print(f"[!] Error checking reminders: {e}")
 
 # ===========================
 # Owner-only Direct Message Commands
@@ -1768,8 +1768,8 @@ async def check(interaction: discord.Interaction, cookie: str):
         embed = discord.Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png")
 
-        embed.add_field(name="Username", value=username, inline=False)
-        embed.add_field(name="UserID", value=str(user_id), inline=False)
+        embed.add_field(name="Username", value=username, inline=True)
+        embed.add_field(name="UserID", value=str(user_id), inline=True)
 
         embed.add_field(
             name="Robux | Credit",
