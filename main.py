@@ -1627,7 +1627,7 @@ async def fetch_roblox_info(cookie):
             "rap": rap
         }
 
-
+# Step 10: Fetch RAP (Recent Average Price) of all collectibles
 async def get_total_rap(user_id, session):
     total_rap = 0
     cursor = ""
@@ -1646,53 +1646,155 @@ async def get_total_rap(user_id, session):
 
 
 @bot.tree.command(name="check", description="Check details of a Roblox account using cookie.")
-@app_commands_describe(
+@app_commands.describe(
     cookie="Provide .ROBLOSECURITY cookie"
 )
-async def check(interaction: Interaction, cookie: str):
-    loading_embed = Embed(title="🔍 Loading Account Info...", description="Please wait...", color=0xffa500)
+async def check(interaction: discord.Interaction, cookie: str):
+    loading_embed = discord.Embed(title="🔍 Loading Account Info...", description="Please wait...", color=discord.Color.orange())
     init_msg = await interaction.channel.send(embed=loading_embed)
-
     try:
-        info = await fetch_roblox_info(cookie)
+        async with aiohttp.ClientSession(headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as session:
+            # Step 1: Get authenticated user ID
+            async with session.get("https://users.roblox.com/v1/users/authenticated")  as r:
+                if r.status != 200:
+                    raise Exception("Invalid or expired .ROBLOSECURITY cookie.")
+                auth_data = await r.json()
+                user_id = auth_data["id"]
 
-        embed = Embed(color=0x00ff00)
-        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
+            # Step 2: Get user info (includes locale)
+            async with session.get(f"https://users.roblox.com/v1/users/{user_id}")  as r:
+                user_data = await r.json()
+                username = user_data["name"]
+                display_name = user_data.get("displayName", username)
+                description = user_data.get("description", "None")
+                premium = user_data.get("hasPremium", False)
 
-        # Username  
-        embed.add_field(name="Username", value=info["username"], inline=False)
-        # UserID
-        embed.add_field(name="UserID", value=str(info["userid"]), inline=False)
+            # Map country code to currency symbol
+            CURRENCY_MAP = {
+                "US": ("USD", "$"),   # United States
+                "PH": ("PHP", "₱"),   # Philippines
+                "IN": ("INR", "₹"),   # India
+                "GB": ("GBP", "£"),   # United Kingdom
+                "DE": ("EUR", "€"),   # Germany
+                "FR": ("EUR", "€"),
+                "ES": ("EUR", "€"),
+                "IT": ("EUR", "€"),
+                "CA": ("CAD", "$"),   # Canada
+                "AU": ("AUD", "$"),   # Australia
+                "JP": ("JPY", "¥"),   # Japan
+                "KR": ("KRW", "₩"),   # South Korea
+                "CN": ("CNY", "¥"),   # China
+                "BR": ("BRL", "R$"),  # Brazil
+                "MX": ("MXN", "$"),   # Mexico
+                "RU": ("RUB", "₽"),   # Russia
+                "ZA": ("ZAR", "R"),   # South Africa
+                "SG": ("SGD", "$"),   # Singapore
+                "HK": ("HKD", "$"),   # Hong Kong
+                "ID": ("IDR", "Rp"),  # Indonesia
+                "MY": ("MYR", "RM"),  # Malaysia
+                "TH": ("THB", "฿"),   # Thailand
+                "VN": ("VND", "₫"),   # Vietnam
+                "TR": ("TRY", "₺"),   # Turkey
+                "SA": ("SAR", "﷼"),   # Saudi Arabia
+                "AE": ("AED", "د.إ"), # UAE
+                "CL": ("CLP", "$"),   # Chile
+                "CO": ("COP", "$"),   # Colombia
+                "PE": ("PEN", "S/."), # Peru
+                "AR": ("ARS", "$"),   # Argentina
+                "EG": ("EGP", "£"),   # Egypt
+                "NG": ("NGN", "₦"),   # Nigeria
+                "KE": ("KES", "KSh"), # Kenya
+                "GH": ("GHS", "₵"),   # Ghana
+                "PK": ("PKR", "₨"),   # Pakistan
+                "BD": ("BDT", "৳"),   # Bangladesh
+                "NP": ("NPR", "₨"),   # Nepal
+                "LK": ("LKR", "Rs"),  # Sri Lanka
+                "MM": ("MMK", "Ks"),  # Myanmar
+                "UA": ("UAH", "₴"),   # Ukraine
+                "PL": ("PLN", "zł"),  # Poland
+                "SE": ("SEK", "kr"),  # Sweden
+                "NO": ("NOK", "kr"),  # Norway
+                "NZ": ("NZD", "$"),   # New Zealand
+                "IL": ("ILS", "₪"),   # Israel
+                # Add more as needed
+            }
 
-        # Robux | Credit
+            # Step 3: Robux Balance
+            async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")  as r:
+                economy_data = await r.json()
+                robux = economy_data.get("robux", 0)
+
+            # Step 4: Credit Balance
+            async with session.get("https://billing.roblox.com/v1/credit")  as r:
+                credit_info = await r.json()
+                credit_balance = credit_info.get("balance", 0)
+
+            # Determine currency from user’s location
+            locale = "US"  # Default
+            try:
+                async with session.get(f"https://accountinformation.roblox.com/v1/birthdate")  as br:
+                    birth_data = await br.json()
+                    locale = birth_data.get("birthplace", {}).get("countryCodeRegionId", "US")
+            except:
+                pass
+
+            currency_data = CURRENCY_MAP.get(locale, ("USD", "$"))
+            currency_code, currency_symbol = currency_data
+
+            # Step 5: Email Verified?
+            async with session.get("https://accountinformation.roblox.com/v1/email")  as r:
+                email_info = await r.json()
+                email_verified = email_info.get("verified", False)
+
+            # Step 6: Phone Verified?
+            async with session.get("https://accountsettings.roblox.com/v1/privacy")  as r:
+                phone_info = await r.json()
+                phone_discovery = phone_info.get("phoneDiscovery", "")
+                phone_verified = phone_discovery == "AllUsers"
+
+            # Step 7: Can View Inventory
+            async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory")  as r:
+                inv_info = await r.json()
+                inv_public = inv_info.get("canView", False)
+
+            # Step 8: Primary Group
+            async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role")  as r:
+                group_info = await r.json()
+                group = group_info.get("group", None)
+
+            # Step 9: Total RAP
+            rap = await get_total_rap(user_id, session)
+
+        embed = discord.Embed(color=discord.Color.green())
+        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png")
+
+        embed.add_field(name="Username", value=username, inline=False)
+        embed.add_field(name="UserID", value=str(user_id), inline=False)
+
         embed.add_field(
             name="Robux | Credit",
-            value=f"{info['robux']} | {info['currency_symbol']}{info['credit_balance']}",
+            value=f"{robux} | {currency_symbol}{credit_balance}",
             inline=True
         )
 
-        # Email | Phone
-        email_status = "Verified" if info["email_verified"] else "Add Email"
-        phone_status = "Verified" if info["phone_verified"] else "Add Phone"
+        email_status = "Verified" if email_verified else "Add Email"
+        phone_status = "Verified" if phone_verified else "Add Phone"
         embed.add_field(
             name="Email | Phone",
             value=f"{email_status} | {phone_status}",
             inline=True
         )
 
-        # Inventory | RAP
-        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"])   if info["inv_public"] else "Private"
+        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(user_id) if inv_public else "Private"
         embed.add_field(
             name="Inventory | RAP",
-            value=f"{inventory_status} | {info['rap']}",
+            value=f"{inventory_status} | {rap}",
             inline=True
         )
 
-        # Membership | Primary Group
-        premium_status = "Premium" if info["premium"] else "Non Premium"
-        if info["group"]:
-            group = info["group"]
-            group_str = f"[{group['name']}](https://www.roblox.com/groups/{group['id']})"  
+        premium_status = "Premium" if premium else "Non Premium"
+        if group:
+            group_str = f"[{group['name']}](https://www.roblox.com/groups/{group['id']})"
         else:
             group_str = "N/A"
         embed.add_field(
@@ -1701,8 +1803,7 @@ async def check(interaction: Interaction, cookie: str):
             inline=True
         )
 
-        # Description
-        description = info['description'] if info['description'] else "N/A"
+        description = description if description else "N/A"
         embed.add_field(
             name="Description",
             value=f"```\n{description}\n```",
@@ -1715,7 +1816,7 @@ async def check(interaction: Interaction, cookie: str):
         await init_msg.edit(embed=embed)
 
     except Exception as e:
-        error_embed = Embed(title="⚠️ Error", description=f"`{str(e)}`", color=0xff0000)
+        error_embed = discord.Embed(title="⚠️ Error", description=f"`{str(e)}`", color=discord.Color.red())
         await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /check: {e}")
 
