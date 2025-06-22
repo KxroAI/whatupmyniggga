@@ -1453,317 +1453,184 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
-# ========== Eligible Command ==========
-@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
-@app_commands.describe(username="Roblox username to check")
-async def eligible(interaction: discord.Interaction, username: str):
-    await interaction.response.defer()
-    try:
-        # Step 1: Convert username to userId
-        res = requests.post(
-            "https://users.roblox.com/v1/usernames/users", 
-            json={"usernames": [username], "excludeBannedUsers": True}
-        )
-        data = res.json()
-        if res.status_code != 200 or not data.get("data"):
-            await interaction.followup.send(f"❌ Could not find user `{username}`.")
-            return
-
-        user_id = data["data"][0]["id"]
-
-        # Step 3: Get group join info using Open Cloud API
-        GROUP_ID = 5838002  # ← Replace with your actual group ID if needed
-        url = f"https://apis.roblox.com/groups/v2/groups/{GROUP_ID}/users/{user_id}" 
-        API_KEY = os.getenv("ROBLOX_API_KEY")  # Make sure this is set in .env
-        headers = {
-            "Authorization": f"Bearer {API_KEY}"
-        }
-
-        group_res = requests.get(url, headers=headers)
-
-        if group_res.status_code != 200:
-            await interaction.followup.send(f"❌ Failed to retrieve group data for `{username}`.")
-            return
-
-        group_data = group_res.json()
-
-        if "joinedAt" not in group_data:
-            await interaction.followup.send(f"❌ `{username}` is not a member of the group.")
-            return
-
-        # Step 4: Calculate days in group
-        join_datetime = datetime.fromisoformat(group_data["joinedAt"].replace("Z", "+00:00"))
-        now_utc = datetime.now(timezone.utc)
-        days_in_group = (now_utc - join_datetime).days
-
-        if days_in_group >= 14:
-            await interaction.followup.send(f"✅ `{username}` is eligible for group payout (joined {days_in_group} days ago).")
-        else:
-            await interaction.followup.send(f"❌ `{username}` is NOT eligible (only {days_in_group} days in group).")
-
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ Error: {e}")
-
-
 # ========== Check Command ==========
+async def get_csrf_token(session):
+    async with session.post("https://auth.roblox.com/v2/logout")  as resp:
+        return resp.headers.get("x-csrf-token")
+
+
+async def get_cookie_from_login(username, password, interaction, captcha_data=None):Add commentMore actions
+    url = "https://auth.roblox.com/v2/login" 
+    payload = {
+        "ctype": "Username",
+        "cvalue": username,
+        "password": password
+    }
+    headers = {}
+    async with aiohttp.ClientSession() as session:
+        bot.xcsrf_token = await get_csrf_token(session)
+        if bot.xcsrf_token:
+            headers["x-csrf-token"] = bot.xcsrf_token
+
+        if captcha_data:
+            payload.update({
+                "captchaToken": captcha_data["token"],
+                "captchaId": captcha_data["id"]
+            })
+
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                cookie = None
+                set_cookies = resp.headers.getall("Set-Cookie")
+                for c in set_cookies:
+                    if ".ROBLOSECURITY" in c:
+                        cookie = c.split(".ROBLOSECURITY=")[1].split(";")[0]
+                return {"cookie": cookie, "xcsrf": resp.headers.get("x-csrf-token")}
+            elif resp.status == 403:
+                data = await resp.json()
+                error = data.get("errors", [{}])[0]
+                if error.get("code") == 2:
+                    field_data = json.loads(error.get("fieldData", "{}"))
+                    captcha_id = field_data.get("unifiedCaptchaId")
+                    return {"captcha": True, "captcha_id": captcha_id}
+                else:
+                    raise Exception(f"Login failed: {error}")
+            else:
+                text = await resp.text()
+                raise Exception(f"Unexpected response: {resp.status} - {text}")
+
+
 async def fetch_roblox_info(cookie):
     async with aiohttp.ClientSession(headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as session:
         # Step 1: Get authenticated user ID
-        async with session.get("https://users.roblox.com/v1/users/authenticated")   as r:
+        async with session.get("https://users.roblox.com/v1/users/authenticated")  as r:
             if r.status != 200:
                 raise Exception("Invalid or expired .ROBLOSECURITY cookie.")
             auth_data = await r.json()
             user_id = auth_data["id"]
 
-        # Step 2: Get user info (includes locale)
-        async with session.get(f"https://users.roblox.com/v1/users/{user_id}")   as r:
+        # Step 2: Get user info
+        async with session.get(f"https://users.roblox.com/v1/users/{user_id}")  as r:
             user_data = await r.json()
             username = user_data["name"]
             display_name = user_data.get("displayName", username)
             description = user_data.get("description", "None")
-            locale = user_data.get("birthInformation", {}).get("locationOfBirth", {}).get("region", {}).get("countryCode", "US")
-
-        # Map country code to currency symbol
-        CURRENCY_MAP = {
-            "US": ("USD", "$"),   # United States
-            "PH": ("PHP", "₱"),   # Philippines
-            "IN": ("INR", "₹"),   # India
-            "GB": ("GBP", "£"),   # United Kingdom
-            "DE": ("EUR", "€"),   # Germany
-            "FR": ("EUR", "€"),
-            "ES": ("EUR", "€"),
-            "IT": ("EUR", "€"),
-            "CA": ("CAD", "$"),   # Canada
-            "AU": ("AUD", "$"),   # Australia
-            "JP": ("JPY", "¥"),   # Japan
-            "KR": ("KRW", "₩"),   # South Korea
-            "CN": ("CNY", "¥"),   # China
-            "BR": ("BRL", "R$"),  # Brazil
-            "MX": ("MXN", "$"),   # Mexico
-            "RU": ("RUB", "₽"),   # Russia
-            "ZA": ("ZAR", "R"),   # South Africa
-            "SG": ("SGD", "$"),   # Singapore
-            "HK": ("HKD", "$"),   # Hong Kong
-            "ID": ("IDR", "Rp"),  # Indonesia
-            "MY": ("MYR", "RM"),  # Malaysia
-            "TH": ("THB", "฿"),   # Thailand
-            "VN": ("VND", "₫"),   # Vietnam
-            "TR": ("TRY", "₺"),   # Turkey
-            "SA": ("SAR", "﷼"),   # Saudi Arabia
-            "AE": ("AED", "د.إ"), # UAE
-            "CL": ("CLP", "$"),   # Chile
-            "CO": ("COP", "$"),   # Colombia
-            "PE": ("PEN", "S/."), # Peru
-            "AR": ("ARS", "$"),   # Argentina
-            "EG": ("EGP", "£"),   # Egypt
-            "NG": ("NGN", "₦"),   # Nigeria
-            "KE": ("KES", "KSh"), # Kenya
-            "GH": ("GHS", "₵"),   # Ghana
-            "PK": ("PKR", "₨"),   # Pakistan
-            "BD": ("BDT", "৳"),   # Bangladesh
-            "NP": ("NPR", "₨"),   # Nepal
-            "LK": ("LKR", "Rs"),  # Sri Lanka
-            "MM": ("MMK", "Ks"),  # Myanmar
-            "UA": ("UAH", "₴"),   # Ukraine
-            "PL": ("PLN", "zł"),  # Poland
-            "SE": ("SEK", "kr"),  # Sweden
-            "NO": ("NOK", "kr"),  # Norway
-            "NZ": ("NZD", "$"),   # New Zealand
-            "IL": ("ILS", "₪"),   # Israel
-            "SA": ("SAR", "﷼"),  # Saudi Arabia
-            # Add more as needed
-        }
-
-        country_code = locale
-        currency_data = CURRENCY_MAP.get(country_code, ("USD", "$"))
-        currency_code, currency_symbol = currency_data
 
         # Step 3: Robux Balance
-        async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")   as r:
+        async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")  as r:
             economy_data = await r.json()
             robux = economy_data.get("robux", 0)
 
-        # Step 4: Credit Balance
-        async with session.get("https://billing.roblox.com/v1/credit")   as r:
-            credit_info = await r.json()
-            credit_balance = credit_info.get("balance", 0)
+        # Step 4: Premium Status
+        async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership")  as r:
+            premium = await r.json()
 
-        # Step 5: Email Verified?
-        async with session.get("https://accountinformation.roblox.com/v1/email")   as r:
+        # Step 5: Credit Balance
+        async with session.get("https://billing.roblox.com/v1/credit")  as r:
+            credit_info = await r.json()
+            credit = credit_info.get("balance", 0)
+
+        # Step 6: Email Verified?
+        async with session.get("https://accountinformation.roblox.com/v1/email")  as r:
             email_info = await r.json()
             email_verified = email_info.get("verified", False)
 
-        # Step 6: Phone Verified?
-        async with session.get("https://accountsettings.roblox.com/v1/privacy")   as r:
+        # Step 7: Phone Verified?
+        async with session.get("https://accountsettings.roblox.com/v1/privacy")  as r:
             phone_info = await r.json()
             phone_verified = phone_info.get("phoneDiscovery", "") == "AllUsers"
 
-        # Step 7: Can View Inventory
-        async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory")   as r:
+        # Step 8: Can View Inventory
+        async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory")  as r:
             inv_info = await r.json()
             inv_public = inv_info.get("canView", False)
 
-        # Step 8: Primary Group
-        async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role")   as r:
+        # Step 9: Primary Group
+        async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role")  as r:
             group_info = await r.json()
             group = group_info.get("group", None)
 
-        # Step 9: Total RAP
+        # Step 10: Total RAP
         rap = await get_total_rap(user_id, session)
 
         return {
-            "username": username,
-            "userid": user_id,
+@@ -1611,8 +1616,9 @@ async def fetch_roblox_info(cookie):
             "display_name": display_name,
             "description": description,
             "robux": robux,
-            "credit_balance": credit_balance,
-            "currency_symbol": currency_symbol,
-            "currency_code": currency_code,
+            "premium": premium,
+            "credit": credit,
+
             "email_verified": email_verified,
             "phone_verified": phone_verified,
             "inv_public": inv_public,
-            "group": group,
-            "rap": rap
-        }
-
-# Step 10: Fetch RAP (Recent Average Price) of all collectibles
-async def get_total_rap(user_id, session):
-    total_rap = 0
-    cursor = ""
-    while True:
-        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?sortOrder=Asc&limit=100"
-        if cursor:
-            url += f"&cursor={cursor}"
-        async with session.get(url) as r:
-            data = await r.json()
-            for item in data.get("data", []):
-                total_rap += item.get("recentAveragePrice", 0)
-            cursor = data.get("nextPageCursor")
-            if not cursor:
-                break
+@@ -1638,98 +1644,77 @@ async def get_total_rap(user_id, session):
     return total_rap
 
 
-@bot.tree.command(name="check", description="Check details of a Roblox account using cookie.")
+@bot.tree.command(name="check", description="Check details of a Roblox account using cookie or credentials.")
 @app_commands.describe(
-    cookie="Provide .ROBLOSECURITY cookie"
+    cookie="Provide .ROBLOSECURITY cookie",
+    username="Your Roblox username",
+    password="Your Roblox password"
 )
-async def check(interaction: discord.Interaction, cookie: str):
-    loading_embed = discord.Embed(title="🔍 Loading Account Info...", description="Please wait...", color=discord.Color.orange())
+async def check(interaction: Interaction, cookie: str = None, username: str = None, password: str = None):
+    if cookie and (username or password):
+        await interaction.response.send_message("❌ Please provide either a cookie OR username + password.", ephemeral=True)
+        return
+    if not cookie and not (username and password):
+        await interaction.response.send_message("❌ Please provide either a cookie OR username and password.", ephemeral=True)
+        return
+
+    loading_embed = Embed(title="🔍 Loading Account Info...", description="Please wait...", color=discord.Color.orange())
     init_msg = await interaction.channel.send(embed=loading_embed)
+
     try:
-        async with aiohttp.ClientSession(headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as session:
-            # Step 1: Get authenticated user ID
-            async with session.get("https://users.roblox.com/v1/users/authenticated")  as r:
-                if r.status != 200:
-                    raise Exception("Invalid or expired .ROBLOSECURITY cookie.")
-                auth_data = await r.json()
-                user_id = auth_data["id"]
+        auth_result = None
+        if cookie:
+            auth_result = {"cookie": cookie}
+        else:
+            bot.xcsrf_token = None
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://auth.roblox.com/v2/logout") as r:
+                    bot.xcsrf_token = r.headers.get("x-csrf-token")
 
-            # Step 2: Get user info (includes locale)
-            async with session.get(f"https://users.roblox.com/v1/users/{user_id}")  as r:
-                user_data = await r.json()
-                username = user_data["name"]
-                display_name = user_data.get("displayName", username)
-                description = user_data.get("description", "None")
-                premium = user_data.get("hasPremium", False)
+            auth_result = await get_cookie_from_login(username, password, interaction)
 
-            # Map country code to currency symbol
-            CURRENCY_MAP = {
-                "US": ("USD", "$"),   # United States
-                "PH": ("PHP", "₱"),   # Philippines
-                "IN": ("INR", "₹"),   # India
-                "GB": ("GBP", "£"),   # United Kingdom
-                "DE": ("EUR", "€"),   # Germany
-                "FR": ("EUR", "€"),
-                "ES": ("EUR", "€"),
-                "IT": ("EUR", "€"),
-                "CA": ("CAD", "$"),   # Canada
-                "AU": ("AUD", "$"),   # Australia
-                "JP": ("JPY", "¥"),   # Japan
-                "KR": ("KRW", "₩"),   # South Korea
-                "CN": ("CNY", "¥"),   # China
-                "BR": ("BRL", "R$"),  # Brazil
-                "MX": ("MXN", "$"),   # Mexico
-                "RU": ("RUB", "₽"),   # Russia
-                "ZA": ("ZAR", "R"),   # South Africa
-                "SG": ("SGD", "$"),   # Singapore
-                "HK": ("HKD", "$"),   # Hong Kong
-                "ID": ("IDR", "Rp"),  # Indonesia
-                "MY": ("MYR", "RM"),  # Malaysia
-                "TH": ("THB", "฿"),   # Thailand
-                "VN": ("VND", "₫"),   # Vietnam
-                "TR": ("TRY", "₺"),   # Turkey
-                "SA": ("SAR", "﷼"),   # Saudi Arabia
-                "AE": ("AED", "د.إ"), # UAE
-                "CL": ("CLP", "$"),   # Chile
-                "CO": ("COP", "$"),   # Colombia
-                "PE": ("PEN", "S/."), # Peru
-                "AR": ("ARS", "$"),   # Argentina
-                "EG": ("EGP", "£"),   # Egypt
-                "NG": ("NGN", "₦"),   # Nigeria
-                "KE": ("KES", "KSh"), # Kenya
-                "GH": ("GHS", "₵"),   # Ghana
-                "PK": ("PKR", "₨"),   # Pakistan
-                "BD": ("BDT", "৳"),   # Bangladesh
-                "NP": ("NPR", "₨"),   # Nepal
-                "LK": ("LKR", "Rs"),  # Sri Lanka
-                "MM": ("MMK", "Ks"),  # Myanmar
-                "UA": ("UAH", "₴"),   # Ukraine
-                "PL": ("PLN", "zł"),  # Poland
-                "SE": ("SEK", "kr"),  # Sweden
-                "NO": ("NOK", "kr"),  # Norway
-                "NZ": ("NZD", "$"),   # New Zealand
-                "IL": ("ILS", "₪"),   # Israel
-                # Add more as needed
-            }
+            if auth_result.get("captcha"):
+                captcha_url = "https://arkoselabs.com/demo"
+                captcha_embed = Embed(
+                    title="🔐 Solve Captcha",
+                    description=f"[Click here to solve captcha]({captcha_url})\nReact with ✅ once solved.",
+                    color=discord.Color.gold()
+                )
+                await init_msg.edit(embed=captcha_embed)
+                await init_msg.add_reaction("✅")
 
-            # Step 3: Robux Balance
-            async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency")  as r:
-                economy_data = await r.json()
-                robux = economy_data.get("robux", 0)
+                def check_reaction(reaction, user):
+                    return reaction.message.id == init_msg.id and user == interaction.user and str(reaction.emoji) == "✅"
 
-            # Step 4: Credit Balance
-            async with session.get("https://billing.roblox.com/v1/credit")  as r:
-                credit_info = await r.json()
-                credit_balance = credit_info.get("balance", 0)
+                try:
+                    await bot.wait_for("reaction_add", timeout=90.0, check=check_reaction)
+                except asyncio.TimeoutError:
+                    await init_msg.edit(embed=Embed(title="⏰ Timed Out", color=discord.Color.red()))
+                    return
 
-            # Determine currency from user’s location
-            locale = "US"  # Default
-            try:
-                async with session.get(f"https://accountinformation.roblox.com/v1/birthdate")  as br:
-                    birth_data = await br.json()
-                    locale = birth_data.get("birthplace", {}).get("countryCodeRegionId", "US")
-            except:
-                pass
+                await init_msg.remove_reaction("✅", interaction.user)
 
-            currency_data = CURRENCY_MAP.get(locale, ("USD", "$"))
-            currency_code, currency_symbol = currency_data
+                auth_result = await get_cookie_from_login(
+                    username, password, interaction,
+                    {"token": "manual_captcha_solved", "id": auth_result["captcha_id"]}
+                )
 
-            # Step 5: Email Verified?
-            async with session.get("https://accountinformation.roblox.com/v1/email")  as r:
-                email_info = await r.json()
-                email_verified = email_info.get("verified", False)
+            if not auth_result.get("cookie"):
+                await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
+                return
 
-            # Step 6: Phone Verified?
-            async with session.get("https://accountsettings.roblox.com/v1/privacy")  as r:
-                phone_info = await r.json()
-                phone_discovery = phone_info.get("phoneDiscovery", "")
-                phone_verified = phone_discovery == "AllUsers"
 
-            # Step 7: Can View Inventory
-            async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/can-view-inventory")  as r:
-                inv_info = await r.json()
-                inv_public = inv_info.get("canView", False)
+        info = await fetch_roblox_info(auth_result["cookie"])
 
-            # Step 8: Primary Group
-            async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role")  as r:
-                group_info = await r.json()
-                group = group_info.get("group", None)
-
-            # Step 9: Total RAP
-            rap = await get_total_rap(user_id, session)
 
         embed = discord.Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png")
@@ -1816,10 +1683,9 @@ async def check(interaction: discord.Interaction, cookie: str):
         await init_msg.edit(embed=embed)
 
     except Exception as e:
-        error_embed = discord.Embed(title="⚠️ Error", description=f"`{str(e)}`", color=discord.Color.red())
+        error_embed = Embed(title="⚠️ Error", description=f"`{str(e)}`", color=discord.Color.red())
         await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /check: {e}")
-
 
 # ===========================
 # Bot Events
