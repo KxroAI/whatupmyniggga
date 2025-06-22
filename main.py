@@ -1696,75 +1696,44 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
             if not auth_result.get("cookie"):
                 await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
                 return
-                
+
         info = await fetch_roblox_info(auth_result["cookie"])
 
-        user_id = info["userid"]
-        username = info["username"]
-        display_name = info["display_name"]
-        description = info["description"]
-        robux = info["robux"]
-        credit_balance = info["credit"]
-        email_verified = info["email_verified"]
-        phone_verified = info["phone_verified"]
-        inv_public = info["inv_public"]
-        rap = info["rap"]
-        group = info["group"]
-        premium = info["premium"]
-
-        embed = discord.Embed(color=discord.Color.green())
-        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png")
-
-        embed.add_field(name="Username", value=username, inline=True)
-        embed.add_field(name="UserID", value=str(user_id), inline=True)
-
-        embed.add_field(
-            name="Robux | Credit",
-            value=f"{robux} | {currency_symbol}{credit_balance}",
-            inline=True
-        )
-
-        email_status = "Verified" if email_verified else "Add Email"
-        phone_status = "Verified" if phone_verified else "Add Phone"
-        embed.add_field(
-            name="Email | Phone",
-            value=f"{email_status} | {phone_status}",
-            inline=True
-        )
-
-        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(user_id) if inv_public else "Private"
-        embed.add_field(
-            name="Inventory | RAP",
-            value=f"{inventory_status} | {rap}",
-            inline=True
-        )
-
-        premium_status = "Premium" if premium else "Non Premium"
-        if group:
-            group_str = f"[{group['name']}](https://www.roblox.com/groups/{group['id']})"
+        embed = Embed(color=discord.Color.green())
+        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
+        
+        # First row - Username and UserID 
+        embed.add_field(name="Username", value=info["username"], inline=True)
+        embed.add_field(name="UserID", value=str(info["userid"]), inline=True)
+        
+        # Second row - Robux and Credit
+        embed.add_field(name="Robux | Credit", value=f"{info['robux']} | ${info['credit']}", inline=True)
+        
+        # Third row - Email and Phone
+        email_status = "Verified" if info["email_verified"] else "Add Email"
+        phone_status = "Verified" if info["phone_verified"] else "Add Phone"
+        embed.add_field(name="Email | Phone", value=f"{email_status} | {phone_status}", inline=True)
+        
+        # Fourth row - Inventory and RAP
+        inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"])  if info["inv_public"] else "Private"
+        embed.add_field(name="Inventory | RAP", value=f"{inventory_status} | {info['rap']}", inline=True)
+        
+        # Fifth row - Membership and Primary Group
+        premium_status = "Premium" if info["premium"] else "Non Premium"
+        if info["group"]:
+            group = info["group"]
+            group_link = f"[{group['name']}](https://www.roblox.com/groups/{group['id']})" 
         else:
-            group_str = "N/A"
-        embed.add_field(
-            name="Membership | Primary Group",
-            value=f"{premium_status} | {group_str}",
-            inline=True
-        )
-
-        description = description if description else "N/A"
-        embed.add_field(
-            name="Description",
-            value=f"```\n{description}\n```",
-            inline=False
-        )
-
+            group_link = "N/A"
+        embed.add_field(name="Membership | Primary Group", value=f"{premium_status} | {group_link}", inline=True)
+        
+        # Sixth row - Description
+        description = info['description'] if info['description'] else "N/A"
+        embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
+        
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
-
         await init_msg.edit(embed=embed)
-
-    except Exception as e:
-        error_embed = Embed(title="⚠️ Error", description=f"`{str(e)}`", color=discord.Color.red())
-        await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /check: {e}")
 
 
