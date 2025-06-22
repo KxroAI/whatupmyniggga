@@ -1696,9 +1696,22 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
             if not auth_result.get("cookie"):
                 await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
                 return
-
+                
         info = await fetch_roblox_info(auth_result["cookie"])
-        
+
+        user_id = info["userid"]
+        username = info["username"]
+        display_name = info["display_name"]
+        description = info["description"]
+        robux = info["robux"]
+        credit_balance = info["credit"]
+        email_verified = info["email_verified"]
+        phone_verified = info["phone_verified"]
+        inv_public = info["inv_public"]
+        rap = info["rap"]
+        group = info["group"]
+        premium = info["premium"]
+
         embed = discord.Embed(color=discord.Color.green())
         embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png")
 
