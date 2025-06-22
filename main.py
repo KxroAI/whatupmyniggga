@@ -1459,7 +1459,7 @@ async def get_csrf_token(session):
         return resp.headers.get("x-csrf-token")
 
 
-async def get_cookie_from_login(username, password, interaction, captcha_data=None):Add commentMore actions
+async def get_cookie_from_login(username, password, interaction, captcha_data=None):
     url = "https://auth.roblox.com/v2/login" 
     payload = {
         "ctype": "Username",
