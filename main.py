@@ -1555,7 +1555,8 @@ async def fetch_roblox_info(cookie):
         rap = await get_total_rap(user_id, session)
 
         return {
-@@ -1611,8 +1616,9 @@ async def fetch_roblox_info(cookie):
+            
+async def fetch_roblox_info(cookie):
             "display_name": display_name,
             "description": description,
             "robux": robux,
@@ -1565,8 +1566,11 @@ async def fetch_roblox_info(cookie):
             "email_verified": email_verified,
             "phone_verified": phone_verified,
             "inv_public": inv_public,
-@@ -1638,98 +1644,77 @@ async def get_total_rap(user_id, session):
+
+async def get_total_rap(user_id, session):
     return total_rap
+
+}
 
 
 @bot.tree.command(name="check", description="Check details of a Roblox account using cookie or credentials.")
