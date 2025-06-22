@@ -58,12 +58,12 @@ server_thread = threading.Thread(target=run_server)
 server_thread.start()
 
 # Optional: Add another threaded task
-def check_for_updates():
+def _for_updates():
     while True:
-        print("[Background] Checking for updates...")
+        print("[Background] ing for updates...")
         time.sleep(300)  # Every 5 minutes
 
-update_thread = threading.Thread(target=check_for_updates)
+update_thread = threading.Thread(target=_for_updates)
 update_thread.daemon = True
 update_thread.start()
 
@@ -96,9 +96,9 @@ else:
         conversations_collection = None
         reminders_collection = None
 
-# Background Task: Check Reminders
+# Background Task:  Reminders
 @tasks.loop(seconds=60)
-async def check_reminders():
+async def _reminders():
     if reminders_collection is None:
         return
     try:
@@ -125,7 +125,7 @@ async def check_reminders():
             # Delete reminder after sending
             reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
-        print(f"[!] Error checking reminders: {e}")
+        print(f"[!] Error ing reminders: {e}")
 
 # ===========================
 # Owner-only Direct Message Commands
@@ -1011,6 +1011,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
 - `/avatar [user]` - Display a user's profile picture
 - `/banner [user]` - Display a user's bannner
+- `/check [cookie]` - Check details of a Roblox account using cookie.
         """,
         inline=False
     )
@@ -1453,9 +1454,9 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Eligible Command ==========
-@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
+@bot.tree.command(name="eligible", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
 @app_commands.describe(username="Roblox username to check")
-async def checkpayout(interaction: discord.Interaction, username: str):
+async def eligible(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
     try:
         # Step 1: Convert username to userId
@@ -1644,7 +1645,7 @@ async def get_total_rap(user_id, session):
     return total_rap
 
 
-@app_commands_command(name="check", description="Check details of a Roblox account using cookie.")
+@bot.tree.command(name="check", description="Check details of a Roblox account using cookie.")
 @app_commands_describe(
     cookie="Provide .ROBLOSECURITY cookie"
 )
