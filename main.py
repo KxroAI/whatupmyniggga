@@ -155,6 +155,13 @@ def get_current_rates(guild_id: str):
         "ct": result.get("ct_rate", 350.0) if result else 350.0
     }
 
+DEFAULT_RATES = {
+    "payout": 330.0,
+    "gift": 260.0,
+    "nct": 245.0,
+    "ct": 350.0
+}
+
 # ===========================
 # Owner-only Direct Message Commands
 # ===========================
@@ -443,7 +450,7 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
 # ===========================
 
 # Set Rate
-@bot.tree.command(name="setrate", description="Set custom conversion rates for this server")
+@bot.tree.command(name="setrate", description="Set custom conversion rates for this server (minimum allowed rates enforced)")
 @app_commands.describe(
     payout_rate="PHP per 1000 Robux for Payout",
     gift_rate="PHP per 1000 Robux for Gift",
@@ -452,16 +459,32 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
 )
 async def setrate(
     interaction: discord.Interaction,
-    payout_rate: float = 330.0,
-    gift_rate: float = 260.0,
-    nct_rate: float = 245.0,
-    ct_rate: float = 350.0
+    payout_rate: float = DEFAULT_RATES["payout"],
+    gift_rate: float = DEFAULT_RATES["gift"],
+    nct_rate: float = DEFAULT_RATES["nct"],
+    ct_rate: float = DEFAULT_RATES["ct"]
 ):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ You must be an administrator to use this command.", ephemeral=True)
         return
 
     guild_id = str(interaction.guild.id)
+
+    # Enforce minimum rate limits
+    errors = []
+    if payout_rate < DEFAULT_RATES["payout"]:
+        errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout']}/1000 Robux)")
+    if gift_rate < DEFAULT_RATES["gift"]:
+        errors.append(f"Gift Rate (min: ₱{DEFAULT_RATES['gift']}/1000 Robux)")
+    if nct_rate < DEFAULT_RATES["nct"]:
+        errors.append(f"NCT Rate (min: ₱{DEFAULT_RATES['nct']}/1000 Robux)")
+    if ct_rate < DEFAULT_RATES["ct"]:
+        errors.append(f"CT Rate (min: ₱{DEFAULT_RATES['ct']}/1000 Robux)")
+
+    if errors:
+        error_msg = "❗ You cannot set rates below the minimum:\n" + "\n".join(errors)
+        await interaction.response.send_message(error_msg, ephemeral=True)
+        return
 
     update_data = {
         "guild_id": guild_id,
@@ -474,6 +497,7 @@ async def setrate(
 
     try:
         if rates_collection:
+            # Upsert (update or insert)
             rates_collection.update_one(
                 {"guild_id": guild_id},
                 {"$set": update_data},
