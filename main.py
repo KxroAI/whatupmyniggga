@@ -678,25 +678,6 @@ async def nctreverse(interaction: discord.Interaction, php: float):
     await interaction.response.send_message(embed=embed)
 
 # CT Rate 
-@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on current NCT rate")
-@app_commands.describe(php="How much PHP do you want to convert?")
-async def nctreverse(interaction: discord.Interaction, php: float):
-    if php <= 0:
-        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
-        return
-    
-    guild_id = interaction.guild.id
-    rates = get_current_rates(guild_id)
-    robux = round((php / rates["nct"]) * 1000)
-    
-    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-    embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-    embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-    embed.add_field(name="Note:", value="To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL.", inline=False)
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
-    await interaction.response.send_message(embed=embed)
-
 @bot.tree.command(name="ct", description="Convert Robux to PHP based on current CT rate")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def ct(interaction: discord.Interaction, robux: int):
@@ -711,6 +692,25 @@ async def ct(interaction: discord.Interaction, robux: int):
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
+    embed.add_field(name="Note:", value="To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL.", inline=False)
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="ctreverse", description="Convert PHP to Robux based on current CT rate")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def ctreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        return
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    robux = round((php / rates["ct"]) * 1000)
+    
+    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+    embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
+    embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Note:", value="To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL.", inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
