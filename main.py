@@ -1221,8 +1221,12 @@ async def listallcommands(interaction: discord.Interaction):
 - `/nctreverse <php>` - Convert PHP to Robux at NCT rate
 - `/ct <robux>` - Convert Robux to PHP at CT rate (₱350/1k)
 - `/ctreverse <php>` - Convert PHP to Robux at CT rate
+- `/allrates <php>` - See PHP equivalent across all rates for given Robux
+- `/allratesreverse <robux>` - See Robux equivalent across all rates for given PHP
 - `/convertcurrency <amount> <from> <to>` - Convert between currencies
 - `/devex [usd/robux] <amount>` - Convert USD ↔ Robux using DevEx rate
+- `/beforetax <robux>`- Calculate how much Robux you'll receive after 30% tax
+- `/aftertax <robux>`- Calculate how much Robux to send to receive desired amount after 30% tax
         """,
         inline=False
     )
