@@ -497,7 +497,7 @@ async def setrate(
     }
 
     try:
-        if rates_collection:
+        if rates_collection is not None:
             # Upsert (update or insert)
             rates_collection.update_one(
                 {"guild_id": guild_id},
@@ -559,7 +559,7 @@ async def resetrate(
         update_data["ct_rate"] = 350.0
 
     try:
-        if rates_collection:
+        if rates_collection is not None:
             result = rates_collection.update_one(
                 {"guild_id": guild_id},
                 {"$set": update_data}
