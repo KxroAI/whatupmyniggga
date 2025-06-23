@@ -497,6 +497,71 @@ CT Rate: ₱{ct_rate}/1000 Robux
     except Exception as e:
         await interaction.response.send_message(f"❌ Error updating rates: {str(e)}", ephemeral=True)
 
+# Reset Rate
+@bot.tree.command(name="resetrate", description="Reset specific conversion rates back to default (e.g., payout, gift)")
+@app_commands.describe(
+    payout="Reset Payout rate",
+    gift="Reset Gift rate",
+    nct="Reset NCT rate",
+    ct="Reset CT rate"
+)
+async def resetrate(
+    interaction: discord.Interaction,
+    payout: bool = False,
+    gift: bool = False,
+    nct: bool = False,
+    ct: bool = False
+):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ You must be an administrator to use this command.", ephemeral=True)
+        return
+
+    guild_id = str(interaction.guild.id)
+
+    # Check if any rate was selected
+    if not any([payout, gift, nct, ct]):
+        await interaction.response.send_message("❗ Please select at least one rate to reset.", ephemeral=True)
+        return
+
+    update_data = {}
+    if payout:
+        update_data["payout_rate"] = 330.0
+    if gift:
+        update_data["gift_rate"] = 260.0
+    if nct:
+        update_data["nct_rate"] = 245.0
+    if ct:
+        update_data["ct_rate"] = 350.0
+
+    try:
+        if rates_collection:
+            result = rates_collection.update_one(
+                {"guild_id": guild_id},
+                {"$set": update_data}
+            )
+            if result.modified_count > 0 or result.upserted_id is not None:
+                embed = discord.Embed(
+                    title="✅ Rates Reset",
+                    description="Selected rates have been reset to default values.",
+                    color=discord.Color.green()
+                )
+                embed.add_field(
+                    name="Reset Fields",
+                    value=", ".join([r.replace("_rate", "").title() for r in update_data.keys()]),
+                    inline=False
+                )
+            else:
+                embed = discord.Embed(
+                    title="⚠️ No Changes Made",
+                    description="No matching server found or no actual changes were needed.",
+                    color=discord.Color.orange()
+                )
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error resetting rates: {str(e)}", ephemeral=True)
+
 # Payout Rate
 @bot.tree.command(name="payout", description="Convert Robux to PHP based on current Payout rate")
 @app_commands.describe(robux="How much Robux do you want to convert?")
@@ -1107,6 +1172,7 @@ async def listallcommands(interaction: discord.Interaction):
         name="💰 Currency Conversion",
         value="""
 - `/setrate <rates>` - Set custom Conversion Rates
+- `/resetrate <rates>` - Reset specific Conversion Rates back to Default
 - `/payout <robux>` - Convert Robux to PHP at Payout rate (₱330/1000)
 - `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
 - `/gift <robux>` - Convert Robux to PHP at Gift rate (₱260/1000)
