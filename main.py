@@ -74,7 +74,7 @@ client = None
 db = None
 conversations_collection = None
 reminders_collection = None
-rates_collection = None  # New collection for conversion rates
+rates_collection = None
 
 mongo_uri = os.getenv("MONGO_URI")
 if not mongo_uri:
@@ -137,7 +137,8 @@ async def check_reminders():
 
 # Rates DB
 def get_current_rates(guild_id: str):
-    if not rates_collection:
+    # Check if MongoDB is disabled
+    if rates_collection is None:
         return {
             "payout": 330.0,
             "gift": 260.0,
