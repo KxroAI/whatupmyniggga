@@ -74,6 +74,7 @@ client = None
 db = None
 conversations_collection = None
 reminders_collection = None
+rates_collection = None  # New collection for conversion rates
 
 mongo_uri = os.getenv("MONGO_URI")
 if not mongo_uri:
@@ -82,12 +83,18 @@ else:
     try:
         client = MongoClient(mongo_uri, tlsCAFile=certifi.where())
         db = client.ai_bot
+
+        # Initialize collections
         conversations_collection = db.conversations
         reminders_collection = db.reminders
+        rates_collection = db.rates  # ← New collection for rates
 
         # Create TTL indexes
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
+
+        # Create index for guild_id in rates collection
+        rates_collection.create_index([("guild_id", ASCENDING)], unique=True)
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
@@ -95,6 +102,7 @@ else:
         client = None
         conversations_collection = None
         reminders_collection = None
+        rates_collection = None
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
@@ -126,6 +134,26 @@ async def check_reminders():
             reminders_collection.delete_one({"_id": reminder["_id"]})
     except Exception as e:
         print(f"[!] Error checking reminders: {e}")
+
+# Rates DB
+def get_current_rates(guild_id: str):
+    if not rates_collection:
+        return {
+            "payout": 330.0,
+            "gift": 260.0,
+            "nct": 245.0,
+            "ct": 350.0
+        }
+
+    guild_id = str(guild_id)
+    result = rates_collection.find_one({"guild_id": guild_id})
+
+    return {
+        "payout": result.get("payout_rate", 330.0) if result else 330.0,
+        "gift": result.get("gift_rate", 260.0) if result else 260.0,
+        "nct": result.get("nct_rate", 245.0) if result else 245.0,
+        "ct": result.get("ct_rate", 350.0) if result else 350.0
+    }
 
 # ===========================
 # Owner-only Direct Message Commands
@@ -414,14 +442,73 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
 # Conversion Commands
 # ===========================
 
+# Set Rate
+@bot.tree.command(name="setrate", description="Set custom conversion rates for this server")
+@app_commands.describe(
+    payout_rate="PHP per 1000 Robux for Payout",
+    gift_rate="PHP per 1000 Robux for Gift",
+    nct_rate="PHP per 1000 Robux for NCT",
+    ct_rate="PHP per 1000 Robux for CT"
+)
+async def setrate(
+    interaction: discord.Interaction,
+    payout_rate: float = 330.0,
+    gift_rate: float = 260.0,
+    nct_rate: float = 245.0,
+    ct_rate: float = 350.0
+):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ You must be an administrator to use this command.", ephemeral=True)
+        return
+
+    guild_id = str(interaction.guild.id)
+
+    update_data = {
+        "guild_id": guild_id,
+        "payout_rate": payout_rate,
+        "gift_rate": gift_rate,
+        "nct_rate": nct_rate,
+        "ct_rate": ct_rate,
+        "updated_at": datetime.now(PH_TIMEZONE)
+    }
+
+    try:
+        if rates_collection:
+            rates_collection.update_one(
+                {"guild_id": guild_id},
+                {"$set": update_data},
+                upsert=True
+            )
+            embed = discord.Embed(
+                title="✅ Rates Updated",
+                description=f"""
+Payout Rate: ₱{payout_rate}/1000 Robux  
+Gift Rate: ₱{gift_rate}/1000 Robux  
+NCT Rate: ₱{nct_rate}/1000 Robux  
+CT Rate: ₱{ct_rate}/1000 Robux
+""",
+                color=discord.Color.green()
+            )
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error updating rates: {str(e)}", ephemeral=True)
+
 # Payout Rate
-@bot.tree.command(name="payout", description="Convert Robux to PHP based on Payout rate (₱330 for 1000 Robux)")
+@bot.tree.command(name="payout", description="Convert Robux to PHP based on current Payout rate")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def payout(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
-    php = robux * (330 / 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    php = robux * (rates["payout"] / 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -430,13 +517,17 @@ async def payout(interaction: discord.Interaction, robux: int):
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="payoutreverse", description="Convert PHP to Robux based on Payout rate (₱330 for 1000 Robux)")
+@bot.tree.command(name="payoutreverse", description="Convert PHP to Robux based on current Payout rate")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def payoutreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    robux = round((php / 330) * 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    robux = round((php / rates["payout"]) * 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
@@ -446,13 +537,17 @@ async def payoutreverse(interaction: discord.Interaction, php: float):
     await interaction.response.send_message(embed=embed)
 
 # Gift Rate
-@bot.tree.command(name="gift", description="Convert Robux to PHP based on Gift rate (₱260 for 1000 Robux)")
+@bot.tree.command(name="gift", description="Convert Robux to PHP based on current Gift rate")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def gift(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
-    php = robux * (260 / 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    php = robux * (rates["gift"] / 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -460,13 +555,17 @@ async def gift(interaction: discord.Interaction, robux: int):
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="giftreverse", description="Convert PHP to Robux based on Gift rate (₱260 for 1000 Robux)")
+@bot.tree.command(name="giftreverse", description="Convert PHP to Robux based on current Gift rate")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def giftreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    robux = round((php / 260) * 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    robux = round((php / rates["gift"]) * 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
@@ -475,13 +574,17 @@ async def giftreverse(interaction: discord.Interaction, php: float):
     await interaction.response.send_message(embed=embed)
     
 # NCT Rate
-@bot.tree.command(name="nct", description="Convert Robux to PHP based on NCT rate (₱245/1k)")
+@bot.tree.command(name="nct", description="Convert Robux to PHP based on current NCT rate")
 @app_commands.describe(robux="How much Robux do you want to convert?")
 async def nct(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Invalid input.")
         return
-    php = robux * (245 / 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    php = robux * (rates["nct"] / 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -490,13 +593,17 @@ async def nct(interaction: discord.Interaction, robux: int):
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on NCT rate (₱245/1k)")
+@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on current NCT rate")
 @app_commands.describe(php="How much PHP do you want to convert?")
 async def nctreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    robux = round((php / 245) * 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    robux = round((php / rates["nct"]) * 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
@@ -506,31 +613,39 @@ async def nctreverse(interaction: discord.Interaction, php: float):
     await interaction.response.send_message(embed=embed)
 
 # CT Rate 
-@bot.tree.command(name="ct", description="Convert Robux to PHP based on CT rate (₱350/1k)")
-@app_commands.describe(robux="How much Robux do you want to convert?")
-async def ct(interaction: discord.Interaction, robux: int):
-    if robux <= 0:
-        await interaction.response.send_message("❗ Invalid input.")
+@bot.tree.command(name="nctreverse", description="Convert PHP to Robux based on current NCT rate")
+@app_commands.describe(php="How much PHP do you want to convert?")
+async def nctreverse(interaction: discord.Interaction, php: float):
+    if php <= 0:
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    php = robux * (350 / 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    robux = round((php / rates["nct"]) * 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-    embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
+    embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Note:", value="To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL.", inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="ctreverse", description="Convert PHP to Robux based on CT rate (₱350/1k)")
-@app_commands.describe(php="How much PHP do you want to convert?")
-async def ctreverse(interaction: discord.Interaction, php: float):
-    if php <= 0:
-        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+@bot.tree.command(name="ct", description="Convert Robux to PHP based on current CT rate")
+@app_commands.describe(robux="How much Robux do you want to convert?")
+async def ct(interaction: discord.Interaction, robux: int):
+    if robux <= 0:
+        await interaction.response.send_message("❗ Invalid input.")
         return
-    robux = round((php / 350) * 1000)
+    
+    guild_id = interaction.guild.id
+    rates = get_current_rates(guild_id)
+    php = robux * (rates["ct"] / 1000)
+    
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-    embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
+    embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Note:", value="To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL.", inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
@@ -544,22 +659,25 @@ async def allrates(interaction: discord.Interaction, robux: int):
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
 
-    rates = {
-        "Not Covered Tax (₱245)": 245,
-        "Covered Tax (₱350)": 350,
-        "Group Payout (₱330)": 330,
-        "Gift (₱260)": 260
-    }
+    guild_id = str(interaction.guild.id)
+    rates = get_current_rates(guild_id)
 
     embed = discord.Embed(
         title="Robux Conversion Rates",
-        color=discord.Color.from_rgb(0, 0, 0)  # Black color
+        color=discord.Color.from_rgb(0, 0, 0)
     )
 
-    for label, value in rates.items():
-        php_value = (value / 1000) * robux
+    conversion_data = {
+        "Payout Rate (₱330)": rates["payout"],
+        "Gift Rate (₱260)": rates["gift"],
+        "NCT Rate (₱245)": rates["nct"],
+        "CT Rate (₱350)": rates["ct"]
+    }
+
+    for label, rate in conversion_data.items():
+        php_value = (rate / 1000) * robux
         embed.add_field(
-            name="• " + label,
+            name=f"• {label}",
             value=f"₱{php_value:.2f}",
             inline=False
         )
@@ -576,22 +694,25 @@ async def allratesreverse(interaction: discord.Interaction, php: float):
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
 
-    rates = {
-        "Not Covered Tax (₱245)": 245,
-        "Covered Tax (₱350)": 350,
-        "Group Payout (₱330)": 330,
-        "Gift (₱260)": 260
-    }
+    guild_id = str(interaction.guild.id)
+    rates = get_current_rates(guild_id)
 
     embed = discord.Embed(
         title="PHP to Robux Conversion",
-        color=discord.Color.from_rgb(0, 0, 0)  # Black color
+        color=discord.Color.from_rgb(0, 0, 0)
     )
 
-    for label, value in rates.items():
-        robux_value = round((php / value) * 1000)
+    conversion_data = {
+        "Payout Rate (₱330)": rates["payout"],
+        "Gift Rate (₱260)": rates["gift"],
+        "NCT Rate (₱245)": rates["nct"],
+        "CT Rate (₱350)": rates["ct"]
+    }
+
+    for label, rate in conversion_data.items():
+        robux_value = round((php / rate) * 1000)
         embed.add_field(
-            name="• " + label,
+            name=f"• {label}",
             value=f"{robux_value} Robux",
             inline=False
         )
@@ -985,6 +1106,7 @@ async def listallcommands(interaction: discord.Interaction):
     embed.add_field(
         name="💰 Currency Conversion",
         value="""
+- `/setrate <rates>` - Set custom Conversion Rates
 - `/payout <robux>` - Convert Robux to PHP at Payout rate (₱330/1000)
 - `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
 - `/gift <robux>` - Convert Robux to PHP at Gift rate (₱260/1000)
