@@ -1766,7 +1766,7 @@ async def snipe(interaction: discord.Interaction):
         timestamp=msg_data["timestamp"]
     )
     embed.set_author(name=author)
-    embed.set_footer(text="Deleted at:")
+    embed.set_footer(text="Neroniel | Deleted at:")
 
     if attachments:
         embed.add_field(name="Attachments", value="\n".join([f"[Link]({url})" for url in attachments]), inline=False)
