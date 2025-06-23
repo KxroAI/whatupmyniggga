@@ -481,7 +481,6 @@ async def setrate(
         errors.append(f"NCT Rate (min: ₱{DEFAULT_RATES['nct']}/1000 Robux)")
     if ct_rate < DEFAULT_RATES["ct"]:
         errors.append(f"CT Rate (min: ₱{DEFAULT_RATES['ct']}/1000 Robux)")
-
     if errors:
         error_msg = "❗ You cannot set rates below the minimum:\n" + "\n".join(errors)
         await interaction.response.send_message(error_msg, ephemeral=True)
@@ -504,18 +503,34 @@ async def setrate(
                 {"$set": update_data},
                 upsert=True
             )
+
             embed = discord.Embed(
                 title="✅ Rates Updated",
-                description=f"""
-Payout Rate: ₱{payout_rate}/1000 Robux  
-Gift Rate: ₱{gift_rate}/1000 Robux  
-NCT Rate: ₱{nct_rate}/1000 Robux  
-CT Rate: ₱{ct_rate}/1000 Robux
-""",
                 color=discord.Color.green()
+            )
+            embed.add_field(
+                name="• Payout Rate",
+                value=f"₱{payout_rate:.2f} / 1000 Robux",
+                inline=False
+            )
+            embed.add_field(
+                name="• Gift Rate",
+                value=f"₱{gift_rate:.2f} / 1000 Robux",
+                inline=False
+            )
+            embed.add_field(
+                name="• NCT Rate",
+                value=f"₱{nct_rate:.2f} / 1000 Robux",
+                inline=False
+            )
+            embed.add_field(
+                name="• CT Rate",
+                value=f"₱{ct_rate:.2f} / 1000 Robux",
+                inline=False
             )
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
+
             await interaction.response.send_message(embed=embed)
         else:
             await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
@@ -758,10 +773,10 @@ async def allrates(interaction: discord.Interaction, robux: int):
     )
 
     conversion_data = {
-        "Payout Rate (₱330)": rates["payout"],
-        "Gift Rate (₱260)": rates["gift"],
-        "NCT Rate (₱245)": rates["nct"],
-        "CT Rate (₱350)": rates["ct"]
+        "Payout Rate": rates["payout"],
+        "Gift Rate": rates["gift"],
+        "NCT Rate": rates["nct"],
+        "CT Rate": rates["ct"]
     }
 
     for label, rate in conversion_data.items():
@@ -793,10 +808,10 @@ async def allratesreverse(interaction: discord.Interaction, php: float):
     )
 
     conversion_data = {
-        "Payout Rate (₱330)": rates["payout"],
-        "Gift Rate (₱260)": rates["gift"],
-        "NCT Rate (₱245)": rates["nct"],
-        "CT Rate (₱350)": rates["ct"]
+        "Payout Rate": rates["payout"],
+        "Gift Rate": rates["gift"],
+        "NCT Rate": rates["nct"],
+        "CT Rate": rates["ct"]
     }
 
     for label, rate in conversion_data.items():
