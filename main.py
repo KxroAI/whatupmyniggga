@@ -1035,6 +1035,7 @@ async def listallcommands(interaction: discord.Interaction):
 - `/weather <city> [unit]` - Get weather in a city  
 - `/tiktok <link>` - Convert an Tiktok Link into a Video
 - `/instagram <link>` - Convert an Instagram Link into a Video
+- `/snipe` - Show the last deleted message
         """,
         inline=False
     )
@@ -1199,13 +1200,6 @@ async def status(interaction: discord.Interaction):
 # ========== Stocks Command ==========
 @bot.tree.command(name="stocks", description="Show both Group Funds or Robux Stocks")
 async def stocks(interaction: discord.Interaction):
-    BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
-
-    # Check if user is either an Admin or the Bot Owner
-    if not interaction.user.guild_permissions.administrator and str(interaction.user.id) != BOT_OWNER_ID:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-
     await interaction.response.defer()
 
     headers = {
@@ -1227,7 +1221,7 @@ async def stocks(interaction: discord.Interaction):
     # Fetch Group Funds
     async with aiohttp.ClientSession() as session:
         # Group Request
-        group_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/currency"  
+        group_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/currency"     
         headers["Cookie"] = ROBLOX_COOKIE
         async with session.get(group_url, headers=headers) as resp:
             if resp.status == 200:
@@ -1247,7 +1241,7 @@ async def stocks(interaction: discord.Interaction):
                 return
 
         # Account Request
-        account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"  
+        account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"     
         headers["Cookie"] = ROBLOX_STOCKS
         async with session.get(account_url, headers=headers) as resp:
             if resp.status == 200:
@@ -1276,7 +1270,6 @@ async def stocks(interaction: discord.Interaction):
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
-
 
 # ========== Gamepass Command ==========
 @bot.tree.command(name="gamepass", description="Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL")
@@ -1731,6 +1724,54 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
     except Exception as e:
         await init_msg.edit(embed=Embed(title="❌ Error", description=f"An error occurred:\n{str(e)}", color=discord.Color.red()))
         print(f"[ERROR] /check: {e}")
+
+# ========== Snipe Command ==========
+bot.last_deleted_messages = {}
+
+
+@bot.event
+async def on_message_delete(message):
+    # Ignore if message is from bot
+    if message.author.bot:
+        return
+
+    # Store the deleted message in the dictionary
+    bot.last_deleted_messages[message.channel.id] = {
+        "author": str(message.author),
+        "content": message.content,
+        "timestamp": message.created_at,
+        "attachments": [attachment.url for attachment in message.attachments]
+    }
+
+    # Optional: Delete old entries if needed to keep memory clean
+    # For now, we'll just overwrite per channel
+
+
+@bot.tree.command(name="snipe", description="Show the last deleted message in this channel")
+async def snipe(interaction: discord.Interaction):
+    channel_id = interaction.channel_id
+    if channel_id not in bot.last_deleted_messages:
+        await interaction.response.send_message("❌ There are no recently deleted messages in this channel.", ephemeral=True)
+        return
+
+    msg_data = bot.last_deleted_messages[channel_id]
+    author = msg_data["author"]
+    content = msg_data["content"] or "[No text content]"
+    attachments = msg_data["attachments"]
+
+    # Build embed
+    embed = discord.Embed(
+        description=content,
+        color=discord.Color.red(),
+        timestamp=msg_data["timestamp"]
+    )
+    embed.set_author(name=author)
+    embed.set_footer(text="Deleted at:")
+
+    if attachments:
+        embed.add_field(name="Attachments", value="\n".join([f"[Link]({url})" for url in attachments]), inline=False)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ===========================
