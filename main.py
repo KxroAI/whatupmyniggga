@@ -1189,52 +1189,46 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
         await interaction.response.send_message(f"⚠️ An error occurred: {str(e)}")
 
 # List All Commands
-@bot.tree.command(name="listallcommands", description="List all available slash commands")
-async def listallcommands(interaction: discord.Interaction):
+@bot.tree.command(name="listallcommands", description="List all available slash commands, optionally filtered by category.")
+@app_commands.describe(category="Optional: Filter commands by category")
+@app_commands.choices(category=[
+    app_commands.Choice(name="AI Assistant", value="ai"),
+    app_commands.Choice(name="Currency Conversion", value="currency"),
+    app_commands.Choice(name="Utility Tools", value="utility"),
+    app_commands.Choice(name="Reminders & Polls", value="reminders_polls"),
+    app_commands.Choice(name="Fun Commands", value="fun"),
+    app_commands.Choice(name="Developer Tools", value="developer"),
+])
+async def listallcommands(interaction: discord.Interaction, category: app_commands.Choice[str] = None):
     embed = discord.Embed(
         title="📚 All Available Commands",
         description="A categorized list of all commands for easy navigation.",
         color=discord.Color.from_rgb(0, 0, 0)  # Black
     )
-    
-    # 🤖 AI Assistant
-    embed.add_field(
-        name="🤖 AI Assistant",
-        value="""
+
+    commands_by_category = {
+        "ai": """
 - `/ask <prompt>` - Chat with Llama 3 AI  
 - `/clearhistory` - Clear your AI conversation history
         """,
-        inline=False
-    )
-
-    # 💰 Currency Conversion
-    embed.add_field(
-        name="💰 Currency Conversion",
-        value="""
+        "currency": """
 - `/setrate <rates>` - Set custom Conversion Rates
 - `/resetrate <rates>` - Reset specific Conversion Rates back to Default
-- `/payout <robux>` - Convert Robux to PHP at Payout rate (₱330/1000)
+- `/payout <robux>` - Convert Robux to PHP at Payout rate
 - `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
-- `/gift <robux>` - Convert Robux to PHP at Gift rate (₱260/1000)
+- `/gift <robux>` - Convert Robux to PHP at Gift rate
 - `/giftreverse <php>` - Convert PHP to Robux at Gift rate
-- `/nct <robux>` - Convert Robux to PHP at NCT rate (₱245/1k)
+- `/nct <robux>` - Convert Robux to PHP at NCT rate
 - `/nctreverse <php>` - Convert PHP to Robux at NCT rate
-- `/ct <robux>` - Convert Robux to PHP at CT rate (₱350/1k)
+- `/ct <robux>` - Convert Robux to PHP at CT rate
 - `/ctreverse <php>` - Convert PHP to Robux at CT rate
-- `/allrates <php>` - See PHP equivalent across all rates for given Robux
+- `/allrates <robux>` - See PHP equivalent across all rates for given Robux
 - `/allratesreverse <robux>` - See Robux equivalent across all rates for given PHP
 - `/convertcurrency <amount> <from> <to>` - Convert between currencies
-- `/devex [usd/robux] <amount>` - Convert USD ↔ Robux using DevEx rate
-- `/beforetax <robux>`- Calculate how much Robux you'll receive after 30% tax
-- `/aftertax <robux>`- Calculate how much Robux to send to receive desired amount after 30% tax
+- `/beforetax <robux>` - Calculate how much Robux you'll receive after 30% tax
+- `/aftertax <robux>` - Calculate how much Robux to send to receive desired amount after 30% tax
         """,
-        inline=False
-    )
-
-    # 🛠️ Utility Tools
-    embed.add_field(
-        name="🛠️ Utility Tools",
-        value="""
+        "utility": """
 - `/userinfo [user]` - View detailed info about a user  
 - `/purge <amount>` - Delete messages (requires mod permissions)    
 - `/group` - Show info about the 1cy Roblox Group  
@@ -1244,48 +1238,51 @@ async def listallcommands(interaction: discord.Interaction):
 - `/avatar [user]` - Display a user's profile picture
 - `/banner [user]` - Display a user's bannner
         """,
-        inline=False
-    )
-
-    # ⏰ Reminders & Polls
-    embed.add_field(
-        name="⏰ Reminders & Polls",
-        value="""
+        "reminders_polls": """
 - `/remindme <minutes> <note>` - Set a personal reminder  
 - `/poll <question> <time> <unit>` - Create a timed poll  
         """,
-        inline=False
-    )
-
-    # 🎁 Fun Commands
-    embed.add_field(
-        name="🎉 Fun",
-        value="""
+        "fun": """
 - `/donate <user> <amount>` - Donate Robux to someone
 - `/say <message>` - Make the bot say something
 - `/calculator <num1> <operation> <num2>` - Perform math operations
 - `/weather <city> [unit]` - Get weather in a city  
-- `/tiktok <link>` - Convert an Tiktok Link into a Video
+- `/tiktok <link>` - Convert a TikTok Link into a Video
 - `/instagram <link>` - Convert an Instagram Link into a Video
 - `/snipe` - Show the last deleted message
         """,
-        inline=False
-    )
-
-    # 🔧 Developer Tools
-    embed.add_field(
-        name="🔧 Developer Tools",
-        value="""
+        "developer": """
 - `/dm <user> <message>` - Send a direct message to a specific user  
 - `/dmall <message>` - Send a direct message to all members in the server
 - `/invite` - Get the invite link for the bot  
 - `/status` - Show how many servers the bot is in and total user count
 - `/payment <method>` - Show payment instructions (Gcash/PayMaya/GoTyme)
-        """,
-        inline=False
-    )
+        """
+    }
 
-    # Footer
+    if category is None:
+        # No filter — show all categories
+        embed.add_field(name="🤖 AI Assistant", value=commands_by_category["ai"], inline=False)
+        embed.add_field(name="💰 Currency Conversion", value=commands_by_category["currency"], inline=False)
+        embed.add_field(name="🛠️ Utility Tools", value=commands_by_category["utility"], inline=False)
+        embed.add_field(name="⏰ Reminders & Polls", value=commands_by_category["reminders_polls"], inline=False)
+        embed.add_field(name="🎉 Fun", value=commands_by_category["fun"], inline=False)
+        embed.add_field(name="🔧 Developer Tools", value=commands_by_category["developer"], inline=False)
+    else:
+        # Show only selected category
+        category_key = category.value
+        category_name_map = {
+            "ai": "🤖 AI Assistant",
+            "currency": "💰 Currency Conversion",
+            "utility": "🛠️ Utility Tools",
+            "reminders_polls": "⏰ Reminders & Polls",
+            "fun": "🎉 Fun",
+            "developer": "🔧 Developer Tools"
+        }
+        full_category_name = category_name_map.get(category_key, "Unknown Category")
+        field_value = commands_by_category.get(category_key, "No commands found for this category.")
+        embed.add_field(name=full_category_name, value=field_value, inline=False)
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
