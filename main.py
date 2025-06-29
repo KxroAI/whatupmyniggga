@@ -23,9 +23,9 @@ from flask import Flask
 import threading
 import time
 import pyktok as pyk
-import instaloader
+from instaloader import Instaloader, Post
 import tempfile
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, parse_qs
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -1608,6 +1608,15 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Instagram Command ==========
+def get_shortcode_from_url(url):
+    parsed = urlparse(url)
+    if parsed.netloc == "www.instagram.com" and parsed.path.startswith("/p/"):
+        return parsed.path.split("/")[2]
+    elif parsed.netloc in ["instagram.com", "www.instagram.com"] and parsed.path.startswith("/reel/"):
+        return parsed.path.split("/")[2]
+    else:
+        raise ValueError("Invalid Instagram URL")
+
 @bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video/Image")
 @app_commands.describe(link="The Instagram Post URL to Convert", spoiler="Should the media be sent as a spoiler?")
 async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
@@ -1619,7 +1628,7 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             original_dir = os.getcwd()
             os.chdir(tmpdir)
 
-            loader = instaloader.Instaloader(
+            loader = Instaloader(
                 download_pictures=True,
                 download_videos=True,
                 dirname_pattern=tmpdir,
@@ -1627,16 +1636,26 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
                 quiet=True
             )
 
-            # Extract shortcode from URL
-            shortcode = instaloader.Post.shortcode_from_url(link)
-            post = instaloader.Post.from_shortcode(loader.context, shortcode)
+            # --- NEW SHORTCODE EXTRACTION ---
+            from urllib.parse import urlparse, parse_qs
+
+            def get_shortcode_from_url(url):
+                parsed = urlparse(url)
+                if parsed.netloc == "www.instagram.com" and parsed.path.startswith("/p/"):
+                    return parsed.path.split("/")[2]
+                elif parsed.netloc in ["instagram.com", "www.instagram.com"] and parsed.path.startswith("/reel/"):
+                    return parsed.path.split("/")[2]
+                else:
+                    raise ValueError("Invalid Instagram URL")
+
+            shortcode = get_shortcode_from_url(link)
+            post = Post.from_shortcode(loader.context, shortcode)
 
             # Download the post
             loader.download_post(post, target="ig_post")
 
-            # Find downloaded media (.jpg or .mp4)
+            # Find the downloaded media file (.jpg or .mp4)
             media_files = [f for f in os.listdir(tmpdir) if f.endswith(".jpg") or f.endswith(".mp4")]
-
             if not media_files:
                 await interaction.followup.send("❌ Failed to download Instagram media.")
                 return
@@ -1648,12 +1667,10 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             if spoiler:
                 filename = f"SPOILER_{filename}"
 
-            # Send the file
             await interaction.followup.send(
                 file=discord.File(fp=media_path, filename=filename),
-                ephemeral=False
+                ephemeral=False  # Ensures message is visible to everyone
             )
-
             os.chdir(original_dir)
 
     except Exception as e:
