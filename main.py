@@ -1248,7 +1248,7 @@ async def listallcommands(interaction: discord.Interaction, category: app_comman
 - `/calculator <num1> <operation> <num2>` - Perform math operations
 - `/weather <city> [unit]` - Get weather in a city  
 - `/tiktok <link>` - Convert a TikTok Link into a Video
-- `/instagram <link>` - Convert an Instagram Link into a Video
+- `/instagram <link>` - Convert an Instagram Link into a Video/Image
 - `/` - Show the last deleted message
         """,
         "developer": """
@@ -1611,7 +1611,7 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 @bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video/Image")
 @app_commands.describe(link="The Instagram Post URL to Convert", spoiler="Should the media be sent as a spoiler?")
 async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
-    await interaction.response.defer(ephemeral=False)  # Now visible to everyone
+    await interaction.response.defer(ephemeral=False)
 
     try:
         # Create a temporary directory to store the downloaded media
@@ -1634,8 +1634,9 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             # Download the post
             loader.download_post(post, target="ig_post")
 
-            # Find the downloaded media file (.jpg or .mp4)
+            # Find downloaded media (.jpg or .mp4)
             media_files = [f for f in os.listdir(tmpdir) if f.endswith(".jpg") or f.endswith(".mp4")]
+
             if not media_files:
                 await interaction.followup.send("❌ Failed to download Instagram media.")
                 return
@@ -1647,9 +1648,10 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             if spoiler:
                 filename = f"SPOILER_{filename}"
 
+            # Send the file
             await interaction.followup.send(
                 file=discord.File(fp=media_path, filename=filename),
-                ephemeral=False  # Ensures message is visible to everyone
+                ephemeral=False
             )
 
             os.chdir(original_dir)
