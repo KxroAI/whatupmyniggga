@@ -1249,7 +1249,7 @@ async def listallcommands(interaction: discord.Interaction, category: app_comman
 - `/weather <city> [unit]` - Get weather in a city  
 - `/tiktok <link>` - Convert a TikTok Link into a Video
 - `/instagram <link>` - Convert an Instagram Link into a Video
-- `/snipe` - Show the last deleted message
+- `/` - Show the last deleted message
         """,
         "developer": """
 - `/dm <user> <message>` - Send a direct message to a specific user  
@@ -1983,7 +1983,7 @@ async def snipe(interaction: discord.Interaction):
     if attachments:
         embed.add_field(name="Attachments", value="\n".join([f"[Link]({url})" for url in attachments]), inline=False)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
 # ===========================
