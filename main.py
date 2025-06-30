@@ -1643,38 +1643,37 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
                 save_metadata=False,
                 quiet=True
             )
-
+            
             username = os.getenv("INSTAGRAM_USERNAME")
             password = os.getenv("INSTAGRAM_PASSWORD")
             if not username or not password:
                 return await interaction.followup.send("❌ Missing Instagram login credentials.")
-
+            
             try:
                 loader.login(username, password)
             except Exception as e:
                 return await interaction.followup.send(f"❌ Failed to log in to Instagram: {str(e)}")
-
+            
             shortcode = get_shortcode_from_url(link)
             post = Post.from_shortcode(loader.context, shortcode)
-
+            
             # Download the post
             loader.download_post(post, target="ig_post")
-
+            
             # Find the downloaded media file (.jpg or .mp4)
             media_files = [f for f in os.listdir(tmpdir) if f.endswith(".jpg") or f.endswith(".mp4")]
             if not media_files:
-                await interaction.followup.send("❌ Failed to download Instagram media.")
-                return
-
+                return await interaction.followup.send("❌ Failed to download Instagram media.")
+            
             media_path = os.path.join(tmpdir, media_files[0])
             filename = os.path.basename(media_path)
             if spoiler:
                 filename = f"SPOILER_{filename}"
-
+            
             # Truncate caption if it's too long
             caption = post.caption or "No caption"
             truncated_caption = truncate(caption, 2000)
-
+            
             # Build Embed
             embed = discord.Embed(
                 title=f"📸 @{post.owner_username}",
@@ -1687,16 +1686,16 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
                 embed.add_field(name="Views", value=f"{post.video_view_count:,}", inline=True)
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-
+            
             # Send the message with the embed and attachment
             await interaction.followup.send(
                 embed=embed,
                 file=discord.File(fp=media_path, filename=filename),
                 ephemeral=False
             )
-
+            
             os.chdir(original_dir)
-
+    
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
