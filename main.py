@@ -23,7 +23,7 @@ from flask import Flask
 import threading
 import time
 import pyktok as pyk
-from instaloader import Instaloader, Post
+from instaloader import Instaloader, Post, TwoFactorAuthRequiredException
 import tempfile
 from urllib.parse import urlencode, urlparse, parse_qs
 
@@ -1608,6 +1608,7 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
 # ========== Instagram Command ==========
+# Helper function to get shortcode from URL
 def get_shortcode_from_url(url):
     parsed = urlparse(url)
     if parsed.netloc == "www.instagram.com" and parsed.path.startswith("/p/"):
@@ -1617,17 +1618,18 @@ def get_shortcode_from_url(url):
     else:
         raise ValueError("Invalid Instagram URL")
 
+
 @bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video/Image")
 @app_commands.describe(link="The Instagram Post URL to Convert", spoiler="Should the media be sent as a spoiler?")
 async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
     await interaction.response.defer(ephemeral=False)
-
     try:
         # Create a temporary directory to store the downloaded media
         with tempfile.TemporaryDirectory() as tmpdir:
             original_dir = os.getcwd()
             os.chdir(tmpdir)
-
+            
+            # Initialize Instaloader
             loader = Instaloader(
                 download_pictures=True,
                 download_videos=True,
@@ -1635,44 +1637,64 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
                 save_metadata=False,
                 quiet=True
             )
-
-            # --- NEW SHORTCODE EXTRACTION ---
-            from urllib.parse import urlparse, parse_qs
-
-            def get_shortcode_from_url(url):
-                parsed = urlparse(url)
-                if parsed.netloc == "www.instagram.com" and parsed.path.startswith("/p/"):
-                    return parsed.path.split("/")[2]
-                elif parsed.netloc in ["instagram.com", "www.instagram.com"] and parsed.path.startswith("/reel/"):
-                    return parsed.path.split("/")[2]
-                else:
-                    raise ValueError("Invalid Instagram URL")
-
+            
+            # Get shortcode from URL
             shortcode = get_shortcode_from_url(link)
+            
+            # Load the post
             post = Post.from_shortcode(loader.context, shortcode)
-
+            
+            # Fetch post details
+            username = post.owner_username
+            caption = post.caption
+            likes = post.likes
+            comments = post.comments
+            views = post.video_view_count if post.is_video else None
+            
             # Download the post
             loader.download_post(post, target="ig_post")
-
+            
             # Find the downloaded media file (.jpg or .mp4)
             media_files = [f for f in os.listdir(tmpdir) if f.endswith(".jpg") or f.endswith(".mp4")]
             if not media_files:
                 await interaction.followup.send("❌ Failed to download Instagram media.")
                 return
-
+            
+            # Prepare media file
             media_path = os.path.join(tmpdir, media_files[0])
-
-            # Prepare filename with spoiler prefix if needed
             filename = os.path.basename(media_path)
+            
+            # Prepare spoiler prefix if needed
             if spoiler:
                 filename = f"SPOILER_{filename}"
-
-            await interaction.followup.send(
-                file=discord.File(fp=media_path, filename=filename),
-                ephemeral=False  # Ensures message is visible to everyone
+            
+            # Build embed
+            embed = discord.Embed(
+                title=f"📸 Instagram Post by @{username}",
+                color=discord.Color.from_rgb(0, 0, 0)
             )
+            embed.add_field(name="Caption", value=caption or "No caption", inline=False)
+            embed.add_field(name="Likes", value=f"{likes:,}", inline=True)
+            embed.add_field(name="Comments", value=f"{comments:,}", inline=True)
+            if views:
+                embed.add_field(name="Views", value=f"{views:,}", inline=True)
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+            
+            # Add thumbnail or video preview
+            if media_files[0].endswith(".jpg"):
+                embed.set_image(url=f"attachment://{filename}")
+            else:
+                embed.description += "\n\n⚠️ This is a video post. Click the attachment below to view."
+            
+            # Send the message with the embed and attachment
+            await interaction.followup.send(
+                embed=embed,
+                file=discord.File(fp=media_path, filename=filename),
+                ephemeral=False
+            )
+            
             os.chdir(original_dir)
-
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: {str(e)}")
 
