@@ -1573,39 +1573,53 @@ async def devex(interaction: discord.Interaction, conversion_type: app_commands.
 @bot.tree.command(name="tiktok", description="Convert a TikTok Link into a Video")
 @app_commands.describe(link="The TikTok Video URL to Convert", spoiler="Should the video be sent as a spoiler?")
 async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = False):
-    await interaction.response.defer(ephemeral=False)  # Changed to False
+    await interaction.response.defer(ephemeral=False)
 
+    original_dir = os.getcwd()
     try:
-        # Create a temporary directory to store the downloaded video
         with tempfile.TemporaryDirectory() as tmpdir:
-            original_dir = os.getcwd()
-            os.chdir(tmpdir)
+            print(f"[DEBUG] temp dir: {tmpdir}")
 
-            # Download TikTok video using pyktok
+            os.chdir(tmpdir)
+            print("[DEBUG] Changed cwd to temp dir")
+
+            # Attempt to download TikTok video
+            # If pyktok doesn't report failure, this should drop an .mp4 somewhere under tmpdir
             pyk.save_tiktok(link, save_video=True)
 
-            # Find the downloaded MP4 file
-            video_files = [f for f in os.listdir(tmpdir) if f.endswith(".mp4")]
+            # Debug: list everything in the temp directory after download
+            for root, dirs, files in os.walk(tmpdir):
+                rel_root = os.path.relpath(root, tmpdir)
+                print(f"[DEBUG] Inspecting {rel_root or './'}: {files}")
+
+            # Recursively search for the .mp4 video file
+            video_files = [
+                os.path.join(root, f)
+                for root, _, files in os.walk(tmpdir)
+                for f in files
+                if f.lower().endswith(".mp4")
+            ]
+
             if not video_files:
-                await interaction.followup.send("❌ Failed to download TikTok video.")
+                await interaction.followup.send("❌ Failed to find TikTok video after download.")
                 return
 
-            video_path = os.path.join(tmpdir, video_files[0])
-
-            # Prepare filename with spoiler prefix if needed
+            video_path = video_files[0]
             filename = os.path.basename(video_path)
             if spoiler:
                 filename = f"SPOILER_{filename}"
 
             await interaction.followup.send(
                 file=discord.File(fp=video_path, filename=filename),
-                ephemeral=False  # Ensures everyone can see the message
+                ephemeral=False
             )
-
-            os.chdir(original_dir)
-
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: {str(e)}")
+        await interaction.followup.send(f"❌ An error occurred while processing the video: {e}")
+        print(f"[ERROR] {e}")
+    finally:
+        os.chdir(original_dir)
+        print(f"[DEBUG] Restored cwd to {original_dir}")
+
 
 # ========== Instagram Command ==========
 # Helper function to get shortcode from URL
