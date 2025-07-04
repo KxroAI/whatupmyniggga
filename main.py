@@ -1622,26 +1622,30 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 
 
 # ========== Instagram Command ==========
-
-
-
-
-def get_shortcode_from_url(url):
+def get_shortcode_from_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.netloc in ["instagram.com", "www.instagram.com"]:
-        if parsed.path.startswith("/p/") or parsed.path.startswith("/reel/"):
-            return parsed.path.split("/")[2]
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) >= 2 and parts[0] in ["p", "reel"]:
+            return parts[1]
     raise ValueError("Invalid Instagram URL")
 
-def truncate(text: str, max_length: int = 2000):
+def truncate(text: str, max_length: int = 1024) -> str:
     return text[:max_length - 3] + "..." if len(text) > max_length else text
 
 @bot.tree.command(name="instagram", description="Convert an Instagram Link into a Video/Image")
 @app_commands.describe(link="The Instagram Post URL to Convert", spoiler="Should the media be sent as a spoiler?")
 async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
     await interaction.response.defer(ephemeral=False)
-    
+
     try:
+        # Instagram login credentials
+        username = os.getenv("INSTAGRAM_USERNAME")
+        password = os.getenv("INSTAGRAM_PASSWORD")
+        if not username or not password:
+            return await interaction.followup.send("❌ Missing Instagram login credentials in environment variables.")
+
+        # Create temporary folder
         with tempfile.TemporaryDirectory() as tmpdir:
             loader = Instaloader(
                 download_pictures=True,
@@ -1650,45 +1654,54 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
                 quiet=True
             )
 
-            username = os.getenv("INSTAGRAM_USERNAME")
-            password = os.getenv("INSTAGRAM_PASSWORD")
-            if not username or not password:
-                return await interaction.followup.send("❌ Missing Instagram login credentials.")
-            
             try:
                 loader.login(username, password)
             except Exception as e:
-                return await interaction.followup.send(f"❌ Failed to log in to Instagram: {str(e)}")
-            
-            shortcode = get_shortcode_from_url(link)
-            post = Post.from_shortcode(loader.context, shortcode)
-            
-            target_dir = os.path.join(tmpdir, "ig_post")
-            loader.dirname_pattern = target_dir
+                return await interaction.followup.send(f"❌ Instagram login failed: {str(e)}")
+
+            try:
+                shortcode = get_shortcode_from_url(link)
+                post = Post.from_shortcode(loader.context, shortcode)
+            except Exception:
+                return await interaction.followup.send("❌ Invalid or unsupported Instagram link.")
+
+            # Set output directory and download
+            post_dir = os.path.join(tmpdir, "ig_post")
+            loader.dirname_pattern = post_dir
             loader.download_post(post, target="ig_post")
 
-            media_files = [f for f in os.listdir(target_dir) if f.endswith(".jpg") or f.endswith(".mp4")]
+            # Get first media file (.jpg or .mp4)
+            media_files = []
+            for root, _, files in os.walk(post_dir):
+                media_files.extend([
+                    os.path.join(root, f)
+                    for f in files if f.endswith((".jpg", ".mp4"))
+                ])
+
             if not media_files:
-                return await interaction.followup.send("❌ Failed to download Instagram media.")
-            
-            media_path = os.path.join(target_dir, media_files[0])
+                return await interaction.followup.send("❌ No media found in the post.")
+
+            media_path = media_files[0]
             filename = f"SPOILER_{os.path.basename(media_path)}" if spoiler else os.path.basename(media_path)
 
+            # Caption safety
             caption = post.caption or "No caption"
             truncated_caption = truncate(caption)
 
+            # Embed
             embed = discord.Embed(
                 title=f"📸 @{post.owner_username}",
                 description=truncated_caption,
                 color=discord.Color.from_rgb(0, 0, 0),
                 timestamp=datetime.now(PH_TIMEZONE)
             )
-            embed.add_field(name="Likes", value=f"{post.likes:,}", inline=True)
-            embed.add_field(name="Comments", value=f"{post.comments:,}", inline=True)
+            embed.add_field(name="❤️ Likes", value=f"{post.likes:,}", inline=True)
+            embed.add_field(name="💬 Comments", value=f"{post.comments:,}", inline=True)
             if post.is_video and post.video_view_count:
-                embed.add_field(name="Views", value=f"{post.video_view_count:,}", inline=True)
-            embed.set_footer(text="Neroniel")
+                embed.add_field(name="👁 Views", value=f"{post.video_view_count:,}", inline=True)
+            embed.set_footer(text="Neroniel Bot")
 
+            # Send message
             await interaction.followup.send(
                 embed=embed,
                 file=discord.File(fp=media_path, filename=filename),
@@ -1696,7 +1709,8 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             )
 
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: {str(e)}")
+        await interaction.followup.send(f"❌ An unexpected error occurred:\n`{str(e)}`")
+
 
 
 # ========== Eligible Command ==========
