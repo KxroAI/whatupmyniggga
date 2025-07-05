@@ -1628,25 +1628,19 @@ async def instagram_embedez(interaction: discord.Interaction, link: str):
     # Validate and extract short code from link
     match = re.search(r"instagram\.com/p/([^/]+)/", link)
     if not match:
-        await interaction.response.send_message("❌ Invalid Instagram post link.", ephemeral=True)
+        await interaction.response.send_message("❌ Invalid Instagram post link.", ephemeral=False)
         return
 
     short_code = match.group(1)
-    instagramez_link = f"https://instagramez.com/p/  {short_code}"
+    instagramez_link = f"https://instagramez.com/p/ {short_code}"
 
-    # Create embed with clickable links
-    embed = discord.Embed(
-        description=(
-            f"📸 [Instagram]({link}) • [EmbedEZ]({instagramez_link})\n"
-            f"{instagramez_link}"
-        ),
-        color=discord.Color.from_rgb(0, 0, 0)
+    # Create message with clickable links
+    message = (
+        f"📸 [Instagram]({link}) • [EmbedEZ]({instagramez_link})\n"
+        f"{instagramez_link}"
     )
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
 
-    await interaction.response.send_message(embed=embed)
-
+    await interaction.response.send_message(message, ephemeral=False)
 
 # ========== Eligible Command ==========
 @bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
