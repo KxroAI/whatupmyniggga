@@ -1248,7 +1248,7 @@ async def listallcommands(interaction: discord.Interaction, category: app_comman
 - `/calculator <num1> <operation> <num2>` - Perform math operations
 - `/weather <city> [unit]` - Get weather in a city  
 - `/tiktok <link>` - Convert a TikTok Link into a Video
-- `/instagram <link>` - Convert an Instagram Link into a Video/Image
+- `/instagram <link>` - Convert Instagram Link into a Media/Video
 - `/` - Show the last deleted message
         """,
         "developer": """
@@ -1622,102 +1622,30 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 
 
 # ========== Instagram Command ==========
-def get_shortcode_from_url(url: str) -> str: 
-    parsed = urlparse(url)
-    if parsed.netloc in ["instagram.com", "www.instagram.com"]:
-        parts = parsed.path.strip("/").split("/")
-        if len(parts) >= 2 and parts[0] in ["p", "reel"]:
-            return parts[1]
-    raise ValueError("Invalid Instagram URL")
+@bot.tree.command(name="instagram", description="Convert Instagram Link into a Media/Video")
+@app_commands.describe(link="Instagram post URL")
+async def instagram_embedez(interaction: discord.Interaction, link: str):
+    # Validate and extract short code from link
+    match = re.search(r"instagram\.com/p/([^/]+)/", link)
+    if not match:
+        await interaction.response.send_message("❌ Invalid Instagram post link.", ephemeral=True)
+        return
 
-def truncate_caption(text: str, max_length: int = 1024) -> str:
-    return text[:max_length - 3] + "..." if text and len(text) > max_length else text or "No caption"
+    short_code = match.group(1)
+    instagramez_link = f"https://instagramez.com/p/  {short_code}"
 
-@bot.tree.command(name="instagram", description="Download Instagram media (image or video)")
-@app_commands.describe(link="Instagram post URL", spoiler="Mark media as spoiler?")
-async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
-    await interaction.response.defer()
+    # Create embed with clickable links
+    embed = discord.Embed(
+        description=(
+            f"📸 [Instagram]({link}) • [EmbedEZ]({instagramez_link})\n"
+            f"{instagramez_link}"
+        ),
+        color=discord.Color.from_rgb(0, 0, 0)
+    )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
 
-    # Check environment variables
-    sessionid = os.getenv("IG_SESSIONID")
-    ds_user_id = os.getenv("IG_DS_USER_ID")
-    csrftoken = os.getenv("IG_CSRFTOKEN")
-
-    if not all([sessionid, ds_user_id, csrftoken]):
-        return await interaction.followup.send(
-            embed=discord.Embed(
-                description="❌ Instagram cookies are missing. Please update environment variables.",
-                color=discord.Color.red()
-            )
-        )
-
-    try:
-        # Setup Instaloader with cookies
-        loader = Instaloader(download_pictures=True, download_videos=True, save_metadata=False, quiet=True)
-        session = loader.context._session
-        session.cookies.set("sessionid", sessionid)
-        session.cookies.set("ds_user_id", ds_user_id)
-        session.cookies.set("csrftoken", csrftoken)
-
-        # Extract shortcode and fetch post
-        shortcode = get_shortcode_from_url(link)
-        post = Post.from_shortcode(loader.context, shortcode)
-
-        # Download media
-        with tempfile.TemporaryDirectory() as tmpdir:
-            loader.dirname_pattern = tmpdir
-            loader.download_post(post, target="ig_post")
-
-            # Find media files
-            media_files = []
-            for root, _, files in os.walk(tmpdir):
-                for f in files:
-                    if f.endswith((".mp4", ".jpg")):
-                        media_files.append(os.path.join(root, f))
-
-            if not media_files:
-                return await interaction.followup.send(
-                    embed=discord.Embed(
-                        description="❌ No media file found in the post.",
-                        color=discord.Color.red()
-                    )
-                )
-
-            media_path = media_files[0]
-            filename = f"SPOILER_{os.path.basename(media_path)}" if spoiler else os.path.basename(media_path)
-
-            # Build embed
-            embed = discord.Embed(
-                title=f"📸 @{post.owner_username}",
-                description=truncate_caption(post.caption),
-                color=discord.Color.from_rgb(0, 0, 0),
-                timestamp=datetime.now(PH_TIMEZONE)
-            )
-            embed.add_field(name="❤️ Likes", value=f"{post.likes:,}", inline=True)
-            embed.add_field(name="💬 Comments", value=f"{post.comments:,}", inline=True)
-            if post.is_video and post.video_view_count:
-                embed.add_field(name="👁 Views", value=f"{post.video_view_count:,}", inline=True)
-            embed.set_footer(text="Neroniel")
-
-            # Send response
-            await interaction.followup.send(
-                embed=embed,
-                file=discord.File(fp=media_path, filename=filename)
-            )
-
-    except Exception as e:
-        # Detect expired or invalid cookie (403 Forbidden is common)
-        error_message = str(e)
-        if "403" in error_message or "login_required" in error_message or "invalid sessionid" in error_message.lower():
-            error_message = "Instagram cookie expired."
-
-        await interaction.followup.send(
-            embed=discord.Embed(
-                title="❌ Error",
-                description=f"`{error_message}`",
-                color=discord.Color.red()
-            )
-        )
+    await interaction.response.send_message(embed=embed)
 
 
 # ========== Eligible Command ==========
