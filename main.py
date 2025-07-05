@@ -1623,7 +1623,6 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 
 # ========== Instagram Command ==========
 def get_shortcode_from_url(url: str) -> str: 
-    """Extract shortcode from Instagram URL."""
     parsed = urlparse(url)
     if parsed.netloc in ["instagram.com", "www.instagram.com"]:
         parts = parsed.path.strip("/").split("/")
@@ -1632,56 +1631,44 @@ def get_shortcode_from_url(url: str) -> str:
     raise ValueError("Invalid Instagram URL")
 
 def truncate_caption(text: str, max_length: int = 1024) -> str:
-    return text[:max_length - 3] + "..." if len(text) > max_length else text or "No caption"
+    return text[:max_length - 3] + "..." if text and len(text) > max_length else text or "No caption"
 
 @bot.tree.command(name="instagram", description="Download Instagram media (image or video)")
 @app_commands.describe(link="Instagram post URL", spoiler="Mark media as spoiler?")
 async def instagram(interaction: discord.Interaction, link: str, spoiler: bool = False):
     await interaction.response.defer()
 
+    # Check environment variables
+    sessionid = os.getenv("IG_SESSIONID")
+    ds_user_id = os.getenv("IG_DS_USER_ID")
+    csrftoken = os.getenv("IG_CSRFTOKEN")
+
+    if not all([sessionid, ds_user_id, csrftoken]):
+        return await interaction.followup.send(
+            embed=discord.Embed(
+                description="❌ Instagram cookies are missing. Please update environment variables.",
+                color=discord.Color.red()
+            )
+        )
+
     try:
-        # Session username and session file path
-        session_user = "akinabot"
-        session_file = f"{session_user}.session"
-
-        if not os.path.exists(session_file):
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    description="❌ Instagram session file not found on the server.",
-                    color=discord.Color.red()
-                )
-            )
-
-        # Initialize Instaloader and load session
+        # Setup Instaloader with cookies
         loader = Instaloader(download_pictures=True, download_videos=True, save_metadata=False, quiet=True)
-        try:
-            loader.load_session_from_file(session_user, session_file)
-        except Exception as e:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    description=f"❌ Failed to load session: `{e}`",
-                    color=discord.Color.red()
-                )
-            )
+        session = loader.context._session
+        session.cookies.set("sessionid", sessionid)
+        session.cookies.set("ds_user_id", ds_user_id)
+        session.cookies.set("csrftoken", csrftoken)
 
         # Extract shortcode and fetch post
-        try:
-            shortcode = get_shortcode_from_url(link)
-            post = Post.from_shortcode(loader.context, shortcode)
-        except Exception:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    description="❌ Invalid Instagram post URL.",
-                    color=discord.Color.red()
-                )
-            )
+        shortcode = get_shortcode_from_url(link)
+        post = Post.from_shortcode(loader.context, shortcode)
 
         # Download media
         with tempfile.TemporaryDirectory() as tmpdir:
             loader.dirname_pattern = tmpdir
             loader.download_post(post, target="ig_post")
 
-            # Find the media file (image or video)
+            # Find media files
             media_files = []
             for root, _, files in os.walk(tmpdir):
                 for f in files:
@@ -1703,26 +1690,31 @@ async def instagram(interaction: discord.Interaction, link: str, spoiler: bool =
             embed = discord.Embed(
                 title=f"📸 @{post.owner_username}",
                 description=truncate_caption(post.caption),
-                color=discord.Color.dark_gray(),
+                color=discord.Color.from_rgb(0, 0, 0),
                 timestamp=datetime.now(PH_TIMEZONE)
             )
             embed.add_field(name="❤️ Likes", value=f"{post.likes:,}", inline=True)
             embed.add_field(name="💬 Comments", value=f"{post.comments:,}", inline=True)
             if post.is_video and post.video_view_count:
                 embed.add_field(name="👁 Views", value=f"{post.video_view_count:,}", inline=True)
-            embed.set_footer(text="Neroniel Bot")
+            embed.set_footer(text="Neroniel")
 
-            # Send media with embed
+            # Send response
             await interaction.followup.send(
                 embed=embed,
                 file=discord.File(fp=media_path, filename=filename)
             )
 
     except Exception as e:
+        # Detect expired or invalid cookie (403 Forbidden is common)
+        error_message = str(e)
+        if "403" in error_message or "login_required" in error_message or "invalid sessionid" in error_message.lower():
+            error_message = "Instagram cookie expired."
+
         await interaction.followup.send(
             embed=discord.Embed(
-                title="❌ Unexpected Error",
-                description=f"`{str(e)}`",
+                title="❌ Error",
+                description=f"`{error_message}`",
                 color=discord.Color.red()
             )
         )
