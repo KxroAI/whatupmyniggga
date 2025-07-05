@@ -1634,7 +1634,7 @@ async def instagram_embedez(interaction: discord.Interaction, link: str):
     short_code = match.group(1)
     instagramez_link = f"https://instagramez.com/p/ {short_code}"
 
-    # Create message with clickable links
+    # Create clickable message
     message = (
         f"📸 [Instagram]({link}) • [EmbedEZ]({instagramez_link})\n"
         f"{instagramez_link}"
