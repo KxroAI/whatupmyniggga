@@ -1625,19 +1625,17 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 @bot.tree.command(name="instagram", description="Convert Instagram Link into a Media/Video")
 @app_commands.describe(link="Instagram post URL")
 async def instagram_embedez(interaction: discord.Interaction, link: str):
-    # Validate and extract short code from link
     match = re.search(r"instagram\.com/p/([^/]+)/", link)
     if not match:
         await interaction.response.send_message("❌ Invalid Instagram post link.", ephemeral=False)
         return
 
     short_code = match.group(1)
-    instagramez_link = f"https://instagramez.com/p/ {short_code}"
+    instagramez_link = f"https://instagramez.com/p/{short_code}"
 
-    # Create clickable message
     message = (
-        f"📸 [Instagram]({link}) • [EmbedEZ]({instagramez_link})\n"
-        f"{instagramez_link}"
+        f"📸 Instagram • [EmbedEZ]({instagramez_link})\n"
+        f"🔗 {instagramez_link}"
     )
 
     await interaction.response.send_message(message, ephemeral=False)
