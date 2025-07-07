@@ -1623,17 +1623,19 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 
 # ========== Instagram Command ==========
 @bot.tree.command(name="instagram", description="Convert Instagram Link into a Media/Video")
-@app_commands.describe(link="Instagram post URL")
+@app_commands.describe(link="Instagram post or reel URL")
 async def instagram_embedez(interaction: discord.Interaction, link: str):
-    match = re.search(r"instagram\.com/p/([^/]+)/", link)
+    match = re.search(r"instagram\.com/(p|reel)/([^/]+)/", link)
     if not match:
-        await interaction.response.send_message("❌ Invalid Instagram post link.", ephemeral=False)
+        await interaction.response.send_message("❌ Invalid Instagram post or reel link.", ephemeral=False)
         return
 
-    short_code = match.group(1)
+    short_code = match.group(2)
     instagramez_link = f"https://instagramez.com/p/{short_code}"
-    message = f"Instagram • [EmbedEZ]({instagramez_link})\n{instagramez_link}"
+
+    message = f"[EmbedEZ]({instagramez_link}) | [Instagram]({link})"
     await interaction.response.send_message(message, ephemeral=False)
+    
 
 # ========== Eligible Command ==========
 @bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
