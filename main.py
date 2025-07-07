@@ -1638,35 +1638,48 @@ async def instagram_embedez(interaction: discord.Interaction, link: str):
     
 
 # ========== Eligible Command ==========
-@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (must be in group for 14+ days)")
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (14+ days in group)")
 @app_commands.describe(username="Roblox username to check")
 async def checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
+    
     try:
         # Step 1: Convert username to userId
         res = requests.post(
-            "https://users.roblox.com/v1/usernames/users", 
+            "https://users.roblox.com/v1/usernames/users",
             json={"usernames": [username], "excludeBannedUsers": True}
         )
+
+        if res.status_code != 200:
+            await interaction.followup.send(f"❌ Roblox API error while resolving username.")
+            return
+
         data = res.json()
-        if res.status_code != 200 or not data.get("data"):
-            await interaction.followup.send(f"❌ Could not find user `{username}`.")
+        if not data.get("data"):
+            await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
             return
 
         user_id = data["data"][0]["id"]
 
-        # Step 3: Get group join info using Open Cloud API
-        GROUP_ID = int(os.getenv("GROUP_ID"))  # ← Replace with your actual group ID if needed
-        url = f"https://apis.roblox.com/groups/v2/groups/{GROUP_ID}/users/{user_id}" 
-        API_KEY = os.getenv("ROBLOX_API_KEY")  # Make sure this is set in .env
+        # Step 2: Get group membership info from Open Cloud
+        GROUP_ID = os.getenv("GROUP_ID")
+        API_KEY = os.getenv("ROBLOX_API_KEY")
+
+        url = f"https://apis.roblox.com/groups/v2/groups/{GROUP_ID}/users/{user_id}"
         headers = {
             "Authorization": f"Bearer {API_KEY}"
         }
 
         group_res = requests.get(url, headers=headers)
 
+        if group_res.status_code == 403:
+            await interaction.followup.send("❌ Invalid API key or missing permissions.")
+            return
+        if group_res.status_code == 404:
+            await interaction.followup.send(f"❌ `{username}` is not in the group.")
+            return
         if group_res.status_code != 200:
-            await interaction.followup.send(f"❌ Failed to retrieve group data for `{username}`.")
+            await interaction.followup.send(f"❌ Failed to retrieve group data (status {group_res.status_code}).")
             return
 
         group_data = group_res.json()
@@ -1675,18 +1688,25 @@ async def checkpayout(interaction: discord.Interaction, username: str):
             await interaction.followup.send(f"❌ `{username}` is not a member of the group.")
             return
 
-        # Step 4: Calculate days in group
+        # Step 3: Calculate days in group
+        from datetime import datetime, timezone
         join_datetime = datetime.fromisoformat(group_data["joinedAt"].replace("Z", "+00:00"))
         now_utc = datetime.now(timezone.utc)
         days_in_group = (now_utc - join_datetime).days
 
+        # Step 4: Respond
         if days_in_group >= 14:
-            await interaction.followup.send(f"✅ `{username}` is eligible for group payout (joined {days_in_group} days ago).")
+            await interaction.followup.send(
+                f"✅ `{username}` is eligible for group payout (joined {days_in_group} days ago)."
+            )
         else:
-            await interaction.followup.send(f"❌ `{username}` is NOT eligible (only {days_in_group} days in group).")
+            await interaction.followup.send(
+                f"❌ `{username}` is **not** eligible for payout (only {days_in_group} days in group)."
+            )
 
     except Exception as e:
-        await interaction.followup.send(f"⚠️ Error: {e}")
+        await interaction.followup.send(f"⚠️ Error: `{e}`")
+
 
 
 # ========== Check Command ==========
