@@ -1632,12 +1632,7 @@ async def instagram_embedez(interaction: discord.Interaction, link: str):
 
     short_code = match.group(1)
     instagramez_link = f"https://instagramez.com/p/{short_code}"
-
-    message = (
-        f"📸 Instagram • [EmbedEZ]({instagramez_link})\n"
-        f"🔗 {instagramez_link}"
-    )
-
+    message = f"Instagram • [EmbedEZ]({instagramez_link})\n{instagramez_link}"
     await interaction.response.send_message(message, ephemeral=False)
 
 # ========== Eligible Command ==========
