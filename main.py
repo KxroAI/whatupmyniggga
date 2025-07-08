@@ -1645,7 +1645,7 @@ async def checkpayout(interaction: discord.Interaction, username: str):
     try:
         async with aiohttp.ClientSession() as session:
             # Step 1: Get User ID from Username
-            user_url = f"https://users.roblox.com/v1/usernames/users "
+            user_url = "https://users.roblox.com/v1/usernames/users "
             user_data = {"usernames": [username], "excludeBannedUsers": True}
             async with session.post(user_url, json=user_data) as resp:
                 if resp.status != 200:
