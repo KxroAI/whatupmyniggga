@@ -1638,67 +1638,59 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
     
 
 # ========== Eligible Command ==========
-@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout (14+ days in group)")
-@app_commands.describe(username="Roblox username to check")
-async def checkpayout(interaction: discord.Interaction, username: str):
-    await interaction.response.defer()
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
+@app_commands.describe(username="Roblox Username")
+async def check_payout(interaction: discord.Interaction, username: str):
+    await interaction.response.defer(ephemeral=True)
+
     try:
-        async with aiohttp.ClientSession() as session:
-            # Step 1: Get User ID from Username
-            user_url = "https://users.roblox.com/v1/usernames/users "
-            user_data = {"usernames": [username], "excludeBannedUsers": True}
-            async with session.post(user_url, json=user_data) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
-                    return
-                user_json = await resp.json()
-                if not user_json.get("data"):
-                    await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
-                    return
-                user_id = user_json["data"][0]["id"]
+        # Step 1: Convert username to user ID
+        search_url = f"https://users.roblox.com/v1/users/search?keyword={username}"
+        search_response = requests.get(search_url)
+        search_data = search_response.json()
 
-            # Step 2: Get Group Membership Info
-            GROUP_ID = int(os.getenv("GROUP_ID"))
-            group_url = f"https://groups.roblox.com/v1/users/ {user_id}/groups/roles"
-            async with session.get(group_url) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send(f"❌ Failed to fetch group data (status {resp.status})")
-                    return
-                group_json = await resp.json()
+        if not search_data.get("data"):
+            await interaction.followup.send(f"❌ No user found with the username `{username}`.", ephemeral=True)
+            return
 
-            # Step 3: Find target group
-            joined_at = None
-            for role_info in group_json.get("data", []):
-                group = role_info.get("group")
-                if group and group.get("id") == GROUP_ID:
-                    role = role_info.get("role")
-                    if role:
-                        joined_at = role.get("created")
-                        break
+        user_id = None
+        for user in search_data["data"]:
+            if user["name"].lower() == username.lower():
+                user_id = user["id"]
+                break
 
-            if not joined_at:
-                await interaction.followup.send(f"❌ `{username}` is not in the group.")
-                return
+        if not user_id:
+            await interaction.followup.send(f"❌ Could not find a matching user ID for `{username}`.", ephemeral=True)
+            return
 
-            # Step 4: Calculate Days in Group
-            from dateutil.parser import isoparse
-            from datetime import datetime, timezone
-            join_date = isoparse(joined_at)
-            now = datetime.now(timezone.utc)
-            days_in_group = (now - join_date).days
+        # Step 2: Get GROUP_ID from environment
+        GROUP_ID = os.getenv("GROUP_ID")
+        if not GROUP_ID:
+            await interaction.followup.send("❌ GROUP_ID is not set in the environment.", ephemeral=True)
+            return
 
-            # Step 5: Determine Eligibility
-            if days_in_group >= 14:
-                await interaction.followup.send(
-                    f"✅ `{username}` is eligible for payout! They've been in the group for **{days_in_group} days**."
-                )
-            else:
-                await interaction.followup.send(
-                    f"❌ `{username}` is NOT eligible yet. They’ve only been in the group for **{days_in_group} days**."
-                )
+        try:
+            GROUP_ID = int(GROUP_ID)
+        except ValueError:
+            await interaction.followup.send("❌ GROUP_ID must be a valid number.", ephemeral=True)
+            return
+
+        # Step 3: Check payout eligibility
+        url = f" https://economy.roblox.com/v1/groups/ {GROUP_ID}/users-payout-eligibility?userIds={user_id}"
+        response = requests.get(url)
+        data = response.json()
+
+        if str(user_id) in 
+            eligible = data[str(user_id)]["isUserPayoutEligible"]
+            status = "✅ Yes" if eligible else "❌ No"
+            await interaction.followup.send(
+                f"User `{username}` ({user_id}) is **{status}** for group payout in group `{GROUP_ID}`."
+            )
+        else:
+            await interaction.followup.send("⚠️ No data found for this user.", ephemeral=True)
 
     except Exception as e:
-        await interaction.followup.send(f"⚠️ Error: `{str(e)}`")
+        await interaction.followup.send(f"❌ Error checking eligibility: {str(e)}", ephemeral=True)
         
 
 # ========== Check Command ==========
