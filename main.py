@@ -1644,44 +1644,29 @@ async def checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
     try:
         async with aiohttp.ClientSession() as session:
-            # Step 1: Resolve users.roblox.com to IP using Cloudflare DNS
-            dns_query = {
-                "name": "users.roblox.com",
-                "type": "A"
-            }
-            async with session.post("https://cloudflare-dns.com/dns-query ", json=dns_query, headers={"Accept": "application/dns-json"}) as dns_resp:
-                if dns_resp.status != 200:
-                    await interaction.followup.send("❌ Failed to resolve Roblox domain.")
-                    return
-                dns_data = await dns_resp.json()
-                answer = dns_data.get("Answer", [])
-                if not answer:
-                    await interaction.followup.send("❌ DNS lookup failed.")
-                    return
-                ip_address = answer[0]["data"]
-
-            # Step 2: Get User ID from Username
-            user_url = f"https://{ip_address}/v1/usernames/users"
-            async with session.post(user_url, json={"usernames": [username], "excludeBannedUsers": True}) as user_resp:
-                if user_resp.status != 200:
+            # Step 1: Get User ID from Username
+            user_url = f"https://users.roblox.com/v1/usernames/users "
+            user_data = {"usernames": [username], "excludeBannedUsers": True}
+            async with session.post(user_url, json=user_data) as resp:
+                if resp.status != 200:
                     await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
                     return
-                user_json = await user_resp.json()
+                user_json = await resp.json()
                 if not user_json.get("data"):
                     await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
                     return
                 user_id = user_json["data"][0]["id"]
 
-            # Step 3: Get Group Membership Info
+            # Step 2: Get Group Membership Info
             GROUP_ID = int(os.getenv("GROUP_ID"))
-            group_url = f"https://216.52.217.175/v1/users/{user_id}/groups/roles"  # groups.roblox.com IP
-            async with session.get(group_url) as group_resp:
-                if group_resp.status != 200:
-                    await interaction.followup.send(f"❌ Failed to fetch group data (status {group_resp.status})")
+            group_url = f"https://groups.roblox.com/v1/users/ {user_id}/groups/roles"
+            async with session.get(group_url) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send(f"❌ Failed to fetch group data (status {resp.status})")
                     return
-                group_json = await group_resp.json()
+                group_json = await resp.json()
 
-            # Step 4: Find target group
+            # Step 3: Find target group
             joined_at = None
             for role_info in group_json.get("data", []):
                 group = role_info.get("group")
@@ -1695,14 +1680,14 @@ async def checkpayout(interaction: discord.Interaction, username: str):
                 await interaction.followup.send(f"❌ `{username}` is not in the group.")
                 return
 
-            # Step 5: Calculate Days in Group
+            # Step 4: Calculate Days in Group
             from dateutil.parser import isoparse
             from datetime import datetime, timezone
             join_date = isoparse(joined_at)
             now = datetime.now(timezone.utc)
             days_in_group = (now - join_date).days
 
-            # Step 6: Determine Eligibility
+            # Step 5: Determine Eligibility
             if days_in_group >= 14:
                 await interaction.followup.send(
                     f"✅ `{username}` is eligible for payout! They've been in the group for **{days_in_group} days**."
