@@ -1227,6 +1227,7 @@ async def listallcommands(interaction: discord.Interaction, category: app_comman
 - `/convertcurrency <amount> <from> <to>` - Convert between currencies
 - `/beforetax <robux>` - Calculate how much Robux you'll receive after 30% tax
 - `/aftertax <robux>` - Calculate how much Robux to send to receive desired amount after 30% tax
+- `/checkpayout <userid>` - Check if a Roblox user is Eligible for Group Payout.
         """,
         "utility": """
 - `/userinfo [user]` - View detailed info about a user  
@@ -1638,14 +1639,20 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
     
 
 # ========== Check Payout Command ==========
-@bot.tree.command(name="checkpayout", description="Check if a Roblox User is eligible for Group Payout.")
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is Eligible for Group Payout.")
 @app_commands.describe(user_id="Roblox User ID")
 async def check_payout(interaction: discord.Interaction, user_id: int):
     await interaction.response.defer(ephemeral=False)
 
     GROUP_ID = os.getenv("GROUP_ID")
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+
     if not GROUP_ID:
         await interaction.followup.send("❌ GROUP_ID is not set in the environment.", ephemeral=True)
+        return
+
+    if not ROBLOX_COOKIE:
+        await interaction.followup.send("❌ ROBLOX_COOKIE is not set in the environment.", ephemeral=True)
         return
 
     try:
@@ -1655,32 +1662,48 @@ async def check_payout(interaction: discord.Interaction, user_id: int):
         return
 
     # Step 1: Convert User ID to Username
-    user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
+    user_info_url = f"https://users.roblox.com/v1/users/ {user_id}"
     user_info_response = requests.get(user_info_url)
 
     if user_info_response.status_code != 200:
         await interaction.followup.send(f"❌ Failed to fetch username for ID `{user_id}`. Make sure it's a valid Roblox User ID.", ephemeral=True)
         return
 
-    user_data = user_info_response.json()
-    username = user_data.get("name", "Unknown")
+    username = user_info_response.json()["name"]
 
-    # Step 2: Check Payout Eligibility
+    # Step 2: Check Payout Eligibility using authenticated request
     url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
-    response = requests.get(url)
-    data = response.json()
 
-    if str(user_id) in data:
-        eligible = data[str(user_id)]["isUserPayoutEligible"]
-        status = "✅ Yes" if eligible else "❌ No"
-        await interaction.followup.send(
-            f"User `{username}` ({user_id}) is **{status}** for Group Payout."
-        )
-    else:
-        await interaction.followup.send(
-            f"⚠️ No data found for user `{username}` ({user_id}).",
-            ephemeral=True
-        )
+    headers = {
+        "Cookie": ROBLOX_COOKIE,
+        "x-csrf-token": None,
+        "Referer": "https://www.roblox.com/ ",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 403:
+            await interaction.followup.send("❌ Invalid or expired .ROBLOSECURITY cookie.", ephemeral=True)
+            return
+
+        data = response.json()
+
+        if str(user_id) in data:
+            eligible = data[str(user_id)]["isUserPayoutEligible"]
+            status = "✅ Eligible" if eligible else "❌ Not Currently Eligible"
+            await interaction.followup.send(
+                f"User `{username}` ({user_id}) is **{status}** for Group Payout."
+            )
+        else:
+            await interaction.followup.send(
+                f"⚠️ No data found for `{username}` ({user_id}). They might not be eligible or have never joined the group.",
+                ephemeral=False
+            )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error checking eligibility: {str(e)}", ephemeral=True)
         
 
 # ========== Check Command ==========
