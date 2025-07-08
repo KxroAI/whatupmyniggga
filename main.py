@@ -1623,7 +1623,7 @@ async def tiktok(interaction: discord.Interaction, link: str, spoiler: bool = Fa
 
 # ========== Instagram Command ==========
 @bot.tree.command(name="instagram", description="Convert Instagram Link into a Media/Video")
-@app_commands.describe(link="Instagram post or reel URL"), spoiler="Should the video be sent as a spoiler?")
+@app_commands.describe(link="Instagram post or reel URL", spoiler="Should the video be sent as a spoiler?")
 async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler: bool = False):
     match = re.search(r"instagram\.com/(p|reel)/([^/]+)/", link)
     if not match:
