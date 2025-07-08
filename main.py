@@ -1658,29 +1658,29 @@ async def checkpayout(interaction: discord.Interaction, user_id: int):
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        # Get CSRF token using session (reuse headers)
-        async with session.post("https://auth.roblox.com/v2/logout") as r:
+        # ✅ Try to get CSRF from a failing login POST instead of logout
+        async with session.post("https://auth.roblox.com/v2/login", json={"username": "", "password": ""}) as r:
             csrf_token = r.headers.get("x-csrf-token")
 
         if not csrf_token:
-            await interaction.followup.send("❌ Failed to retrieve CSRF token. Roblox may be blocking the request.")
+            await interaction.followup.send("❌ Still no CSRF token. Roblox may be actively blocking this session.")
             return
 
-        # Make payout eligibility request
-        url = f"https://economy.roblox.com/v1/groups/5838002/users-payout-eligibility?userIds={user_id}"
-
+        # Build headers
         headers["x-csrf-token"] = csrf_token
         headers["Referer"] = "https://www.roblox.com/"
         headers["Origin"] = "https://www.roblox.com"
         headers["Accept"] = "application/json"
+
+        url = f"https://economy.roblox.com/v1/groups/5838002/users-payout-eligibility?userIds={user_id}"
 
         async with session.get(url, headers=headers) as r:
             if r.status != 200:
                 await interaction.followup.send(f"❌ Roblox API returned status code: {r.status}")
                 return
 
-            data = await r.json()
             try:
+                data = await r.json()
                 result = data["userPayoutEligibility"][0]
                 if result["eligible"]:
                     await interaction.followup.send(f"✅ User `{user_id}` is eligible for payout.")
@@ -1692,8 +1692,6 @@ async def checkpayout(interaction: discord.Interaction, user_id: int):
             except Exception as e:
                 await interaction.followup.send(f"⚠️ Failed to parse response: {e}")
 
-
-        
 
 # ========== Check Command ==========
 async def get_csrf_token(session):
