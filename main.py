@@ -1670,11 +1670,11 @@ async def check_payout(interaction: discord.Interaction, user_id: int):
     response = requests.get(url)
     data = response.json()
 
-    if str(user_id) in 
+    if str(user_id) in data:
         eligible = data[str(user_id)]["isUserPayoutEligible"]
         status = "✅ Yes" if eligible else "❌ No"
         await interaction.followup.send(
-            f"User `{username}` ({user_id}) is **{status}** for Group Payout`."
+            f"User `{username}` ({user_id}) is **{status}** for Group Payout."
         )
     else:
         await interaction.followup.send(
