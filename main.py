@@ -1642,70 +1642,60 @@ async def instagram_embedez(interaction: discord.Interaction, link: str):
 @app_commands.describe(username="Roblox username to check")
 async def checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer()
-    
     try:
-        # Step 1: Convert username to userId
-        res = requests.post(
-            "https://users.roblox.com/v1/usernames/users",
-            json={"usernames": [username], "excludeBannedUsers": True}
-        )
+        # Step 1: Resolve username to user ID
+        async with aiohttp.ClientSession() as session:
+            # Get user ID from username
+            user_url = f"https://api.roblox.com/users/get-by-username?username={username}"
+            async with session.get(user_url) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
+                    return
+                user_data = await resp.json()
+                user_id = user_data.get('Id')
 
-        if res.status_code != 200:
-            await interaction.followup.send(f"❌ Roblox API error while resolving username.")
-            return
+            # Step 2: Get group join date
+            group_url = f" https://groups.roblox.com/v1/users/ {user_id}/groups/roles"
+            async with session.get(group_url) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send(f"❌ Failed to fetch group data (status {resp.status})")
+                    return
+                group_data = await resp.json()
 
-        data = res.json()
-        if not data.get("data"):
-            await interaction.followup.send(f"❌ Could not find Roblox user `{username}`.")
-            return
+            # Step 3: Find target group
+            GROUP_ID = int(os.getenv("GROUP_ID"))
+            joined_at = None
+            for role_info in group_data.get("data", []):
+                group = role_info.get("group")
+                if group and group.get("id") == GROUP_ID:
+                    role = role_info.get("role")
+                    if role:
+                        joined_at = role.get("created")
+                        break
 
-        user_id = data["data"][0]["id"]
+            if not joined_at:
+                await interaction.followup.send(f"❌ `{username}` is not in the group.")
+                return
 
-        # Step 2: Get group membership info from Open Cloud
-        GROUP_ID = os.getenv("GROUP_ID")
-        API_KEY = os.getenv("ROBLOX_API_KEY")
+            # Step 4: Calculate days in group
+            from dateutil.parser import isoparse
+            from datetime import datetime, timezone
+            join_date = isoparse(joined_at)
+            now = datetime.now(timezone.utc)
+            days_in_group = (now - join_date).days
 
-        url = f"https://apis.roblox.com/groups/v2/groups/{GROUP_ID}/users/{user_id}"
-        headers = {
-            "Authorization": f"Bearer {API_KEY}"
-        }
-
-        group_res = requests.get(url, headers=headers)
-
-        if group_res.status_code == 403:
-            await interaction.followup.send("❌ Invalid API key or missing permissions.")
-            return
-        if group_res.status_code == 404:
-            await interaction.followup.send(f"❌ `{username}` is not in the group.")
-            return
-        if group_res.status_code != 200:
-            await interaction.followup.send(f"❌ Failed to retrieve group data (status {group_res.status_code}).")
-            return
-
-        group_data = group_res.json()
-
-        if "joinedAt" not in group_data:
-            await interaction.followup.send(f"❌ `{username}` is not a member of the group.")
-            return
-
-        # Step 3: Calculate days in group
-        from datetime import datetime, timezone
-        join_datetime = datetime.fromisoformat(group_data["joinedAt"].replace("Z", "+00:00"))
-        now_utc = datetime.now(timezone.utc)
-        days_in_group = (now_utc - join_datetime).days
-
-        # Step 4: Respond
-        if days_in_group >= 14:
-            await interaction.followup.send(
-                f"✅ `{username}` is eligible for group payout (joined {days_in_group} days ago)."
-            )
-        else:
-            await interaction.followup.send(
-                f"❌ `{username}` is **not** eligible for payout (only {days_in_group} days in group)."
-            )
+            # Step 5: Determine eligibility
+            if days_in_group >= 14:
+                await interaction.followup.send(
+                    f"✅ `{username}` is eligible for payout! They've been in the group for **{days_in_group} days**."
+                )
+            else:
+                await interaction.followup.send(
+                    f"❌ `{username}` is NOT eligible yet. They’ve only been in the group for **{days_in_group} days**."
+                )
 
     except Exception as e:
-        await interaction.followup.send(f"⚠️ Error: `{e}`")
+        await interaction.followup.send(f"⚠️ Error: `{str(e)}`")
 
 
 
