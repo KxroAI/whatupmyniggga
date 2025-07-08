@@ -1651,11 +1651,15 @@ async def checkpayout(interaction: discord.Interaction, user_id: int):
         await interaction.followup.send("❌ Roblox cookie is not set.")
         return
 
-    url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
+    group_id = 5838002  # your group ID
+
+    url = f"https://economy.roblox.com/v1/groups/{group_id}/users-payout-eligibility?userIds={user_id}"
     headers = {
         "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}",
-        "User-Agent": "Roblox/WinInet",
-        "Accept": "application/json"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "application/json",
+        "Referer": "https://www.roblox.com/",
+        "Origin": "https://www.roblox.com"
     }
 
     response = requests.get(url, headers=headers)
@@ -1672,7 +1676,7 @@ async def checkpayout(interaction: discord.Interaction, user_id: int):
 
         if is_eligible:
             await interaction.followup.send(
-                f"✅ User **{user_id}** is eligible for payout in group **{GROUP_ID}**."
+                f"✅ User **{user_id}** is eligible for payout in group **{group_id}**."
             )
         else:
             await interaction.followup.send(
@@ -1680,6 +1684,7 @@ async def checkpayout(interaction: discord.Interaction, user_id: int):
             )
     except Exception as e:
         await interaction.followup.send(f"⚠️ Error parsing response: {e}")
+
         
 
 # ========== Check Command ==========
