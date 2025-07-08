@@ -1637,11 +1637,11 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
     await interaction.response.send_message(message, ephemeral=False)
     
 
-# ========== Eligible Command ==========
-@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
+# ========== Check Payout Command ==========
+@bot.tree.command(name="checkpayout", description="Check if a Roblox User is eligible for Group Payout.")
 @app_commands.describe(user_id="Roblox User ID")
 async def check_payout(interaction: discord.Interaction, user_id: int):
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
 
     GROUP_ID = os.getenv("GROUP_ID")
     if not GROUP_ID:
@@ -1654,23 +1654,33 @@ async def check_payout(interaction: discord.Interaction, user_id: int):
         await interaction.followup.send("❌ GROUP_ID must be a valid number.", ephemeral=True)
         return
 
+    # Step 1: Convert User ID to Username
+    user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
+    user_info_response = requests.get(user_info_url)
+
+    if user_info_response.status_code != 200:
+        await interaction.followup.send(f"❌ Failed to fetch username for ID `{user_id}`. Make sure it's a valid Roblox User ID.", ephemeral=True)
+        return
+
+    user_data = user_info_response.json()
+    username = user_data.get("name", "Unknown")
+
+    # Step 2: Check Payout Eligibility
     url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
-    
-try:
     response = requests.get(url)
     data = response.json()
 
-    if str(user_id) in data:
+    if str(user_id) in 
         eligible = data[str(user_id)]["isUserPayoutEligible"]
         status = "✅ Yes" if eligible else "❌ No"
         await interaction.followup.send(
-            f"User `{user_id}` is **{status}** for group payout in group `{GROUP_ID}`."
+            f"User `{username}` ({user_id}) is **{status}** for Group Payout`."
         )
     else:
-        await interaction.followup.send("⚠️ No data found for this user.", ephemeral=True)
-
-except Exception as e:
-    await interaction.followup.send(f"❌ Error checking eligibility: {str(e)}", ephemeral=True)
+        await interaction.followup.send(
+            f"⚠️ No data found for user `{username}` ({user_id}).",
+            ephemeral=True
+        )
         
 
 # ========== Check Command ==========
