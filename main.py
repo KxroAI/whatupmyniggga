@@ -1,4 +1,4 @@
-import discord
+ import discord
 from discord import Embed, app_commands, Interaction, ui, ButtonStyle
 from discord.ext import commands, tasks
 import asyncio
@@ -1656,24 +1656,21 @@ async def check_payout(interaction: discord.Interaction, user_id: int):
 
     url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
     
-    try:
-        response = requests.get(url)
-        data = response.json()
+try:
+    response = requests.get(url)
+    data = response.json()
 
-        if str(user_id) in 
-            eligible = data[str(user_id)]["isUserPayoutEligible"]
-            status = "✅ Yes" if eligible else "❌ No"
-            await interaction.followup.send(
-                f"User `{user_id}` is **{status}** for group payout in group `{GROUP_ID}`."
-            )
-        else:
-            await interaction.followup.send(
-                f"⚠️ No data found for user `{user_id}`.",
-                ephemeral=False
-            )
+    if str(user_id) in data:
+        eligible = data[str(user_id)]["isUserPayoutEligible"]
+        status = "✅ Yes" if eligible else "❌ No"
+        await interaction.followup.send(
+            f"User `{user_id}` is **{status}** for group payout in group `{GROUP_ID}`."
+        )
+    else:
+        await interaction.followup.send("⚠️ No data found for this user.", ephemeral=True)
 
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error checking eligibility: {str(e)}", ephemeral=True)
+except Exception as e:
+    await interaction.followup.send(f"❌ Error checking eligibility: {str(e)}", ephemeral=True)
         
 
 # ========== Check Command ==========
