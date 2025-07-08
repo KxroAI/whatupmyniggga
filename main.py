@@ -1676,11 +1676,11 @@ async def check_payout(interaction: discord.Interaction, username: str):
             return
 
         # Step 3: Check payout eligibility
-        url = f" https://economy.roblox.com/v1/groups/ {GROUP_ID}/users-payout-eligibility?userIds={user_id}"
+        url = f" https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
         response = requests.get(url)
         data = response.json()
 
-        if str(user_id) in 
+        if str(user_id) in data:  # ✅ Complete condition
             eligible = data[str(user_id)]["isUserPayoutEligible"]
             status = "✅ Yes" if eligible else "❌ No"
             await interaction.followup.send(
