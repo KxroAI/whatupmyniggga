@@ -1642,84 +1642,57 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
 GROUP_ID = 5838002
 
-
-def get_csrf_and_session(cookie: str):
-    session = requests.Session()
-
-    headers = {
-        "Cookie": f".ROBLOSECURITY={cookie}",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/91.0.4472.124 Safari/537.36"
-        ),
-        "Accept": "*/*",
-        "Referer": "https://www.roblox.com/",
-        "Origin": "https://www.roblox.com"
-    }
-
-    try:
-        res = session.post("https://auth.roblox.com/v2/logout", headers=headers)
-        csrf_token = res.headers.get("x-csrf-token")
-        return (session, csrf_token) if csrf_token else (None, None)
-    except Exception:
-        return None, None
-
 @bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
-@app_commands.describe(user_id="Roblox User ID")
+@app_commands.describe(user_id="Roblox User ID to check")
 async def checkpayout(interaction: discord.Interaction, user_id: int):
     await interaction.response.defer()
 
     if not ROBLOX_COOKIE:
-        await interaction.followup.send("❌ Roblox cookie is not set.")
+        await interaction.followup.send("❌ ROBLOX_COOKIE not set in your environment.")
         return
 
-    session, csrf_token = get_csrf_and_session(ROBLOX_COOKIE)
-    if not csrf_token:
-        await interaction.followup.send("❌ Failed to retrieve CSRF token. Roblox blocked the session.")
-        return
+    async with aiohttp.ClientSession() as session:
+        # Step 1: Get CSRF token
+        async with session.post("https://auth.roblox.com/v2/logout", headers={
+            "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}",
+            "User-Agent": "Mozilla/5.0"
+        }) as resp:
+            csrf_token = resp.headers.get("x-csrf-token")
 
-    url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
+        if not csrf_token:
+            await interaction.followup.send("❌ Failed to retrieve CSRF token. Roblox may be blocking the request.")
+            return
 
-    headers = {
-        "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/91.0.4472.124 Safari/537.36"
-        ),
-        "Accept": "application/json",
-        "Referer": "https://www.roblox.com/",
-        "Origin": "https://www.roblox.com",
-        "x-csrf-token": csrf_token
-    }
+        # Step 2: Make the payout eligibility request
+        headers = {
+            "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}",
+            "x-csrf-token": csrf_token,
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Referer": "https://www.roblox.com/",
+            "Origin": "https://www.roblox.com"
+        }
 
-    try:
-        response = session.get(url, headers=headers)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Request failed: {e}")
-        return
+        url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
 
-    if response.status_code != 200:
-        await interaction.followup.send(f"❌ Roblox API returned status code: {response.status_code}")
-        return
+        async with session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                await interaction.followup.send(f"❌ Roblox API returned status code: {resp.status}")
+                return
 
-    try:
-        data = response.json()
-        user_data = data["userPayoutEligibility"][0]
-        is_eligible = user_data["eligible"]
-        reason = user_data.get("ineligibilityReason", "No reason provided.")
+            try:
+                data = await resp.json()
+                user_data = data["userPayoutEligibility"][0]
+                eligible = user_data.get("eligible", False)
+                reason = user_data.get("ineligibilityReason", "Unknown")
 
-        if is_eligible:
-            await interaction.followup.send(
-                f"✅ User **{user_id}** is eligible for payout in group **{GROUP_ID}**."
-            )
-        else:
-            await interaction.followup.send(
-                f"❌ User **{user_id}** is **not eligible** for payout.\nReason: **{reason}**"
-            )
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ Failed to parse response: {e}")
+                if eligible:
+                    await interaction.followup.send(f"✅ User `{user_id}` is eligible for payout.")
+                else:
+                    await interaction.followup.send(f"❌ User `{user_id}` is **not eligible** for payout.\nReason: **{reason}**")
+            except Exception as e:
+                await interaction.followup.send(f"⚠️ Failed to parse response: {e}")
+
         
 
 # ========== Check Command ==========
