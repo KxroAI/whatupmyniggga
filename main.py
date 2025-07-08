@@ -1639,55 +1639,38 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 
 # ========== Eligible Command ==========
 @bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
-@app_commands.describe(username="Roblox Username")
-async def check_payout(interaction: discord.Interaction, username: str):
+@app_commands.describe(user_id="Roblox User ID")
+async def check_payout(interaction: discord.Interaction, user_id: int):
     await interaction.response.defer(ephemeral=True)
 
+    GROUP_ID = os.getenv("GROUP_ID")
+    if not GROUP_ID:
+        await interaction.followup.send("❌ GROUP_ID is not set in the environment.", ephemeral=True)
+        return
+
     try:
-        # Step 1: Convert username to user ID
-        search_url = f"https://users.roblox.com/v1/users/search?keyword={username}"
-        search_response = requests.get(search_url)
-        search_data = search_response.json()
+        GROUP_ID = int(GROUP_ID)
+    except ValueError:
+        await interaction.followup.send("❌ GROUP_ID must be a valid number.", ephemeral=True)
+        return
 
-        if not search_data.get("data"):
-            await interaction.followup.send(f"❌ No user found with the username `{username}`.", ephemeral=True)
-            return
-
-        user_id = None
-        for user in search_data["data"]:
-            if user["name"].lower() == username.lower():
-                user_id = user["id"]
-                break
-
-        if not user_id:
-            await interaction.followup.send(f"❌ Could not find a matching user ID for `{username}`.", ephemeral=True)
-            return
-
-        # Step 2: Get GROUP_ID from environment
-        GROUP_ID = os.getenv("GROUP_ID")
-        if not GROUP_ID:
-            await interaction.followup.send("❌ GROUP_ID is not set in the environment.", ephemeral=True)
-            return
-
-        try:
-            GROUP_ID = int(GROUP_ID)
-        except ValueError:
-            await interaction.followup.send("❌ GROUP_ID must be a valid number.", ephemeral=True)
-            return
-
-        # Step 3: Check payout eligibility
-        url = f" https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
+    url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
+    
+    try:
         response = requests.get(url)
         data = response.json()
 
-        if str(user_id) in data:  # ✅ Complete condition
+        if str(user_id) in 
             eligible = data[str(user_id)]["isUserPayoutEligible"]
             status = "✅ Yes" if eligible else "❌ No"
             await interaction.followup.send(
-                f"User `{username}` ({user_id}) is **{status}** for group payout in group `{GROUP_ID}`."
+                f"User `{user_id}` is **{status}** for group payout in group `{GROUP_ID}`."
             )
         else:
-            await interaction.followup.send("⚠️ No data found for this user.", ephemeral=True)
+            await interaction.followup.send(
+                f"⚠️ No data found for user `{user_id}`.",
+                ephemeral=False
+            )
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error checking eligibility: {str(e)}", ephemeral=True)
