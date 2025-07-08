@@ -1660,7 +1660,7 @@ async def check_payout(interaction: discord.Interaction, user_id: int):
         return
 
     # Step 1: Convert User ID to Username
-    user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
+    user_info_url = f"https://users.roblox.com/v1/users/ {user_id}"
     user_info_response = requests.get(user_info_url)
     
     if user_info_response.status_code != 200:
@@ -1682,7 +1682,7 @@ async def check_payout(interaction: discord.Interaction, user_id: int):
 
     if member_check_response.status_code == 404:
         await interaction.followup.send(
-            f"User `{username}` ({user_id}) is ❌ Not In Group.",
+            f"❌ User `{username}` ({user_id}) is **Not In Group**.",
             ephemeral=False
         )
         return
