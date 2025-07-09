@@ -1649,58 +1649,39 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
     
 
 # ========== Check Payout Command ==========
-ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-GROUP_ID = 5838002
-
 @bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
 @app_commands.describe(user_id="Roblox User ID to check")
 async def checkpayout(interaction: discord.Interaction, user_id: int):
-    await interaction.response.defer()
+    await interaction.response.defer()  # Respond early
 
-    if not ROBLOX_COOKIE:
-        await interaction.followup.send("❌ Cookie not set.")
+    import os
+    import aiohttp
+
+    cookie = os.getenv("ROBLOX_COOKIE")
+    if not cookie:
+        await interaction.followup.send("❌ Cookie not set in environment variables.")
         return
 
-    base_headers = {
+    headers = {
+        "Cookie": f".ROBLOSECURITY={cookie}",
         "User-Agent": "Mozilla/5.0",
-        "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}"
+        "Referer": "https://www.roblox.com",
+        "Origin": "https://www.roblox.com"
     }
 
-    async with aiohttp.ClientSession(headers=base_headers) as session:
-        # Fetch CSRF token
-        csrf_token = None
-        async with session.post("https://auth.roblox.com/v2/login", json={"username": "", "password": ""}) as r:
-            csrf_token = r.headers.get("x-csrf-token")
+    url = f"https://economy.roblox.com/v1/groups/5838002/users-payout-eligibility?userIds={user_id}"
 
-        if not csrf_token:
-            async with session.post("https://auth.roblox.com/v2/logout") as logout_response:
-                csrf_token = logout_response.headers.get("x-csrf-token")
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url) as resp:
+            status = resp.status
+            text = await resp.text()
 
-        if not csrf_token:
-            await interaction.followup.send("❌ Could not retrieve CSRF token. Roblox may be blocking this session.")
-            return
-
-        request_headers = {
-            **base_headers,
-            "x-csrf-token": csrf_token,
-            "Referer": "https://www.roblox.com/",
-            "Origin": "https://www.roblox.com",
-            "Accept": "application/json"
-        }
-
-        url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
-
-        async with session.get(url, headers=request_headers) as r:
-            if r.status != 200:
-                await interaction.followup.send(f"❌ Roblox API returned status code: {r.status}")
+            if status != 200:
+                await interaction.followup.send(f"❌ Roblox API returned status: {status}\n```{text}```")
                 return
 
             try:
-                data = await r.json()
-                if "userPayoutEligibility" not in data:
-                    await interaction.followup.send("⚠️ Unexpected response format from Roblox.")
-                    return
-
+                data = await resp.json()
                 result = data["userPayoutEligibility"][0]
                 if result["eligible"]:
                     await interaction.followup.send(f"✅ User `{user_id}` is eligible for payout.")
@@ -1710,7 +1691,7 @@ async def checkpayout(interaction: discord.Interaction, user_id: int):
                         f"❌ User `{user_id}` is **not eligible** for payout.\nReason: **{reason}**"
                     )
             except Exception as e:
-                await interaction.followup.send(f"⚠️ Failed to parse response: {e}")
+                await interaction.followup.send(f"⚠️ Failed to parse JSON:\n```{e}```")
 
 
 # ========== Check Command ==========
