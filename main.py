@@ -484,14 +484,14 @@ async def setrate(
 
     # Enforce minimum rate limits
     errors = []
-    if payout_rate is not None and payout_rate < DEFAULT_RATES["payout"]:
-        errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout']}/1000 Robux)")
-    if gift_rate is not None and gift_rate < DEFAULT_RATES["gift"]:
-        errors.append(f"Gift Rate (min: ₱{DEFAULT_RATES['gift']}/1000 Robux)")
-    if nct_rate is not None and nct_rate < DEFAULT_RATES["nct"]:
-        errors.append(f"NCT Rate (min: ₱{DEFAULT_RATES['nct']}/1000 Robux)")
-    if ct_rate is not None and ct_rate < DEFAULT_RATES["ct"]:
-        errors.append(f"CT Rate (min: ₱{DEFAULT_RATES['ct']}/1000 Robux)")
+    if payout_rate is not None and payout_rate < DEFAULT_RATES["payout_rate"]:
+        errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout_rate']}/1000 Robux)")
+    if gift_rate is not None and gift_rate < DEFAULT_RATES["gift_rate"]:
+        errors.append(f"Gift Rate (min: ₱{DEFAULT_RATES['gift_rate']}/1000 Robux)")
+    if nct_rate is not None and nct_rate < DEFAULT_RATES["nct_rate"]:
+        errors.append(f"NCT Rate (min: ₱{DEFAULT_RATES['nct_rate']}/1000 Robux)")
+    if ct_rate is not None and ct_rate < DEFAULT_RATES["ct_rate"]:
+        errors.append(f"CT Rate (min: ₱{DEFAULT_RATES['ct_rate']}/1000 Robux)")
 
     if errors:
         error_msg = "❗ You cannot set rates below the minimum:\n" + "\n".join(errors)
