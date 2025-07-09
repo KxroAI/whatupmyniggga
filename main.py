@@ -157,10 +157,10 @@ def get_current_rates(guild_id: str):
     }
 
 DEFAULT_RATES = {
-    "payout": 330.0,
-    "gift": 260.0,
-    "nct": 245.0,
-    "ct": 350.0
+    "payout_rate": 330.0,
+    "gift_rate": 260.0,
+    "nct_rate": 245.0,
+    "ct_rate": 350.0
 }
 
 # ===========================
