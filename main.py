@@ -1652,36 +1652,37 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 @bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
 @app_commands.describe(user_id="Roblox User ID to check")
 async def checkpayout(interaction: discord.Interaction, user_id: int):
-    await interaction.response.defer()  # Respond early
+    await interaction.response.defer()
 
-    import os
-    import aiohttp
+    import aiohttp, os
 
-    cookie = os.getenv("ROBLOX_COOKIE")
-    if not cookie:
-        await interaction.followup.send("❌ Cookie not set in environment variables.")
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+    if not ROBLOX_COOKIE:
+        await interaction.followup.send("❌ Cookie not set.")
         return
 
     headers = {
-        "Cookie": f".ROBLOSECURITY={cookie}",
+        "Cookie": f".ROBLOSECURITY={ROBLOX_COOKIE}",
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://www.roblox.com",
         "Origin": "https://www.roblox.com"
     }
 
-    url = f"https://economy.roblox.com/v1/groups/5838002/users-payout-eligibility?userIds={user_id}"
+    # ✅ Use RoProxy instead of Roblox
+    group_id = 5838002
+    url = f"https://economy.roproxy.com/v1/groups/{group_id}/users-payout-eligibility?userIds={user_id}"
 
     async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(url) as resp:
-            status = resp.status
-            text = await resp.text()
-
-            if status != 200:
-                await interaction.followup.send(f"❌ Roblox API returned status: {status}\n```{text}```")
+        async with session.get(url) as r:
+            if r.status != 200:
+                text = await r.text()
+                await interaction.followup.send(
+                    f"❌ Roblox API returned status code: {r.status}\n```{text}```"
+                )
                 return
 
             try:
-                data = await resp.json()
+                data = await r.json()
                 result = data["userPayoutEligibility"][0]
                 if result["eligible"]:
                     await interaction.followup.send(f"✅ User `{user_id}` is eligible for payout.")
