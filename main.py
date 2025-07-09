@@ -515,22 +515,26 @@ async def setrate(
                 {"$set": update_data},
                 upsert=True
             )
+
             embed = discord.Embed(
                 title="✅ Rates Updated",
                 color=discord.Color.green()
             )
+
             for key, label in [
                 ("payout_rate", "• Payout Rate"),
                 ("gift_rate", "• Gift Rate"),
                 ("nct_rate", "• NCT Rate"),
                 ("ct_rate", "• CT Rate")
             ]:
+                # Only show fields that were updated
                 if locals()[key.split("_")[0]] is not None:
                     embed.add_field(
                         name=label,
                         value=f"₱{new_rates[key]:.2f} / 1000 Robux",
                         inline=False
                     )
+
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             await interaction.response.send_message(embed=embed)
