@@ -465,13 +465,13 @@ async def setrate(
     nct_rate: float = None,
     ct_rate: float = None
 ):
+    await interaction.response.defer(ephemeral=True)
+
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ You must be an administrator to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You must be an administrator to use this command.", ephemeral=True)
         return
 
     guild_id = str(interaction.guild.id)
-
-    # Get current rates
     current_rates = get_current_rates(guild_id)
 
     # Prepare new values, preserving existing ones if not provided
@@ -495,7 +495,7 @@ async def setrate(
 
     if errors:
         error_msg = "❗ You cannot set rates below the minimum:\n" + "\n".join(errors)
-        await interaction.response.send_message(error_msg, ephemeral=True)
+        await interaction.followup.send(error_msg, ephemeral=True)
         return
 
     update_data = {
@@ -509,7 +509,6 @@ async def setrate(
 
     try:
         if rates_collection is not None:
-            # Update or insert if not exists
             rates_collection.update_one(
                 {"guild_id": guild_id},
                 {"$set": update_data},
@@ -521,27 +520,27 @@ async def setrate(
                 color=discord.Color.green()
             )
 
-            for key, label in [
-                ("payout_rate", "• Payout Rate"),
-                ("gift_rate", "• Gift Rate"),
-                ("nct_rate", "• NCT Rate"),
-                ("ct_rate", "• CT Rate")
-            ]:
-                # Only show fields that were updated
-                if locals()[key.split("_")[0]] is not None:
-                    embed.add_field(
-                        name=label,
-                        value=f"₱{new_rates[key]:.2f} / 1000 Robux",
-                        inline=False
-                    )
+            updated_fields = []
+            if payout_rate is not None:
+                updated_fields.append(("• Payout Rate", f"₱{new_rates['payout_rate']:.2f} / 1000 Robux"))
+            if gift_rate is not None:
+                updated_fields.append(("• Gift Rate", f"₱{new_rates['gift_rate']:.2f} / 1000 Robux"))
+            if nct_rate is not None:
+                updated_fields.append(("• NCT Rate", f"₱{new_rates['nct_rate']:.2f} / 1000 Robux"))
+            if ct_rate is not None:
+                updated_fields.append(("• CT Rate", f"₱{new_rates['ct_rate']:.2f} / 1000 Robux"))
+
+            for label, value in updated_fields:
+                embed.add_field(name=label, value=value, inline=False)
 
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-            await interaction.response.send_message(embed=embed)
+
+            await interaction.followup.send(embed=embed)
         else:
-            await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
+            await interaction.followup.send("❌ Database not connected.", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error updating rates: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"❌ Error updating rates: {str(e)}", ephemeral=True)
 
 # Reset Rate
 @bot.tree.command(name="resetrate", description="Reset specific conversion rates back to default (e.g., payout, gift)")
