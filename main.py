@@ -460,10 +460,10 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
 )
 async def setrate(
     interaction: discord.Interaction,
-    payout_rate: float = DEFAULT_RATES["payout"],
-    gift_rate: float = DEFAULT_RATES["gift"],
-    nct_rate: float = DEFAULT_RATES["nct"],
-    ct_rate: float = DEFAULT_RATES["ct"]
+    payout_rate: float = None,
+    gift_rate: float = None,
+    nct_rate: float = None,
+    ct_rate: float = None
 ):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ You must be an administrator to use this command.", ephemeral=True)
@@ -471,16 +471,28 @@ async def setrate(
 
     guild_id = str(interaction.guild.id)
 
+    # Get current rates
+    current_rates = get_current_rates(guild_id)
+
+    # Prepare new values, preserving existing ones if not provided
+    new_rates = {
+        "payout_rate": payout_rate if payout_rate is not None else current_rates["payout"],
+        "gift_rate": gift_rate if gift_rate is not None else current_rates["gift"],
+        "nct_rate": nct_rate if nct_rate is not None else current_rates["nct"],
+        "ct_rate": ct_rate if ct_rate is not None else current_rates["ct"]
+    }
+
     # Enforce minimum rate limits
     errors = []
-    if payout_rate < DEFAULT_RATES["payout"]:
+    if payout_rate is not None and payout_rate < DEFAULT_RATES["payout"]:
         errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout']}/1000 Robux)")
-    if gift_rate < DEFAULT_RATES["gift"]:
+    if gift_rate is not None and gift_rate < DEFAULT_RATES["gift"]:
         errors.append(f"Gift Rate (min: ₱{DEFAULT_RATES['gift']}/1000 Robux)")
-    if nct_rate < DEFAULT_RATES["nct"]:
+    if nct_rate is not None and nct_rate < DEFAULT_RATES["nct"]:
         errors.append(f"NCT Rate (min: ₱{DEFAULT_RATES['nct']}/1000 Robux)")
-    if ct_rate < DEFAULT_RATES["ct"]:
+    if ct_rate is not None and ct_rate < DEFAULT_RATES["ct"]:
         errors.append(f"CT Rate (min: ₱{DEFAULT_RATES['ct']}/1000 Robux)")
+
     if errors:
         error_msg = "❗ You cannot set rates below the minimum:\n" + "\n".join(errors)
         await interaction.response.send_message(error_msg, ephemeral=True)
@@ -488,49 +500,39 @@ async def setrate(
 
     update_data = {
         "guild_id": guild_id,
-        "payout_rate": payout_rate,
-        "gift_rate": gift_rate,
-        "nct_rate": nct_rate,
-        "ct_rate": ct_rate,
+        "payout_rate": new_rates["payout_rate"],
+        "gift_rate": new_rates["gift_rate"],
+        "nct_rate": new_rates["nct_rate"],
+        "ct_rate": new_rates["ct_rate"],
         "updated_at": datetime.now(PH_TIMEZONE)
     }
 
     try:
         if rates_collection is not None:
-            # Upsert (update or insert)
+            # Update or insert if not exists
             rates_collection.update_one(
                 {"guild_id": guild_id},
                 {"$set": update_data},
                 upsert=True
             )
-
             embed = discord.Embed(
                 title="✅ Rates Updated",
                 color=discord.Color.green()
             )
-            embed.add_field(
-                name="• Payout Rate",
-                value=f"₱{payout_rate:.2f} / 1000 Robux",
-                inline=False
-            )
-            embed.add_field(
-                name="• Gift Rate",
-                value=f"₱{gift_rate:.2f} / 1000 Robux",
-                inline=False
-            )
-            embed.add_field(
-                name="• NCT Rate",
-                value=f"₱{nct_rate:.2f} / 1000 Robux",
-                inline=False
-            )
-            embed.add_field(
-                name="• CT Rate",
-                value=f"₱{ct_rate:.2f} / 1000 Robux",
-                inline=False
-            )
+            for key, label in [
+                ("payout_rate", "• Payout Rate"),
+                ("gift_rate", "• Gift Rate"),
+                ("nct_rate", "• NCT Rate"),
+                ("ct_rate", "• CT Rate")
+            ]:
+                if locals()[key.split("_")[0]] is not None:
+                    embed.add_field(
+                        name=label,
+                        value=f"₱{new_rates[key]:.2f} / 1000 Robux",
+                        inline=False
+                    )
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-
             await interaction.response.send_message(embed=embed)
         else:
             await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
@@ -564,14 +566,20 @@ async def resetrate(
         return
 
     update_data = {}
+    reset_fields = []
+
     if payout:
-        update_data["payout_rate"] = 330.0
+        update_data["payout_rate"] = DEFAULT_RATES["payout"]
+        reset_fields.append("Payout")
     if gift:
-        update_data["gift_rate"] = 260.0
+        update_data["gift_rate"] = DEFAULT_RATES["gift"]
+        reset_fields.append("Gift")
     if nct:
-        update_data["nct_rate"] = 245.0
+        update_data["nct_rate"] = DEFAULT_RATES["nct"]
+        reset_fields.append("NCT")
     if ct:
-        update_data["ct_rate"] = 350.0
+        update_data["ct_rate"] = DEFAULT_RATES["ct"]
+        reset_fields.append("CT")
 
     try:
         if rates_collection is not None:
@@ -579,6 +587,7 @@ async def resetrate(
                 {"guild_id": guild_id},
                 {"$set": update_data}
             )
+
             if result.modified_count > 0 or result.upserted_id is not None:
                 embed = discord.Embed(
                     title="✅ Rates Reset",
@@ -587,7 +596,7 @@ async def resetrate(
                 )
                 embed.add_field(
                     name="Reset Fields",
-                    value=", ".join([r.replace("_rate", "").title() for r in update_data.keys()]),
+                    value=", ".join(reset_fields),
                     inline=False
                 )
             else:
@@ -596,6 +605,7 @@ async def resetrate(
                     description="No matching server found or no actual changes were needed.",
                     color=discord.Color.orange()
                 )
+
             await interaction.response.send_message(embed=embed)
         else:
             await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
@@ -761,14 +771,14 @@ async def ctreverse(interaction: discord.Interaction, php: float):
 @app_commands.describe(robux="How much Robux do you want to compare?")
 async def allrates(interaction: discord.Interaction, robux: int):
     if robux <= 0:
-        await interaction.response.send_message("❗ Robux amount must be greater than zero.")
+        await interaction.response.send_message("❗ Robux amount must be greater than zero.", ephemeral=True)
         return
 
     guild_id = str(interaction.guild.id)
     rates = get_current_rates(guild_id)
 
     embed = discord.Embed(
-        title="Robux Conversion Rates",
+        title=f"Robux Conversion Rates ({robux} Robux)",
         color=discord.Color.from_rgb(0, 0, 0)
     )
 
@@ -796,7 +806,7 @@ async def allrates(interaction: discord.Interaction, robux: int):
 @app_commands.describe(php="How much PHP do you want to compare?")
 async def allratesreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
-        await interaction.response.send_message("❗ PHP amount must be greater than zero.")
+        await interaction.response.send_message("❗ PHP amount must be greater than zero.", ephemeral=True)
         return
 
     guild_id = str(interaction.guild.id)
