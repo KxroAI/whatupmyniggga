@@ -94,12 +94,19 @@ else:
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
         
         try:
-            db.rates.drop_index("guild_id_1")
+        db.rates.drop_index("guild_id_1")
+    except Exception as e:
+        print(f"[Index] No existing index found: {e}")
+        
+# Now create the new index outside of the try-except block
+        try:
+        db.rates.create_index(
+        [("guild_id", ASCENDING), ("channel_id", ASCENDING)],
+        unique=True,
+        name="guild_channel_rate"
+        )
         except Exception as e:
-            print(f"[Index] No existing index found: {e}")
-            
-        # Create new compound index to support per-channel rates
-    db.rates.create_index([("guild_id", ASCENDING), ("channel_id", ASCENDING)], unique=True, name="guild_channel_rate")
+    print(f"[Index] Failed to create compound index: {e}")
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
