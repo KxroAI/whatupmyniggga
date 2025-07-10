@@ -75,6 +75,7 @@ db = None
 conversations_collection = None
 reminders_collection = None
 rates_collection = None
+
 mongo_uri = os.getenv("MONGO_URI")
 if not mongo_uri:
     print("[!] MONGO_URI not found in environment. MongoDB will be disabled.")
@@ -82,6 +83,7 @@ else:
     try:
         client = MongoClient(mongo_uri, tlsCAFile=certifi.where())
         db = client.ai_bot
+
         # Initialize collections
         conversations_collection = db.conversations
         reminders_collection = db.reminders
@@ -91,17 +93,8 @@ else:
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
 
-        try:
-            db.rates.drop_index("guild_id_1")
-        except Exception as e:
-            print(f"[Index] No existing index found: {e}")
-
-        # Create new compound index to support per-channel rates
-        db.rates.create_index(
-            [("guild_id", ASCENDING), ("channel_id", ASCENDING)],
-            unique=True,
-            name="guild_channel_rate"
-        )
+        # Create index for guild_id in rates collection
+        rates_collection.create_index([("guild_id", ASCENDING)], unique=True)
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
@@ -143,7 +136,8 @@ async def check_reminders():
         print(f"[!] Error checking reminders: {e}")
 
 # Rates DB
-def get_current_rates(guild_id: str, channel_id: str = None):
+def get_current_rates(guild_id: str):
+    # Check if MongoDB is disabled
     if rates_collection is None:
         return {
             "payout": 330.0,
@@ -153,23 +147,8 @@ def get_current_rates(guild_id: str, channel_id: str = None):
         }
 
     guild_id = str(guild_id)
-
-    # First try to find channel-specific rate
-    if channel_id:
-        result = rates_collection.find_one({
-            "guild_id": guild_id,
-            "channel_id": str(channel_id)
-        })
-        if result:
-            return {
-                "payout": result.get("payout_rate", 330.0),
-                "gift": result.get("gift_rate", 260.0),
-                "nct": result.get("nct_rate", 245.0),
-                "ct": result.get("ct_rate", 350.0)
-            }
-
-    # Fall back to guild-wide rate
     result = rates_collection.find_one({"guild_id": guild_id})
+
     return {
         "payout": result.get("payout_rate", 330.0) if result else 330.0,
         "gift": result.get("gift_rate", 260.0) if result else 260.0,
@@ -472,21 +451,19 @@ async def announcement(interaction: discord.Interaction, message: str, channel: 
 # ===========================
 
 # Set Rate
-@bot.tree.command(name="setrate", description="Set custom conversion rates for this server or specific channel")
+@bot.tree.command(name="setrate", description="Set custom conversion rates for this server (minimum allowed rates enforced)")
 @app_commands.describe(
     payout_rate="PHP per 1000 Robux for Payout",
     gift_rate="PHP per 1000 Robux for Gift",
     nct_rate="PHP per 1000 Robux for NCT",
-    ct_rate="PHP per 1000 Robux for CT",
-    channel="Optional: Target a specific text channel"
+    ct_rate="PHP per 1000 Robux for CT"
 )
 async def setrate(
     interaction: discord.Interaction,
     payout_rate: float = None,
     gift_rate: float = None,
     nct_rate: float = None,
-    ct_rate: float = None,
-    channel: discord.TextChannel = None
+    ct_rate: float = None
 ):
     await interaction.response.defer(ephemeral=True)
 
@@ -495,10 +472,9 @@ async def setrate(
         return
 
     guild_id = str(interaction.guild.id)
-    channel_id = str(channel.id) if channel else None
+    current_rates = get_current_rates(guild_id)
 
-    current_rates = get_current_rates(guild_id, channel_id)
-
+    # Prepare new values, preserving existing ones if not provided
     new_rates = {
         "payout_rate": payout_rate if payout_rate is not None else current_rates["payout"],
         "gift_rate": gift_rate if gift_rate is not None else current_rates["gift"],
@@ -506,6 +482,7 @@ async def setrate(
         "ct_rate": ct_rate if ct_rate is not None else current_rates["ct"]
     }
 
+    # Enforce minimum rate limits
     errors = []
     if payout_rate is not None and payout_rate < DEFAULT_RATES["payout_rate"]:
         errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout_rate']}/1000 Robux)")
@@ -530,35 +507,38 @@ async def setrate(
         "updated_at": datetime.now(PH_TIMEZONE)
     }
 
-    if channel_id:
-        update_data["channel_id"] = channel_id
-
     try:
-        query = {"guild_id": guild_id}
-        if channel_id:
-            query["channel_id"] = channel_id
+        if rates_collection is not None:
+            rates_collection.update_one(
+                {"guild_id": guild_id},
+                {"$set": update_data},
+                upsert=True
+            )
 
-        rates_collection.update_one(query, {"$set": update_data}, upsert=True)
+            embed = discord.Embed(
+                title="✅ Rates Updated",
+                color=discord.Color.green()
+            )
 
-        embed = discord.Embed(title="✅ Rates Updated", color=discord.Color.green())
-        updated_fields = []
+            updated_fields = []
+            if payout_rate is not None:
+                updated_fields.append(("• Payout Rate", f"₱{new_rates['payout_rate']:.2f} / 1000 Robux"))
+            if gift_rate is not None:
+                updated_fields.append(("• Gift Rate", f"₱{new_rates['gift_rate']:.2f} / 1000 Robux"))
+            if nct_rate is not None:
+                updated_fields.append(("• NCT Rate", f"₱{new_rates['nct_rate']:.2f} / 1000 Robux"))
+            if ct_rate is not None:
+                updated_fields.append(("• CT Rate", f"₱{new_rates['ct_rate']:.2f} / 1000 Robux"))
 
-        for label, value in [
-            ("Payout Rate", new_rates['payout_rate']),
-            ("Gift Rate", new_rates['gift_rate']),
-            ("NCT Rate", new_rates['nct_rate']),
-            ("CT Rate", new_rates['ct_rate'])
-        ]:
-            if locals().get(label.lower().replace(" ", "_")) is not None:
-                updated_fields.append((f"• {label}", f"₱{value:.2f} / 1000 Robux"))
+            for label, value in updated_fields:
+                embed.add_field(name=label, value=value, inline=False)
 
-        for label, value in updated_fields:
-            embed.add_field(name=label, value=value, inline=False)
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
 
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-
-        await interaction.followup.send(embed=embed)
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send("❌ Database not connected.", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ Error updating rates: {str(e)}", ephemeral=True)
 
@@ -568,25 +548,24 @@ async def setrate(
     payout="Reset Payout rate",
     gift="Reset Gift rate",
     nct="Reset NCT rate",
-    ct="Reset CT rate",
-    channel="Optional: Target a specific text channel"
+    ct="Reset CT rate"
 )
 async def resetrate(
     interaction: discord.Interaction,
     payout: bool = False,
     gift: bool = False,
     nct: bool = False,
-    ct: bool = False,
-    channel: discord.TextChannel = None
+    ct: bool = False
 ):
     await interaction.response.defer(ephemeral=True)
+
     if not interaction.user.guild_permissions.administrator:
         await interaction.followup.send("❌ You must be an administrator to use this command.", ephemeral=True)
         return
 
     guild_id = str(interaction.guild.id)
-    channel_id = str(channel.id) if channel else None
 
+    # Check if any option was selected
     if not any([payout, gift, nct, ct]):
         await interaction.followup.send("❗ Please select at least one rate to reset.", ephemeral=True)
         return
@@ -608,36 +587,38 @@ async def resetrate(
         reset_fields.append("CT")
 
     try:
-        query = {"guild_id": guild_id}
-        if channel_id:
-            query["channel_id"] = channel_id
+        if rates_collection is not None:
+            result = rates_collection.update_one(
+                {"guild_id": guild_id},
+                {"$set": update_data}
+            )
 
-        result = rates_collection.update_one(query, {"$set": update_data})
-
-        if result.modified_count > 0 or result.upserted_id is not None:
-            embed = discord.Embed(
-                title="✅ Rates Reset",
-                description="Selected rates have been successfully reset to default values.",
-                color=discord.Color.green()
-            )
-            embed.add_field(
-                name="Reset Fields",
-                value=", ".join(reset_fields),
-                inline=False
-            )
-            target = f"Channel `{channel.name}`" if channel else "Guild-wide"
-            embed.add_field(
-                name="Target",
-                value=target,
-                inline=False
-            )
+            if result.modified_count > 0 or result.upserted_id is not None:
+                embed = discord.Embed(
+                    title="✅ Rates Reset",
+                    description="Selected rates have been successfully reset to default values.",
+                    color=discord.Color.green()
+                )
+                embed.add_field(
+                    name="Reset Fields",
+                    value=", ".join(reset_fields),
+                    inline=False
+                )
+            else:
+                embed = discord.Embed(
+                    title="⚠️ No Changes Made",
+                    description="No matching server found or no actual changes were needed.",
+                    color=discord.Color.orange()
+                )
         else:
             embed = discord.Embed(
-                title="⚠️ No Changes Made",
-                description="No matching server or channel found, or no actual changes were needed.",
-                color=discord.Color.orange()
+                title="❌ Database Error",
+                description="Database not connected.",
+                color=discord.Color.red()
             )
+
         await interaction.followup.send(embed=embed)
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error resetting rates: {str(e)}", ephemeral=True)
 
@@ -650,8 +631,7 @@ async def payout(interaction: discord.Interaction, robux: int):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     php = robux * (rates["payout"] / 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -670,8 +650,7 @@ async def payoutreverse(interaction: discord.Interaction, php: float):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     robux = round((php / rates["payout"]) * 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -691,8 +670,7 @@ async def gift(interaction: discord.Interaction, robux: int):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     php = robux * (rates["gift"] / 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -710,8 +688,7 @@ async def giftreverse(interaction: discord.Interaction, php: float):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     robux = round((php / rates["gift"]) * 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -730,8 +707,7 @@ async def nct(interaction: discord.Interaction, robux: int):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     php = robux * (rates["nct"] / 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -750,8 +726,7 @@ async def nctreverse(interaction: discord.Interaction, php: float):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     robux = round((php / rates["nct"]) * 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -771,8 +746,7 @@ async def ct(interaction: discord.Interaction, robux: int):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     php = robux * (rates["ct"] / 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -791,8 +765,7 @@ async def ctreverse(interaction: discord.Interaction, php: float):
         return
     
     guild_id = interaction.guild.id
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
     robux = round((php / rates["ct"]) * 1000)
     
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -812,8 +785,7 @@ async def allrates(interaction: discord.Interaction, robux: int):
         return
 
     guild_id = str(interaction.guild.id)
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
 
     embed = discord.Embed(
         title=f"Robux Conversion Rates ({robux} Robux)",
@@ -848,8 +820,7 @@ async def allratesreverse(interaction: discord.Interaction, php: float):
         return
 
     guild_id = str(interaction.guild.id)
-    channel_id = str(interaction.channel.id)
-    rates = get_current_rates(guild_id, channel_id)
+    rates = get_current_rates(guild_id)
 
     embed = discord.Embed(
         title="PHP to Robux Conversion",
