@@ -92,9 +92,14 @@ else:
         # Create TTL indexes
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
-
-        # Create index for guild_id in rates collection
-        rates_collection.create_index([("guild_id", ASCENDING), ("channel_id", ASCENDING)], unique=True)
+        
+        try:
+            db.rates.drop_index("guild_id_1")
+        except Exception as e:
+            print(f"[Index] No existing index found: {e}")
+            
+        # Create new compound index to support per-channel rates
+    db.rates.create_index([("guild_id", ASCENDING), ("channel_id", ASCENDING)], unique=True, name="guild_channel_rate")
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
@@ -149,7 +154,10 @@ def get_current_rates(guild_id: str, channel_id: str = None):
 
     # First try to find channel-specific rate
     if channel_id:
-        result = rates_collection.find_one({"guild_id": guild_id, "channel_id": str(channel_id)})
+        result = rates_collection.find_one({
+            "guild_id": guild_id,
+            "channel_id": str(channel_id)
+        })
         if result:
             return {
                 "payout": result.get("payout_rate", 330.0),
@@ -496,7 +504,6 @@ async def setrate(
         "ct_rate": ct_rate if ct_rate is not None else current_rates["ct"]
     }
 
-    # Enforce minimum rate limits
     errors = []
     if payout_rate is not None and payout_rate < DEFAULT_RATES["payout_rate"]:
         errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout_rate']}/1000 Robux)")
@@ -525,38 +532,31 @@ async def setrate(
         update_data["channel_id"] = channel_id
 
     try:
-        if rates_collection is not None:
-            query = {"guild_id": guild_id}
-            if channel_id:
-                query["channel_id"] = channel_id
+        query = {"guild_id": guild_id}
+        if channel_id:
+            query["channel_id"] = channel_id
 
-            rates_collection.update_one(
-                query,
-                {"$set": update_data},
-                upsert=True
-            )
+        rates_collection.update_one(query, {"$set": update_data}, upsert=True)
 
-            embed = discord.Embed(title="✅ Rates Updated", color=discord.Color.green())
-            updated_fields = []
+        embed = discord.Embed(title="✅ Rates Updated", color=discord.Color.green())
+        updated_fields = []
 
-            for label, value in [
-                ("Payout Rate", new_rates['payout_rate']),
-                ("Gift Rate", new_rates['gift_rate']),
-                ("NCT Rate", new_rates['nct_rate']),
-                ("CT Rate", new_rates['ct_rate'])
-            ]:
-                if locals().get(label.lower().replace(" ", "_")) is not None:
-                    updated_fields.append((f"• {label}", f"₱{value:.2f} / 1000 Robux"))
+        for label, value in [
+            ("Payout Rate", new_rates['payout_rate']),
+            ("Gift Rate", new_rates['gift_rate']),
+            ("NCT Rate", new_rates['nct_rate']),
+            ("CT Rate", new_rates['ct_rate'])
+        ]:
+            if locals().get(label.lower().replace(" ", "_")) is not None:
+                updated_fields.append((f"• {label}", f"₱{value:.2f} / 1000 Robux"))
 
-            for label, value in updated_fields:
-                embed.add_field(name=label, value=value, inline=False)
+        for label, value in updated_fields:
+            embed.add_field(name=label, value=value, inline=False)
 
-            embed.set_footer(text="Neroniel")
-            embed.timestamp = datetime.now(PH_TIMEZONE)
+        embed.set_footer(text="Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
 
-            await interaction.followup.send(embed=embed)
-        else:
-            await interaction.followup.send("❌ Database not connected.", ephemeral=True)
+        await interaction.followup.send(embed=embed)
     except Exception as e:
         await interaction.followup.send(f"❌ Error updating rates: {str(e)}", ephemeral=True)
 
@@ -585,7 +585,6 @@ async def resetrate(
     guild_id = str(interaction.guild.id)
     channel_id = str(channel.id) if channel else None
 
-    # Check if any option was selected
     if not any([payout, gift, nct, ct]):
         await interaction.followup.send("❗ Please select at least one rate to reset.", ephemeral=True)
         return
@@ -607,44 +606,34 @@ async def resetrate(
         reset_fields.append("CT")
 
     try:
-        if rates_collection is not None:
-            query = {"guild_id": guild_id}
-            if channel_id:
-                query["channel_id"] = channel_id
+        query = {"guild_id": guild_id}
+        if channel_id:
+            query["channel_id"] = channel_id
 
-            result = rates_collection.update_one(
-                query,
-                {"$set": update_data}
+        result = rates_collection.update_one(query, {"$set": update_data})
+
+        if result.modified_count > 0 or result.upserted_id is not None:
+            embed = discord.Embed(
+                title="✅ Rates Reset",
+                description="Selected rates have been successfully reset to default values.",
+                color=discord.Color.green()
             )
-
-            if result.modified_count > 0 or result.upserted_id is not None:
-                embed = discord.Embed(
-                    title="✅ Rates Reset",
-                    description="Selected rates have been successfully reset to default values.",
-                    color=discord.Color.green()
-                )
-                embed.add_field(
-                    name="Reset Fields",
-                    value=", ".join(reset_fields),
-                    inline=False
-                )
-                target = f"Channel `{channel.name}`" if channel else "Guild-wide"
-                embed.add_field(
-                    name="Target",
-                    value=target,
-                    inline=False
-                )
-            else:
-                embed = discord.Embed(
-                    title="⚠️ No Changes Made",
-                    description="No matching server or channel found, or no actual changes were needed.",
-                    color=discord.Color.orange()
-                )
+            embed.add_field(
+                name="Reset Fields",
+                value=", ".join(reset_fields),
+                inline=False
+            )
+            target = f"Channel `{channel.name}`" if channel else "Guild-wide"
+            embed.add_field(
+                name="Target",
+                value=target,
+                inline=False
+            )
         else:
             embed = discord.Embed(
-                title="❌ Database Error",
-                description="Database not connected.",
-                color=discord.Color.red()
+                title="⚠️ No Changes Made",
+                description="No matching server or channel found, or no actual changes were needed.",
+                color=discord.Color.orange()
             )
         await interaction.followup.send(embed=embed)
     except Exception as e:
