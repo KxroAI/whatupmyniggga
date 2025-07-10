@@ -75,7 +75,6 @@ db = None
 conversations_collection = None
 reminders_collection = None
 rates_collection = None
-
 mongo_uri = os.getenv("MONGO_URI")
 if not mongo_uri:
     print("[!] MONGO_URI not found in environment. MongoDB will be disabled.")
@@ -83,7 +82,6 @@ else:
     try:
         client = MongoClient(mongo_uri, tlsCAFile=certifi.where())
         db = client.ai_bot
-
         # Initialize collections
         conversations_collection = db.conversations
         reminders_collection = db.reminders
@@ -92,21 +90,18 @@ else:
         # Create TTL indexes
         conversations_collection.create_index("timestamp", expireAfterSeconds=604800)  # 7 days
         reminders_collection.create_index("reminder_time", expireAfterSeconds=2592000)  # 30 days
-        
+
         try:
-        db.rates.drop_index("guild_id_1")
-    except Exception as e:
-        print(f"[Index] No existing index found: {e}")
-        
-# Now create the new index outside of the try-except block
-        try:
-        db.rates.create_index(
-        [("guild_id", ASCENDING), ("channel_id", ASCENDING)],
-        unique=True,
-        name="guild_channel_rate"
-        )
+            db.rates.drop_index("guild_id_1")
         except Exception as e:
-    print(f"[Index] Failed to create compound index: {e}")
+            print(f"[Index] No existing index found: {e}")
+
+        # Create new compound index to support per-channel rates
+        db.rates.create_index(
+            [("guild_id", ASCENDING), ("channel_id", ASCENDING)],
+            unique=True,
+            name="guild_channel_rate"
+        )
 
         print("✅ Successfully connected to MongoDB")
     except Exception as e:
