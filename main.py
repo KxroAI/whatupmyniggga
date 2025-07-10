@@ -543,77 +543,96 @@ async def setrate(
         await interaction.followup.send(f"❌ Error updating rates: {str(e)}", ephemeral=True)
 
 # Reset Rate
-@bot.tree.command(name="resetrate", description="Reset specific conversion rates back to default (e.g., payout, gift)")
+@bot.tree.command(name="setrate", description="Set custom conversion rates for this server (minimum allowed rates enforced)")
 @app_commands.describe(
-    payout="Reset Payout rate",
-    gift="Reset Gift rate",
-    nct="Reset NCT rate",
-    ct="Reset CT rate"
+    payout_rate="PHP per 1000 Robux for Payout",
+    gift_rate="PHP per 1000 Robux for Gift",
+    nct_rate="PHP per 1000 Robux for NCT",
+    ct_rate="PHP per 1000 Robux for CT"
 )
-async def resetrate(
+async def setrate(
     interaction: discord.Interaction,
-    payout: bool = False,
-    gift: bool = False,
-    nct: bool = False,
-    ct: bool = False
+    payout_rate: float = None,
+    gift_rate: float = None,
+    nct_rate: float = None,
+    ct_rate: float = None
 ):
+    await interaction.response.defer(ephemeral=True)
+
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ You must be an administrator to use this command.", ephemeral=True)
+        await interaction.followup.send("❌ You must be an administrator to use this command.", ephemeral=True)
         return
 
     guild_id = str(interaction.guild.id)
+    current_rates = get_current_rates(guild_id)
 
-    # Check if any rate was selected
-    if not any([payout, gift, nct, ct]):
-        await interaction.response.send_message("❗ Please select at least one rate to reset.", ephemeral=True)
+    # Prepare new values, preserving existing ones if not provided
+    new_rates = {
+        "payout_rate": payout_rate if payout_rate is not None else current_rates["payout"],
+        "gift_rate": gift_rate if gift_rate is not None else current_rates["gift"],
+        "nct_rate": nct_rate if nct_rate is not None else current_rates["nct"],
+        "ct_rate": ct_rate if ct_rate is not None else current_rates["ct"]
+    }
+
+    # Enforce minimum rate limits
+    errors = []
+    if payout_rate is not None and payout_rate < DEFAULT_RATES["payout_rate"]:
+        errors.append(f"Payout Rate (min: ₱{DEFAULT_RATES['payout_rate']}/1000 Robux)")
+    if gift_rate is not None and gift_rate < DEFAULT_RATES["gift_rate"]:
+        errors.append(f"Gift Rate (min: ₱{DEFAULT_RATES['gift_rate']}/1000 Robux)")
+    if nct_rate is not None and nct_rate < DEFAULT_RATES["nct_rate"]:
+        errors.append(f"NCT Rate (min: ₱{DEFAULT_RATES['nct_rate']}/1000 Robux)")
+    if ct_rate is not None and ct_rate < DEFAULT_RATES["ct_rate"]:
+        errors.append(f"CT Rate (min: ₱{DEFAULT_RATES['ct_rate']}/1000 Robux)")
+
+    if errors:
+        error_msg = "❗ You cannot set rates below the minimum:\n" + "\n".join(errors)
+        await interaction.followup.send(error_msg, ephemeral=True)
         return
 
-    update_data = {}
-    reset_fields = []
-
-    if payout:
-        update_data["payout_rate"] = DEFAULT_RATES["payout"]
-        reset_fields.append("Payout")
-    if gift:
-        update_data["gift_rate"] = DEFAULT_RATES["gift"]
-        reset_fields.append("Gift")
-    if nct:
-        update_data["nct_rate"] = DEFAULT_RATES["nct"]
-        reset_fields.append("NCT")
-    if ct:
-        update_data["ct_rate"] = DEFAULT_RATES["ct"]
-        reset_fields.append("CT")
+    update_data = {
+        "guild_id": guild_id,
+        "payout_rate": new_rates["payout_rate"],
+        "gift_rate": new_rates["gift_rate"],
+        "nct_rate": new_rates["nct_rate"],
+        "ct_rate": new_rates["ct_rate"],
+        "updated_at": datetime.now(PH_TIMEZONE)
+    }
 
     try:
         if rates_collection is not None:
-            result = rates_collection.update_one(
+            rates_collection.update_one(
                 {"guild_id": guild_id},
-                {"$set": update_data}
+                {"$set": update_data},
+                upsert=True
             )
 
-            if result.modified_count > 0 or result.upserted_id is not None:
-                embed = discord.Embed(
-                    title="✅ Rates Reset",
-                    description="Selected rates have been reset to default values.",
-                    color=discord.Color.green()
-                )
-                embed.add_field(
-                    name="Reset Fields",
-                    value=", ".join(reset_fields),
-                    inline=False
-                )
-            else:
-                embed = discord.Embed(
-                    title="⚠️ No Changes Made",
-                    description="No matching server found or no actual changes were needed.",
-                    color=discord.Color.orange()
-                )
+            embed = discord.Embed(
+                title="✅ Rates Updated",
+                color=discord.Color.green()
+            )
 
-            await interaction.response.send_message(embed=embed)
+            updated_fields = []
+            if payout_rate is not None:
+                updated_fields.append(("• Payout Rate", f"₱{new_rates['payout_rate']:.2f} / 1000 Robux"))
+            if gift_rate is not None:
+                updated_fields.append(("• Gift Rate", f"₱{new_rates['gift_rate']:.2f} / 1000 Robux"))
+            if nct_rate is not None:
+                updated_fields.append(("• NCT Rate", f"₱{new_rates['nct_rate']:.2f} / 1000 Robux"))
+            if ct_rate is not None:
+                updated_fields.append(("• CT Rate", f"₱{new_rates['ct_rate']:.2f} / 1000 Robux"))
+
+            for label, value in updated_fields:
+                embed.add_field(name=label, value=value, inline=False)
+
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+
+            await interaction.followup.send(embed=embed)
         else:
-            await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
+            await interaction.followup.send("❌ Database not connected.", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Error resetting rates: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"❌ Error updating rates: {str(e)}", ephemeral=True)
 
 # Payout Rate
 @bot.tree.command(name="payout", description="Convert Robux to PHP based on current Payout rate")
