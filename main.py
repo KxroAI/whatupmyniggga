@@ -1665,12 +1665,20 @@ COOKIES = {
     '.ROBLOSECURITY': os.getenv('ROBBLOX_COOKIE'),
 }
 
-@bot.tree.command(name="checkpayout", description="Check user payout eligibility")
-async def checkpayout(interaction: discord.Interaction, user_id: str):
+@bot.tree.command(name="check_payout", description="Check user payout eligibility")
+async def check_payout(interaction: discord.Interaction, user_id: str):
     url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
     
+    # Debugging: Print the cookie
+    print(COOKIES)
+
+    # Add User-Agent header
+    headers = {
+        'User -Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
     # Make the request with cookies
-    response = requests.get(url, cookies=COOKIES)
+    response = requests.get(url, cookies=COOKIES, headers=headers)
 
     if response.status_code == 200:
         data = response.json()
