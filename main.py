@@ -1661,20 +1661,22 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 # ========== Check Payout Command ==========
 GROUP_ID = '5838002'
 
+# Get the Roblox cookie from the environment variable
 COOKIES = {
     '.ROBLOSECURITY': os.getenv('ROBBLOX_COOKIE'),
 }
 
-@bot.tree.command(name="check_payout", description="Check user payout eligibility")
-async def check_payout(interaction: discord.Interaction, user_id: str):
+@bot.tree.command(name="checkpayout", description="Check user payout eligibility")
+async def checkpayout(interaction: discord.Interaction, user_id: str):
     url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}"
     
-    # Debugging: Print the cookie
-    print(COOKIES)
+    # Debugging: Print the request URL
+    print(f"Request URL: {url}")
 
-    # Add User-Agent header
+    # Add User-Agent and Content-Type headers
     headers = {
-        'User -Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User -Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Content-Type': 'application/json'
     }
 
     # Make the request with cookies
@@ -1684,8 +1686,8 @@ async def check_payout(interaction: discord.Interaction, user_id: str):
         data = response.json()
         await interaction.response.send_message(f"Payout eligibility data: {data}")
     else:
+        print(response.text)  # Print the full response text for debugging
         await interaction.response.send_message(f"Error: {response.status_code} - {response.text}")
-
 
 # ========== Check Command ==========
 async def get_csrf_token(session):
