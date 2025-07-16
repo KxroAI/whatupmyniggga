@@ -230,7 +230,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
     # Rate limiting: 5 requests per minute
     current_time = asyncio.get_event_loop().time()
     timestamps = bot.ask_rate_limit[user_id]
-    
+
     # Clean up old timestamps before appending new one
     bot.ask_rate_limit[user_id] = [t for t in timestamps if current_time - t <= 60]
     bot.ask_rate_limit[user_id].append(current_time)
@@ -629,11 +629,11 @@ async def payout(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     php = robux * (rates["payout"] / 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -648,11 +648,11 @@ async def payoutreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     robux = round((php / rates["payout"]) * 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
@@ -668,11 +668,11 @@ async def gift(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     php = robux * (rates["gift"] / 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -686,18 +686,18 @@ async def giftreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     robux = round((php / rates["gift"]) * 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
-    
+
 # NCT Rate
 @bot.tree.command(name="nct", description="Convert Robux to PHP based on current NCT rate")
 @app_commands.describe(robux="How much Robux do you want to convert?")
@@ -705,11 +705,11 @@ async def nct(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Invalid input.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     php = robux * (rates["nct"] / 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -724,11 +724,11 @@ async def nctreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     robux = round((php / rates["nct"]) * 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
@@ -744,11 +744,11 @@ async def ct(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Invalid input.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     php = robux * (rates["ct"] / 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
@@ -763,11 +763,11 @@ async def ctreverse(interaction: discord.Interaction, php: float):
     if php <= 0:
         await interaction.response.send_message("❗ PHP amount must be greater than zero.")
         return
-    
+
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
     robux = round((php / rates["ct"]) * 1000)
-    
+
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
     embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
@@ -854,9 +854,9 @@ async def beforetax(interaction: discord.Interaction, robux: int):
     if robux <= 0:
         await interaction.response.send_message("❗ Robux amount must be greater than zero.")
         return
-    
+
     received = math.floor(robux * 0.7)
-    
+
     embed = discord.Embed(
         color=discord.Color.from_rgb(0, 0, 0)
     )
@@ -869,7 +869,7 @@ async def beforetax(interaction: discord.Interaction, robux: int):
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    
+
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="aftertax", description="Calculate how much Robux to send to receive desired amount after 30% tax")
@@ -878,9 +878,9 @@ async def aftertax(interaction: discord.Interaction, target: int):
     if target <= 0:
         await interaction.response.send_message("❗ Target Robux must be greater than zero.")
         return
-    
+
     sent = math.ceil(target / 0.7)
-    
+
     embed = discord.Embed(
         color=discord.Color.from_rgb(0, 0, 0)
     )
@@ -893,7 +893,7 @@ async def aftertax(interaction: discord.Interaction, target: int):
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    
+
     await interaction.response.send_message(embed=embed)
 
 # ConvertCurrency
@@ -1656,60 +1656,46 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 
     message = f"[EmbedEZ]({instagramez_link})"
     await interaction.response.send_message(message, ephemeral=False)
-    
 
-# ========== Eligible Command ==========
-@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
+
+# ========== Eligible Command =======
+GROUP_ID = os.getenv('GROUP_ID')
+ROBLOX_COOKIE = os.getenv('ROBLOX_COOKIE')
+
+@bot.tree.command(name="checkpayout", description="Check user payout eligibility in the group")
 @app_commands.describe(user_id="The Roblox user ID to check")
 async def check_payout(interaction: discord.Interaction, user_id: str):
-    GROUP_ID = int(os.getenv("GROUP_ID"))
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-
-    if not ROBLOX_COOKIE or not GROUP_ID:
-        await interaction.response.send_message("❌ Missing required environment variables (`ROBLOX_COOKIE` or `GROUP_ID`).", ephemeral=True)
-        return
-
-    url = f'https://economy.roblox.com/v1/groups/ {GROUP_ID}/users-payout-eligibility?userIds={user_id}'
+    url = f'https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}'
+    
+    # Set up headers with the Roblox cookie for authentication
     headers = {
-        'Cookie': f'.ROBLOSECURITY={ROBLOX_COOKIE}'
+        'Cookie': ROBLOX_COOKIE
     }
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                text = await response.text()
-                data = None
-                try:
-                    data = json.loads(text)
-                except json.JSONDecodeError:
-                    pass  # Ignore decode error
+    # Make the request
+    response = requests.get(url, headers=headers)
 
-                print(f"[DEBUG] /checkpayout - Status: {response.status}, Response: {text}")
+    # Debugging: Print the response status code and content
+    print(f"Response Status Code: {response.status_code}")
+    print(f"Response Content: {response.text}")
 
-                if response.status == 200 and data:
-                    eligibility_data = data.get("usersGroupPayoutEligibility", {})
-                    if user_id in eligibility_data:
-                        eligibility_status = eligibility_data[user_id]
-                        embed = discord.Embed(
-                            title="🧾 Payout Eligibility",
-                            description=f"User ID: `{user_id}`\n**Eligible:** `{eligibility_status}`",
-                            color=discord.Color.green() if eligibility_status else discord.Color.red()
-                        )
-                        embed.set_footer(text="Neroniel")
-                        embed.timestamp = datetime.now(PH_TIMEZONE)
-                        await interaction.response.send_message(embed=embed)
-                    else:
-                        await interaction.response.send_message("⚠️ User not found or no payout eligibility data available.", ephemeral=True)
-                elif response.status == 403:
-                    await interaction.response.send_message("❌ Error: Insufficient permissions.", ephemeral=True)
-                elif response.status == 404:
-                    await interaction.response.send_message("❌ Error: Invalid Group ID or User not found.", ephemeral=True)
-                else:
-                    await interaction.response.send_message(f"❌ Error fetching data. Status Code: {response.status}\n```{text}```", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"⚠️ An unexpected error occurred: {str(e)}", ephemeral=True)
-        print(f"[ERROR] /checkpayout: {e}")
+    if response.status_code == 200:
+        data = response.json()
+        eligibility_data = data.get("usersGroupPayoutEligibility", {})
         
+        if str(user_id) in eligibility_data:
+            eligibility_status = eligibility_data[str(user_id)]
+            await interaction.response.send_message(f'User ID: {user_id} is {eligibility_status}')
+        else:
+            await interaction.response.send_message('User not found or no payout eligibility data available.')
+    elif response.status_code == 403:
+        await interaction.response.send_message('Error: Insufficient permissions.')
+    elif response.status_code == 404:
+        await interaction.response.send_message('Error: User not found or invalid Group ID.')
+    else:
+        await interaction.response.send_message(f'Error fetching data. Status Code: {response.status_code}, Message: {response.text}')
+
+
 
 # ========== Check Command ==========
 async def get_csrf_token(session):
@@ -1905,19 +1891,19 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
         # First row - Username and UserID 
         embed.add_field(name="Username", value=info["username"], inline=True)
         embed.add_field(name="UserID", value=str(info["userid"]), inline=True)
-        
+
         # Second row - Robux and Credit
         embed.add_field(name="Robux | Credit", value=f"{info['robux']} | ${info['credit']}", inline=True)
-        
+
         # Third row - Email and Phone
         email_status = "Verified" if info["email_verified"] else "Add Email"
         phone_status = "Verified" if info["phone_verified"] else "Add Phone"
         embed.add_field(name="Email | Phone", value=f"{email_status} | {phone_status}", inline=True)
-        
+
         # Fourth row - Inventory and RAP
         inventory_status = "[Public](https://www.roblox.com/users/{}/inventory/)".format(info["userid"])  if info["inv_public"] else "Private"
         embed.add_field(name="Inventory | RAP", value=f"{inventory_status} | {info['rap']}", inline=True)
-        
+
         # Fifth row - Membership and Primary Group
         premium_status = "Premium" if info["premium"] else "Non Premium"
         if info["group"]:
@@ -1926,7 +1912,7 @@ async def check(interaction: Interaction, cookie: str = None, username: str = No
         else:
             group_link = "N/A"
         embed.add_field(name="Membership | Primary Group", value=f"{premium_status} | {group_link}", inline=True)
-        
+
         # Sixth row - Description
         description = info['description'] if info['description'] else "N/A"
         embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
