@@ -1659,7 +1659,57 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
     
 
 # ========== Eligible Command ==========
-#1q23
+@bot.tree.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout.")
+@app_commands.describe(user_id="The Roblox user ID to check")
+async def check_payout(interaction: discord.Interaction, user_id: str):
+    GROUP_ID = int(os.getenv("GROUP_ID"))
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+
+    if not ROBLOX_COOKIE or not GROUP_ID:
+        await interaction.response.send_message("❌ Missing required environment variables (`ROBLOX_COOKIE` or `GROUP_ID`).", ephemeral=True)
+        return
+
+    url = f'https://economy.roblox.com/v1/groups/ {GROUP_ID}/users-payout-eligibility?userIds={user_id}'
+    headers = {
+        'Cookie': f'.ROBLOSECURITY={ROBLOX_COOKIE}'
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                text = await response.text()
+                data = None
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError:
+                    pass  # Ignore decode error
+
+                print(f"[DEBUG] /checkpayout - Status: {response.status}, Response: {text}")
+
+                if response.status == 200 and data:
+                    eligibility_data = data.get("usersGroupPayoutEligibility", {})
+                    if user_id in eligibility_data:
+                        eligibility_status = eligibility_data[user_id]
+                        embed = discord.Embed(
+                            title="🧾 Payout Eligibility",
+                            description=f"User ID: `{user_id}`\n**Eligible:** `{eligibility_status}`",
+                            color=discord.Color.green() if eligibility_status else discord.Color.red()
+                        )
+                        embed.set_footer(text="Neroniel")
+                        embed.timestamp = datetime.now(PH_TIMEZONE)
+                        await interaction.response.send_message(embed=embed)
+                    else:
+                        await interaction.response.send_message("⚠️ User not found or no payout eligibility data available.", ephemeral=True)
+                elif response.status == 403:
+                    await interaction.response.send_message("❌ Error: Insufficient permissions.", ephemeral=True)
+                elif response.status == 404:
+                    await interaction.response.send_message("❌ Error: Invalid Group ID or User not found.", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"❌ Error fetching data. Status Code: {response.status}\n```{text}```", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"⚠️ An unexpected error occurred: {str(e)}", ephemeral=True)
+        print(f"[ERROR] /checkpayout: {e}")
+        
 
 # ========== Check Command ==========
 async def get_csrf_token(session):
