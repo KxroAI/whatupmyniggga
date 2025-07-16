@@ -1659,7 +1659,7 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 
 
 # ========== Eligible Command =======
-GROUP_ID = os.getenv('GROUP_ID')
+GROUP_ID = '5838002'
 ROBLOX_COOKIE = os.getenv('ROBLOX_COOKIE')
 
 @bot.tree.command(name="checkpayout", description="Check user payout eligibility in the group")
