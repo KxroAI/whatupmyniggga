@@ -1658,42 +1658,69 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
     await interaction.response.send_message(message, ephemeral=False)
 
 
-# ========== Eligible Command =======
+# ========== Check Payout Command =======
 GROUP_ID = '5838002'
 ROBLOX_COOKIE = os.getenv('ROBLOX_COOKIE')
 
-@bot.tree.command(name="checkpayout", description="Check user payout eligibility in the group")
-@app_commands.describe(user_id="The Roblox user ID to check")
-async def check_payout(interaction: discord.Interaction, user_id: str):
-    url = f'https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}'
+@app_commands.command(name="checkpayout", description="Check User Payout Eligibility in the Group")
+@app_commands.describe(username="Roblox Username")
+async def check_payout(interaction: Interaction, username: str):
+    # Resolve username to user ID
+    username_to_id_url = "https://users.roblox.com/v1/usernames/users"
+    payload = {"usernames": [username]}
     
-    # Set up headers with the Roblox cookie for authentication
-    headers = {
-        'Cookie': ROBLOX_COOKIE
-    }
+    response = requests.post(username_to_id_url, json=payload)
 
-    # Make the request
-    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        embed = Embed(description=f"Failed to resolve username `{username}`.", color=0xff0000)
+        embed.set_footer(text="/group | Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.response.send_message(embed=embed)
+        return
 
-    # Debugging: Print the response status code and content
-    print(f"Response Status Code: {response.status_code}")
-    print(f"Response Content: {response.text}")
+    data = response.json()
+    if not data.get("data"):
+        embed = Embed(description=f"`{username}` does not exist.", color=0xff0000)
+        embed.set_footer(text="/group | Neroniel")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.response.send_message(embed=embed)
+        return
+
+    user_data = data["data"][0]
+    user_id = user_data["id"]
+    display_name = user_data["displayName"]
+
+    # Check payout eligibility
+    eligibility_url = f'https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payload-eligibility?userIds={user_id}'
+    headers = {'Cookie': ROBLOX_COOKIE}
+    
+    response = requests.get(eligibility_url, headers=headers)
+
+    # Build embed
+    embed = Embed(color=0x00bfff)
+    embed.set_footer(text="/group | Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
 
     if response.status_code == 200:
-        data = response.json()
-        eligibility_data = data.get("usersGroupPayoutEligibility", {})
-        
-        if str(user_id) in eligibility_data:
-            eligibility_status = eligibility_data[str(user_id)]
-            await interaction.response.send_message(f'User ID: {user_id} is {eligibility_status}')
-        else:
-            await interaction.response.send_message('User not found or no payout eligibility data available.')
+        try:
+            eligibility_data = response.json().get("usersGroupPayoutEligibility", {})
+            eligibility_status = eligibility_data.get(str(user_id))
+
+            if eligibility_status is None:
+                embed.description = f"`{username} ({display_name})` was not found in the payout eligibility list."
+            else:
+                status_text = "eligible" if eligibility_status else "not eligible"
+                embed.description = f"`{username} ({display_name})` is **{status_text}**"
+        except Exception:
+            embed.description = "Error parsing response data."
     elif response.status_code == 403:
-        await interaction.response.send_message('Error: Insufficient permissions.')
+        embed.description = "Error: Insufficient Permissions."
     elif response.status_code == 404:
-        await interaction.response.send_message('Error: User not found or invalid Group ID.')
+        embed.description = "Error: Invalid Group or User ID."
     else:
-        await interaction.response.send_message(f'Error fetching data. Status Code: {response.status_code}, Message: {response.text}')
+        embed.description = f"Error fetching data. Status code: {response.status_code}"
+
+    await interaction.response.send_message(embed=embed)
 
 
 
