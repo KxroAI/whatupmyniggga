@@ -1247,7 +1247,7 @@ async def listallcommands(interaction: discord.Interaction, category: app_comman
 - `/convertcurrency <amount> <from> <to>` - Convert between currencies
 - `/beforetax <robux>` - Calculate how much Robux you'll receive after 30% tax
 - `/aftertax <robux>` - Calculate how much Robux to send to receive desired amount after 30% tax
-- `/checkpayout <user_id>` - Check if a Roblox user is Eligible for Group Payout.
+- `/checkpayout <username>` - Check User Payout Eligibility in the Group
         """,
         "utility": """
 - `/userinfo [user]` - View detailed info about a user  
@@ -1662,7 +1662,7 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 GROUP_ID = '5838002'
 ROBLOX_COOKIE = os.getenv('ROBLOX_COOKIE')
 
-@app_commands.command(name="checkpayout", description="Check User Payout Eligibility in the Group")
+@bot.tree.command(name="checkpayout", description="Check User Payout Eligibility in the Group")
 @app_commands.describe(username="Roblox Username")
 async def check_payout(interaction: Interaction, username: str):
     # Resolve username to user ID
