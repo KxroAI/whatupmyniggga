@@ -1710,7 +1710,7 @@ async def check_payout(interaction: discord.Interaction, username: str):
                     in_group = any(group['group']['id'] == int(GROUP_ID) for group in groups['data'])
 
                     if not in_group:
-                        embed.description = f"❌ `{username}` ({display_name}) is not a member of the Group."
+                        embed.description = f"`{username}` ({display_name}) is ❌ not a member of the Group."
                         embed.color = discord.Color.red()
                         await interaction.followup.send(embed=embed)
                         return
@@ -1760,7 +1760,7 @@ async def check_payout(interaction: discord.Interaction, username: str):
                                     # Handle string values
                                     status_text = "✅ Eligible" if str(eligibility_status).lower() in ['true', 'eligible'] else "❌ Not Currently Eligible"
                                 
-                                embed.description = f"**Payout Eligibility Check**\n\n`{username}` ({display_name}) is **{status_text}**"
+                                embed.description = f"`{username}` ({display_name}) is **{status_text}**"
                                 embed.color = discord.Color.green() if "✅" in status_text else discord.Color.red()
                         else:
                             embed.description = "❌ Invalid response format from Roblox API."
