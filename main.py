@@ -1668,6 +1668,7 @@ async def check_payout(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=False)
 
     embed = discord.Embed(color=0x00bfff)
+    embed.title = "1cy"
     embed.set_footer(text="/group | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
