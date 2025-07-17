@@ -1247,7 +1247,7 @@ async def listallcommands(interaction: discord.Interaction, category: app_comman
 - `/convertcurrency <amount> <from> <to>` - Convert between currencies
 - `/beforetax <robux>` - Calculate how much Robux you'll receive after 30% tax
 - `/aftertax <robux>` - Calculate how much Robux to send to receive desired amount after 30% tax
-- `/checkpayout <username>` - Check User Payout Eligibility in the Group
+- `/checkpayout <user_id>` - Check if a Roblox User is Eligible for Group Payout
         """,
         "utility": """
 - `/userinfo [user]` - View detailed info about a user  
@@ -1662,65 +1662,124 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 GROUP_ID = '5838002'
 ROBLOX_COOKIE = os.getenv('ROBLOX_COOKIE')
 
-@bot.tree.command(name="checkpayout", description="Check User Payout Eligibility in the Group")
+@bot.tree.command(name="checkpayout", description="Check if a Roblox User is Eligible for Group Payout")
 @app_commands.describe(username="Roblox Username")
-async def check_payout(interaction: Interaction, username: str):
-    # Resolve username to user ID
-    username_to_id_url = "https://users.roblox.com/v1/usernames/users"
-    payload = {"usernames": [username]}
-    
-    response = requests.post(username_to_id_url, json=payload)
+async def check_payout(interaction: discord.Interaction, username: str):
+    await interaction.response.defer(ephemeral=False)
 
-    if response.status_code != 200:
-        embed = Embed(description=f"Failed to resolve username `{username}`.", color=0xff0000)
-        embed.set_footer(text="/group | Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-        await interaction.response.send_message(embed=embed)
-        return
-
-    data = response.json()
-    if not data.get("data"):
-        embed = Embed(description=f"`{username}` does not exist.", color=0xff0000)
-        embed.set_footer(text="/group | Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-        await interaction.response.send_message(embed=embed)
-        return
-
-    user_data = data["data"][0]
-    user_id = user_data["id"]
-    display_name = user_data["displayName"]
-
-    # Check payout eligibility
-    eligibility_url = f'https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payload-eligibility?userIds={user_id}'
-    headers = {'Cookie': ROBLOX_COOKIE}
-    
-    response = requests.get(eligibility_url, headers=headers)
-
-    # Build embed
-    embed = Embed(color=0x00bfff)
+    embed = discord.Embed(color=0x00bfff)
     embed.set_footer(text="/group | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
-    if response.status_code == 200:
-        try:
-            eligibility_data = response.json().get("usersGroupPayoutEligibility", {})
-            eligibility_status = eligibility_data.get(str(user_id))
+    # Step 1: Resolve username to user_id and display_name
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = 'https://users.roblox.com/v1/usernames/users'
+            headers = {'Content-Type': 'application/json'}
+            data = {'usernames': [username], 'excludeBannedUsers': True}
 
-            if eligibility_status is None:
-                embed.description = f"`{username} ({display_name})` was not found in the payout eligibility list."
-            else:
-                status_text = "eligible" if eligibility_status else "not eligible"
-                embed.description = f"`{username} ({display_name})` is **{status_text}**"
-        except Exception:
-            embed.description = "Error parsing response data."
-    elif response.status_code == 403:
-        embed.description = "Error: Insufficient Permissions."
-    elif response.status_code == 404:
-        embed.description = "Error: Invalid Group or User ID."
-    else:
-        embed.description = f"Error fetching data. Status code: {response.status_code}"
+            async with session.post(url, headers=headers, json=data) as resp:
+                if resp.status == 200:
+                    json_data = await resp.json()
+                    if json_data['data']:
+                        user_id = json_data['data'][0]['id']
+                        display_name = json_data['data'][0]['displayName']
+                    else:
+                        embed.description = "❌ User not found with that username."
+                        embed.color = discord.Color.red()
+                        await interaction.followup.send(embed=embed)
+                        return
+                else:
+                    embed.description = f"❌ Error resolving username. Status code: {resp.status}"
+                    embed.color = discord.Color.red()
+                    await interaction.followup.send(embed=embed)
+                    return
+    except Exception as e:
+        embed.description = f"❌ An error occurred during username lookup: `{str(e)}`"
+        embed.color = discord.Color.red()
+        await interaction.followup.send(embed=embed)
+        return
 
-    await interaction.response.send_message(embed=embed)
+    # Step 2: Check if user is in the group
+    try:
+        async with aiohttp.ClientSession() as session:
+            membership_url = f'https://groups.roblox.com/v1/users/{user_id}/groups/roles'
+            async with session.get(membership_url) as membership_resp:
+                if membership_resp.status == 200:
+                    groups = await membership_resp.json()
+                    in_group = any(group['group']['id'] == int(GROUP_ID) for group in groups['data'])
+
+                    if not in_group:
+                        embed.description = f"❌ `{username}` ({display_name}) is not a member of the Group."
+                        embed.color = discord.Color.red()
+                        await interaction.followup.send(embed=embed)
+                        return
+                else:
+                    embed.description = f"❌ Error checking Group Membership. Status code: {membership_resp.status}"
+                    embed.color = discord.Color.red()
+                    await interaction.followup.send(embed=embed)
+                    return
+    except Exception as e:
+        embed.description = f"❌ An error occurred during Group Membership check: `{str(e)}`"
+        embed.color = discord.Color.red()
+        await interaction.followup.send(embed=embed)
+        return
+
+    # Step 3: Check payout eligibility
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f'https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}'
+            headers = {
+                'Cookie': ROBLOX_COOKIE,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+
+            async with session.get(url, headers=headers) as response:
+                text = await response.text()
+
+                if response.status == 200:
+                    try:
+                        data = json.loads(text)  # Using json.loads for more reliable parsing
+                        # Debugging: Print the raw response to see what we're getting
+                        print(f"Raw response data: {data}")
+                        
+                        # Check the correct structure for payout eligibility
+                        if "usersGroupPayoutEligibility" in data:
+                            eligibility_data = data["usersGroupPayoutEligibility"]
+                            eligibility_status = eligibility_data.get(str(user_id))
+                            
+                            if eligibility_status is None:
+                                embed.description = f"`{username}` ({display_name}) was not found in the Payout Eligibility list."
+                                embed.color = discord.Color.orange()
+                            else:
+                                # Check if the value is boolean or a string representation
+                                if isinstance(eligibility_status, bool):
+                                    status_text = "✅ Eligible" if eligibility_status else "❌ Not Currently Eligible"
+                                else:
+                                    # Handle string values
+                                    status_text = "✅ Eligible" if str(eligibility_status).lower() in ['true', 'eligible'] else "❌ Not Currently Eligible"
+                                
+                                embed.description = f"**Payout Eligibility Check**\n\n`{username}` ({display_name}) is **{status_text}**"
+                                embed.color = discord.Color.green() if "✅" in status_text else discord.Color.red()
+                        else:
+                            embed.description = "❌ Invalid response format from Roblox API."
+                            embed.color = discord.Color.red()
+                    except json.JSONDecodeError:
+                        embed.description = f"❌ Error parsing JSON response: {text}"
+                        embed.color = discord.Color.red()
+                    except Exception as e:
+                        embed.description = f"❌ Error processing response: {str(e)}"
+                        embed.color = discord.Color.red()
+                else:
+                    embed.description = f"❌ API Error: Status {response.status}\nResponse: {text}"
+                    embed.color = discord.Color.red()
+
+    except Exception as e:
+        embed.description = f"❌ An error occurred during payout check: `{str(e)}`"
+        embed.color = discord.Color.red()
+
+    await interaction.followup.send(embed=embed)
 
 
 
