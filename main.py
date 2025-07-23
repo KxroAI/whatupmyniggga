@@ -239,12 +239,15 @@ async def dmpermission(interaction: discord.Interaction, user: discord.User):
     # Add to in-memory set
     bot.dm_authorized_users.add(user_id)
 
-    # Store in MongoDB if available
+    # Save to MongoDB (synchronous — no 'await')
     if permissions_collection is not None:
         try:
-            await permissions_collection.update_one(
+            permissions_collection.update_one(
                 {"user_id": user_id},
-                {"$set": {"user_id": user_id, "granted_at": datetime.now(PH_TIMEZONE)}},
+                {"$set": {
+                    "user_id": user_id,
+                    "granted_at": datetime.now(PH_TIMEZONE)
+                }},
                 upsert=True
             )
             await interaction.response.send_message(
@@ -259,9 +262,9 @@ async def dmpermission(interaction: discord.Interaction, user: discord.User):
             )
             return
 
-    # Fallback: only in-memory
+    # Fallback: in-memory only
     await interaction.response.send_message(
-        f"✅ Permission granted to {user.mention} (in-memory only, database not available).",
+        f"✅ Permission granted to {user.mention} (in-memory only).",
         ephemeral=True
     )
 
@@ -274,17 +277,15 @@ async def dmrevoke(interaction: discord.Interaction, user: discord.User):
 
     user_id = user.id
 
-    # Remove from in-memory set
     if user_id not in bot.dm_authorized_users:
         await interaction.response.send_message(f"⚠️ {user.mention} does not have permission.", ephemeral=True)
         return
 
     bot.dm_authorized_users.discard(user_id)
 
-    # Remove from MongoDB if available
     if permissions_collection is not None:
         try:
-            await permissions_collection.delete_one({"user_id": user_id})
+            permissions_collection.delete_one({"user_id": user_id})
             await interaction.response.send_message(
                 f"✅ Permission revoked from {user.mention}.",
                 ephemeral=True
@@ -297,12 +298,11 @@ async def dmrevoke(interaction: discord.Interaction, user: discord.User):
             )
             return
 
-    # Fallback: only in-memory
     await interaction.response.send_message(
         f"✅ Permission revoked from {user.mention} (in-memory only).",
         ephemeral=True
     )
-
+    
 @bot.tree.command(name="dmlist", description="List all users authorized to use /dm and /dmall (Owner only)")
 async def dmlist(interaction: discord.Interaction):
     if interaction.user.id != BOT_OWNER_ID:
