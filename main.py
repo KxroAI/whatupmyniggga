@@ -105,13 +105,12 @@ else:
         reminders_collection = None
         rates_collection = None
 
-# New collection for permissions
 permissions_collection = None
 if db is not None:
     permissions_collection = db.permissions
     try:
-        # Create index on guild_id or user_id if needed
-        permissions_collection.create_index("user_id", unique=True)
+        # Create compound index for unique (guild_id, user_id)
+        permissions_collection.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
         print("✅ Permissions collection ready")
     except Exception as e:
         print(f"[!] Could not set up permissions collection: {e}")
@@ -240,7 +239,7 @@ async def dmall(interaction: discord.Interaction, message: str):
         f"❌ Failed to reach **{fail_count}** members."
     )
 
-@bot.tree.command(name="dmpermission", description="Grant a user permission to use /dm and /dmall (Owner only)")
+@bot.tree.command(name="dmpermission", description="Grant a user permission to use /dm and /dmall in this server (Owner only)")
 @app_commands.describe(user="The user to grant permission to")
 async def dmpermission(interaction: discord.Interaction, user: discord.User):
     if interaction.user.id != BOT_OWNER_ID:
@@ -248,23 +247,31 @@ async def dmpermission(interaction: discord.Interaction, user: discord.User):
         return
 
     user_id = user.id
+    guild_id = str(interaction.guild.id)
 
-    # Add to in-memory set
-    bot.dm_authorized_users.add(user_id)
+    # Add to in-memory structure (nested: guild_id → set of user_ids)
+    if not hasattr(bot, "dm_authorized_users"):
+        bot.dm_authorized_users = {}
 
-    # Save to MongoDB (synchronous — no 'await')
+    if guild_id not in bot.dm_authorized_users:
+        bot.dm_authorized_users[guild_id] = set()
+
+    bot.dm_authorized_users[guild_id].add(user_id)
+
+    # Save to MongoDB (server-specific)
     if permissions_collection is not None:
         try:
             permissions_collection.update_one(
-                {"user_id": user_id},
+                {"guild_id": guild_id, "user_id": user_id},
                 {"$set": {
                     "user_id": user_id,
+                    "guild_id": guild_id,
                     "granted_at": datetime.now(PH_TIMEZONE)
                 }},
                 upsert=True
             )
             await interaction.response.send_message(
-                f"✅ Permission granted to {user.mention}. They can now use `/dm` and `/dmall`.",
+                f"✅ Permission granted to {user.mention} for **this server only**.",
                 ephemeral=True
             )
             return
@@ -275,13 +282,12 @@ async def dmpermission(interaction: discord.Interaction, user: discord.User):
             )
             return
 
-    # Fallback: in-memory only
     await interaction.response.send_message(
-        f"✅ Permission granted to {user.mention} (in-memory only).",
+        f"✅ Permission granted to {user.mention} (in-memory, server-specific).",
         ephemeral=True
     )
 
-@bot.tree.command(name="dmrevoke", description="Revoke a user's permission to use /dm and /dmall (Owner only)")
+@bot.tree.command(name="dmrevoke", description="Revoke a user's permission to use /dm and /dmall in this server (Owner only)")
 @app_commands.describe(user="The user to revoke permission from")
 async def dmrevoke(interaction: discord.Interaction, user: discord.User):
     if interaction.user.id != BOT_OWNER_ID:
@@ -289,18 +295,26 @@ async def dmrevoke(interaction: discord.Interaction, user: discord.User):
         return
 
     user_id = user.id
+    guild_id = str(interaction.guild.id)
 
-    if user_id not in bot.dm_authorized_users:
-        await interaction.response.send_message(f"⚠️ {user.mention} does not have permission.", ephemeral=True)
+    # Check in-memory
+    if (not hasattr(bot, "dm_authorized_users") or
+        guild_id not in bot.dm_authorized_users or
+        user_id not in bot.dm_authorized_users[guild_id]):
+        await interaction.response.send_message(
+            f"⚠️ {user.mention} does not have permission in this server.",
+            ephemeral=True
+        )
         return
 
-    bot.dm_authorized_users.discard(user_id)
+    bot.dm_authorized_users[guild_id].discard(user_id)
 
+    # Remove from MongoDB
     if permissions_collection is not None:
         try:
-            permissions_collection.delete_one({"user_id": user_id})
+            permissions_collection.delete_one({"guild_id": guild_id, "user_id": user_id})
             await interaction.response.send_message(
-                f"✅ Permission revoked from {user.mention}.",
+                f"✅ Permission revoked from {user.mention} in this server.",
                 ephemeral=True
             )
             return
@@ -312,30 +326,38 @@ async def dmrevoke(interaction: discord.Interaction, user: discord.User):
             return
 
     await interaction.response.send_message(
-        f"✅ Permission revoked from {user.mention} (in-memory only).",
+        f"✅ Permission revoked from {user.mention} (in-memory).",
         ephemeral=True
     )
     
-@bot.tree.command(name="dmlist", description="List all users authorized to use /dm and /dmall (Owner only)")
+@bot.tree.command(name="dmlist", description="List users authorized to use /dm and /dmall in this server (Owner only)")
 async def dmlist(interaction: discord.Interaction):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
-    if not bot.dm_authorized_users:
-        await interaction.response.send_message("📝 No users currently have `/dm` permission.", ephemeral=True)
+    guild_id = str(interaction.guild.id)
+
+    # Get authorized users for this server
+    if (not hasattr(bot, "dm_authorized_users") or
+        guild_id not in bot.dm_authorized_users or
+        not bot.dm_authorized_users[guild_id]):
+        await interaction.response.send_message(
+            "📝 No users have `/dm` permission in this server.",
+            ephemeral=True
+        )
         return
 
     user_mentions = []
-    for uid in bot.dm_authorized_users:
+    for uid in bot.dm_authorized_users[guild_id]:
         try:
-            user = bot.get_user(uid) or await bot.fetch_user(uid)
-            user_mentions.append(f"{user.mention} (`{uid}`)")
+            u = bot.get_user(uid) or await bot.fetch_user(uid)
+            user_mentions.append(f"{u.mention} (`{uid}`)")
         except:
             user_mentions.append(f"`{uid}` (User not found)")
 
     embed = discord.Embed(
-        title="🔐 Authorized Users for `/dm` and `/dmall`",
+        title=f"🔐 Authorized Users in This Server",
         description="\n".join(user_mentions),
         color=discord.Color.gold()
     )
@@ -2287,20 +2309,27 @@ async def roblox(interaction: discord.Interaction, query: str):
 # ===========================
 @bot.event
 async def on_ready():
-    bot.dm_authorized_users = set()
     bot.xcsrf_token = None
+    bot.dm_authorized_users = {}
+
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
-    
+
+    # Load server-specific permissions from MongoDB
     global permissions_collection
     if permissions_collection is not None:
         try:
-            async for doc in permissions_collection.find({}):
-                bot.dm_authorized_users.add(doc["user_id"])
-            print(f"✅ Loaded {len(bot.dm_authorized_users)} authorized users for /dm and /dmall.")
+            cursor = permissions_collection.find({})
+            for doc in cursor:
+                guild_id = str(doc["guild_id"])
+                user_id = doc["user_id"]
+                if guild_id not in bot.dm_authorized_users:
+                    bot.dm_authorized_users[guild_id] = set()
+                bot.dm_authorized_users[guild_id].add(user_id)
+            print(f"✅ Loaded permissions for {len(bot.dm_authorized_users)} server(s).")
         except Exception as e:
-            print(f"[!] Failed to load /dm permissions from database: {e}")
+            print(f"[!] Failed to load server-specific permissions: {e}")
 
     # Start background tasks after bot is ready
     if reminders_collection is not None:
@@ -2308,7 +2337,7 @@ async def on_ready():
             print("✅ Starting reminder checker...")
             check_reminders.start()
 
-    # Update bot presence with group member count every 60 seconds
+    # Update bot presence with Roblox group member count
     GROUP_ID = int(os.getenv("GROUP_ID"))
     while True:
         try:
@@ -2332,7 +2361,6 @@ async def on_ready():
                 )
             )
         await asyncio.sleep(60)
-
 
 @bot.event
 async def on_message(message):
