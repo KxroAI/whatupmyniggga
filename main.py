@@ -36,13 +36,13 @@ load_dotenv()
 # ===========================
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True 
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # Rate limiting data
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
-bot.dm_authorized_users = set()
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -202,29 +202,42 @@ async def dmall(interaction: discord.Interaction, message: str):
     if interaction.user.id != BOT_OWNER_ID and interaction.user.id not in bot.dm_authorized_users:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
+
     guild = interaction.guild
     if guild is None:
         await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
         return
 
+    # Defer response (since fetching members may take time)
     await interaction.response.defer(ephemeral=True)
+
+    # Fetch all members if not already chunked
+    if not guild.chunked:
+        try:
+            await guild.chunk()  # This loads all members
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to fetch members: {e}", ephemeral=True)
+            return
+
     success_count = 0
     fail_count = 0
 
     for member in guild.members:
         if member.bot:
             continue  # Skip bots
+
         try:
             await member.send(message)
             success_count += 1
         except discord.Forbidden:
             fail_count += 1
         except Exception as e:
-            print(f"[!] Failed to send DM to {member}: {str(e)}")
+            print(f"[!] Failed to send DM to {member} ({member.id}): {str(e)}")
             fail_count += 1
 
     await interaction.followup.send(
-        f"✅ Successfully sent DM to **{success_count}** members. ❌ Failed to reach **{fail_count}** members."
+        f"✅ Successfully sent DM to **{success_count}** members. "
+        f"❌ Failed to reach **{fail_count}** members."
     )
 
 @bot.tree.command(name="dmpermission", description="Grant a user permission to use /dm and /dmall (Owner only)")
@@ -2274,6 +2287,7 @@ async def roblox(interaction: discord.Interaction, query: str):
 # ===========================
 @bot.event
 async def on_ready():
+    bot.dm_authorized_users = set()
     bot.xcsrf_token = None
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
