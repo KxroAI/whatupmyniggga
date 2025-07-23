@@ -2060,6 +2060,98 @@ async def snipe(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
+# ========== Snipe Command ==========
+@bot.tree.command(name="roblox", description="Get Roblox user information by username or user ID")
+@app_commands.describe(query="The Roblox username or user ID to look up")
+async def roblox(interaction: discord.Interaction, query: str):
+    await interaction.response.defer(ephemeral=False)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            user_id = None
+            username = None
+            display_name = None
+
+            # Step 1: Check if input is a number (assume it's a user ID)
+            if query.isdigit():
+                user_id = int(query)
+                # Fetch user info by ID
+                user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
+                async with session.get(user_info_url) as resp:
+                    if resp.status != 200:
+                        await interaction.followup.send("❌ User not found.", ephemeral=True)
+                        return
+                    full_data = await resp.json()
+                    username = full_data['name']
+                    display_name = full_data['displayName']
+            else:
+                # Assume it's a username, resolve it
+                resolve_url = "https://users.roblox.com/v1/usernames/users"
+                payload = {"usernames": [query]}
+                headers = {"Content-Type": "application/json"}
+                async with session.post(resolve_url, json=payload, headers=headers) as resp:
+                    if resp.status != 200:
+                        await interaction.followup.send("❌ Could not find a Roblox user with that name.", ephemeral=True)
+                        return
+                    data = await resp.json()
+                    if not data['data']:
+                        await interaction.followup.send("❌ User not found.", ephemeral=True)
+                        return
+                    user_data = data['data'][0]
+                    user_id = user_data['id']
+                    username = user_data['name']
+                    display_name = user_data['displayName']
+
+            # Step 2: Fetch full user info (if not already fetched)
+            if 'full_data' not in locals():
+                user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
+                async with session.get(user_info_url) as resp:
+                    if resp.status != 200:
+                        await interaction.followup.send("❌ Failed to fetch user details.")
+                        return
+                    full_data = await resp.json()
+
+            # Step 3: Fetch thumbnail
+            thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
+            async with session.get(thumb_url) as resp:
+                if resp.status == 200:
+                    thumb_data = await resp.json()
+                    image_url = thumb_data['data'][0]['imageUrl']
+                else:
+                    image_url = "https://www.roblox.com/asset-thumbnail/image?assetId=1&type=HeadShot&width=420&height=420&format=Png"
+
+            # Step 4: Format creation date
+            created_at = isoparse(full_data['created'])
+            created_str = created_at.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
+
+            # Step 5: Clean description
+            description = full_data.get("description", "No description.")
+            if not description.strip():
+                description = "No description."
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
+        return
+
+    # === Build Embed Exactly as Requested ===
+    embed = discord.Embed(
+        title=f"[{display_name}](https://www.roblox.com/users/{user_id}/profile) `{user_id}`",
+        description=f"**Roblox Information**\n"
+                   f"**@{username}**\n"
+                   f"Account Created: `{created_str}`",
+        color=discord.Color.from_rgb(0, 0, 0)
+    )
+    embed.set_thumbnail(url=image_url)
+    embed.add_field(
+        name="Description",
+        value=f"```\n{description}\n```" if description != "No description." else "No description.",
+        inline=False
+    )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.followup.send(embed=embed)
+
 
 # ===========================
 # Bot Events
