@@ -42,6 +42,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
+bot.dm_authorized_users = set()
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -103,6 +104,18 @@ else:
         conversations_collection = None
         reminders_collection = None
         rates_collection = None
+
+# New collection for permissions
+permissions_collection = None
+if db is not None:
+    permissions_collection = db.permissions
+    try:
+        # Create index on guild_id or user_id if needed
+        permissions_collection.create_index("user_id", unique=True)
+        print("✅ Permissions collection ready")
+    except Exception as e:
+        print(f"[!] Could not set up permissions collection: {e}")
+        permissions_collection = None
 
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
@@ -172,7 +185,7 @@ BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
 @bot.tree.command(name="dm", description="Send a direct message to a user (Owner only)")
 @app_commands.describe(user="The user you want to message", message="The message to send")
 async def dm(interaction: discord.Interaction, user: discord.User, message: str):
-    if interaction.user.id != BOT_OWNER_ID:
+    if interaction.user.id != BOT_OWNER_ID and interaction.user.id not in bot.dm_authorized_users:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
     try:
@@ -186,7 +199,7 @@ async def dm(interaction: discord.Interaction, user: discord.User, message: str)
 @bot.tree.command(name="dmall", description="Send a direct message to all members in the server (Owner only)")
 @app_commands.describe(message="The message you want to send to all members")
 async def dmall(interaction: discord.Interaction, message: str):
-    if interaction.user.id != BOT_OWNER_ID:
+    if interaction.user.id != BOT_OWNER_ID and interaction.user.id not in bot.dm_authorized_users:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
     guild = interaction.guild
@@ -213,6 +226,109 @@ async def dmall(interaction: discord.Interaction, message: str):
     await interaction.followup.send(
         f"✅ Successfully sent DM to **{success_count}** members. ❌ Failed to reach **{fail_count}** members."
     )
+
+@bot.tree.command(name="dmpermission", description="Grant a user permission to use /dm and /dmall (Owner only)")
+@app_commands.describe(user="The user to grant permission to")
+async def dmpermission(interaction: discord.Interaction, user: discord.User):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    user_id = user.id
+
+    # Add to in-memory set
+    bot.dm_authorized_users.add(user_id)
+
+    # Store in MongoDB if available
+    if permissions_collection is not None:
+        try:
+            await permissions_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"user_id": user_id, "granted_at": datetime.now(PH_TIMEZONE)}},
+                upsert=True
+            )
+            await interaction.response.send_message(
+                f"✅ Permission granted to {user.mention}. They can now use `/dm` and `/dmall`.",
+                ephemeral=True
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(
+                f"⚠️ Permission granted in memory, but failed to save to database: {e}",
+                ephemeral=True
+            )
+            return
+
+    # Fallback: only in-memory
+    await interaction.response.send_message(
+        f"✅ Permission granted to {user.mention} (in-memory only, database not available).",
+        ephemeral=True
+    )
+
+@bot.tree.command(name="dmrevoke", description="Revoke a user's permission to use /dm and /dmall (Owner only)")
+@app_commands.describe(user="The user to revoke permission from")
+async def dmrevoke(interaction: discord.Interaction, user: discord.User):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    user_id = user.id
+
+    # Remove from in-memory set
+    if user_id not in bot.dm_authorized_users:
+        await interaction.response.send_message(f"⚠️ {user.mention} does not have permission.", ephemeral=True)
+        return
+
+    bot.dm_authorized_users.discard(user_id)
+
+    # Remove from MongoDB if available
+    if permissions_collection is not None:
+        try:
+            await permissions_collection.delete_one({"user_id": user_id})
+            await interaction.response.send_message(
+                f"✅ Permission revoked from {user.mention}.",
+                ephemeral=True
+            )
+            return
+        except Exception as e:
+            await interaction.response.send_message(
+                f"⚠️ Permission revoked in memory, but failed to remove from database: {e}",
+                ephemeral=True
+            )
+            return
+
+    # Fallback: only in-memory
+    await interaction.response.send_message(
+        f"✅ Permission revoked from {user.mention} (in-memory only).",
+        ephemeral=True
+    )
+
+@bot.tree.command(name="dmlist", description="List all users authorized to use /dm and /dmall (Owner only)")
+async def dmlist(interaction: discord.Interaction):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    if not bot.dm_authorized_users:
+        await interaction.response.send_message("📝 No users currently have `/dm` permission.", ephemeral=True)
+        return
+
+    user_mentions = []
+    for uid in bot.dm_authorized_users:
+        try:
+            user = bot.get_user(uid) or await bot.fetch_user(uid)
+            user_mentions.append(f"{user.mention} (`{uid}`)")
+        except:
+            user_mentions.append(f"`{uid}` (User not found)")
+
+    embed = discord.Embed(
+        title="🔐 Authorized Users for `/dm` and `/dmall`",
+        description="\n".join(user_mentions),
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ===========================
 # AI Commands
@@ -2162,27 +2278,45 @@ async def on_ready():
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
+    
+    global permissions_collection
+    if permissions_collection is not None:
+        try:
+            async for doc in permissions_collection.find({}):
+                bot.dm_authorized_users.add(doc["user_id"])
+            print(f"✅ Loaded {len(bot.dm_authorized_users)} authorized users for /dm and /dmall.")
+        except Exception as e:
+            print(f"[!] Failed to load /dm permissions from database: {e}")
+
     # Start background tasks after bot is ready
     if reminders_collection is not None:
         if not check_reminders.is_running():
             print("✅ Starting reminder checker...")
             check_reminders.start()
+
+    # Update bot presence with group member count every 60 seconds
     GROUP_ID = int(os.getenv("GROUP_ID"))
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")   
+            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")
             data = response.json()
             member_count = data['memberCount']
-            await bot.change_presence(status=discord.Status.dnd,
-                                   activity=discord.Activity(
-                                       type=discord.ActivityType.watching,
-                                       name=f"1cy | {member_count} Members"))
+            await bot.change_presence(
+                status=discord.Status.dnd,
+                activity=discord.Activity(
+                    type=discord.ActivityType.watching,
+                    name=f"1cy | {member_count} Members"
+                )
+            )
         except Exception as e:
             print(f"Error fetching group info: {str(e)}")
-            await bot.change_presence(status=discord.Status.dnd,
-                                   activity=discord.Activity(
-                                       type=discord.ActivityType.watching,
-                                       name="1cy"))
+            await bot.change_presence(
+                status=discord.Status.dnd,
+                activity=discord.Activity(
+                    type=discord.ActivityType.watching,
+                    name="1cy"
+                )
+            )
         await asyncio.sleep(60)
 
 
