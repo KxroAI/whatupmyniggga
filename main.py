@@ -1532,7 +1532,6 @@ async def stocks(interaction: discord.Interaction):
 
     # Build Embed
     embed = discord.Embed(
-        title="💰 Roblox Financial Stats",
         color=discord.Color.from_rgb(0, 0, 0),
         timestamp=datetime.now(PH_TIMEZONE)
     )
