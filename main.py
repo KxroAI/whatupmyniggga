@@ -105,17 +105,6 @@ else:
         reminders_collection = None
         rates_collection = None
 
-permissions_collection = None
-if db is not None:
-    permissions_collection = db.permissions
-    try:
-        # Create compound index for unique (guild_id, user_id)
-        permissions_collection.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
-        print("✅ Permissions collection ready")
-    except Exception as e:
-        print(f"[!] Could not set up permissions collection: {e}")
-        permissions_collection = None
-
 # Background Task: Check Reminders
 @tasks.loop(seconds=60)
 async def check_reminders():
@@ -184,7 +173,7 @@ BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
 @bot.tree.command(name="dm", description="Send a direct message to a user (Owner only)")
 @app_commands.describe(user="The user you want to message", message="The message to send")
 async def dm(interaction: discord.Interaction, user: discord.User, message: str):
-    if interaction.user.id != BOT_OWNER_ID and interaction.user.id not in bot.dm_authorized_users:
+    if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
     try:
@@ -198,7 +187,7 @@ async def dm(interaction: discord.Interaction, user: discord.User, message: str)
 @bot.tree.command(name="dmall", description="Send a direct message to all members in the server (Owner only)")
 @app_commands.describe(message="The message you want to send to all members")
 async def dmall(interaction: discord.Interaction, message: str):
-    if interaction.user.id != BOT_OWNER_ID and interaction.user.id not in bot.dm_authorized_users:
+    if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
@@ -238,132 +227,6 @@ async def dmall(interaction: discord.Interaction, message: str):
         f"✅ Successfully sent DM to **{success_count}** members. "
         f"❌ Failed to reach **{fail_count}** members."
     )
-
-@bot.tree.command(name="dmpermission", description="Grant a user permission to use /dm and /dmall in this server (Owner only)")
-@app_commands.describe(user="The user to grant permission to")
-async def dmpermission(interaction: discord.Interaction, user: discord.User):
-    if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-
-    user_id = user.id
-    guild_id = str(interaction.guild.id)
-
-    # Add to in-memory structure (nested: guild_id → set of user_ids)
-    if not hasattr(bot, "dm_authorized_users"):
-        bot.dm_authorized_users = {}
-
-    if guild_id not in bot.dm_authorized_users:
-        bot.dm_authorized_users[guild_id] = set()
-
-    bot.dm_authorized_users[guild_id].add(user_id)
-
-    # Save to MongoDB (server-specific)
-    if permissions_collection is not None:
-        try:
-            permissions_collection.update_one(
-                {"guild_id": guild_id, "user_id": user_id},
-                {"$set": {
-                    "user_id": user_id,
-                    "guild_id": guild_id,
-                    "granted_at": datetime.now(PH_TIMEZONE)
-                }},
-                upsert=True
-            )
-            await interaction.response.send_message(
-                f"✅ Permission granted to {user.mention} for **this server only**.",
-                ephemeral=True
-            )
-            return
-        except Exception as e:
-            await interaction.response.send_message(
-                f"⚠️ Permission granted in memory, but failed to save to database: {e}",
-                ephemeral=True
-            )
-            return
-
-    await interaction.response.send_message(
-        f"✅ Permission granted to {user.mention} (in-memory, server-specific).",
-        ephemeral=True
-    )
-
-@bot.tree.command(name="dmrevoke", description="Revoke a user's permission to use /dm and /dmall in this server (Owner only)")
-@app_commands.describe(user="The user to revoke permission from")
-async def dmrevoke(interaction: discord.Interaction, user: discord.User):
-    if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-
-    user_id = user.id
-    guild_id = str(interaction.guild.id)
-
-    # Check in-memory
-    if (not hasattr(bot, "dm_authorized_users") or
-        guild_id not in bot.dm_authorized_users or
-        user_id not in bot.dm_authorized_users[guild_id]):
-        await interaction.response.send_message(
-            f"⚠️ {user.mention} does not have permission in this server.",
-            ephemeral=True
-        )
-        return
-
-    bot.dm_authorized_users[guild_id].discard(user_id)
-
-    # Remove from MongoDB
-    if permissions_collection is not None:
-        try:
-            permissions_collection.delete_one({"guild_id": guild_id, "user_id": user_id})
-            await interaction.response.send_message(
-                f"✅ Permission revoked from {user.mention} in this server.",
-                ephemeral=True
-            )
-            return
-        except Exception as e:
-            await interaction.response.send_message(
-                f"⚠️ Permission revoked in memory, but failed to remove from database: {e}",
-                ephemeral=True
-            )
-            return
-
-    await interaction.response.send_message(
-        f"✅ Permission revoked from {user.mention} (in-memory).",
-        ephemeral=True
-    )
-    
-@bot.tree.command(name="dmlist", description="List users authorized to use /dm and /dmall in this server (Owner only)")
-async def dmlist(interaction: discord.Interaction):
-    if interaction.user.id != BOT_OWNER_ID:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
-
-    guild_id = str(interaction.guild.id)
-
-    # Get authorized users for this server
-    if (not hasattr(bot, "dm_authorized_users") or
-        guild_id not in bot.dm_authorized_users or
-        not bot.dm_authorized_users[guild_id]):
-        await interaction.response.send_message(
-            "📝 No users have `/dm` permission in this server.",
-            ephemeral=True
-        )
-        return
-
-    user_mentions = []
-    for uid in bot.dm_authorized_users[guild_id]:
-        try:
-            u = bot.get_user(uid) or await bot.fetch_user(uid)
-            user_mentions.append(f"{u.mention} (`{uid}`)")
-        except:
-            user_mentions.append(f"`{uid}` (User not found)")
-
-    embed = discord.Embed(
-        title=f"🔐 Authorized Users in This Server",
-        description="\n".join(user_mentions),
-        color=discord.Color.gold()
-    )
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ===========================
 # AI Commands
@@ -1599,7 +1462,7 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Stocks Command ==========
-@bot.tree.command(name="stocks", description="Show both Group Funds or Robux Stocks")
+@bot.tree.command(name="stocks", description="Show Roblox financial stats including pending funds and daily sales")
 async def stocks(interaction: discord.Interaction):
     await interaction.response.defer()
 
@@ -1607,53 +1470,82 @@ async def stocks(interaction: discord.Interaction):
         "User-Agent": "Mozilla/5.0"
     }
 
-    GROUP_ID = int(os.getenv("GROUP_ID"))  # ← Replace with your group ID if needed
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")  # Cookie for group funds
-    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))  # Target user ID for account balance
-    ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")  # Cookie for account balance
+    GROUP_ID = int(os.getenv("GROUP_ID"))
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))
+    ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
 
-    if not ROBLOX_COOKIE or not ROBLOX_STOCKS or not roblox_user_id:
-        await interaction.followup.send("❌ Missing required environment variables.")
+    # Check required variables
+    missing_vars = []
+    if not ROBLOX_COOKIE: missing_vars.append("ROBLOX_COOKIE")
+    if not ROBLOX_STOCKS: missing_vars.append("ROBLOX_STOCKS")
+    if not roblox_user_id: missing_vars.append("ROBLOX_STOCKS_ID")
+    
+    if missing_vars:
+        await interaction.followup.send(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
         return
 
-    group_robux = "||HIDDEN||"
-    account_robux = "||HIDDEN||"
+    # Initialize data containers
+    data = {
+        'group_funds': "||HIDDEN||",
+        'account_balance': "||HIDDEN||", 
+        'revenue': {
+            'pending_robux': "||HIDDEN||",
+            'completed_robux': "||HIDDEN||"
+        }
+    }
 
     async with aiohttp.ClientSession() as session:
         # Fetch Group Funds
         try:
-            group_url = f"https://economy.roblox.com/v1/groups/ {GROUP_ID}/currency"
+            group_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/currency"
             headers["Cookie"] = ROBLOX_COOKIE
             async with session.get(group_url, headers=headers) as resp:
                 if resp.status == 200:
-                    data = await resp.json()
-                    group_robux = f"{data.get('robux', 0):,} R$"
-                # Silent fail on error → stays as HIDDEN
-        except Exception:
-            pass  # Ignore any exception silently
+                    response = await resp.json()
+                    data['group_funds'] = f"{response.get('robux', 0):,} R$"
+        except Exception as e:
+            print(f"[ERROR] Group Funds: {str(e)}")
 
         # Fetch Account Balance
         try:
-            account_url = f"https://economy.roblox.com/v1/users/ {roblox_user_id}/currency"
+            account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
             headers["Cookie"] = ROBLOX_STOCKS
             async with session.get(account_url, headers=headers) as resp:
                 if resp.status == 200:
-                    data = await resp.json()
-                    account_robux = f"{data.get('robux', 0):,} R$"
-                # Silent fail on error → stays as HIDDEN
-        except Exception:
-            pass  # Ignore any exception silently
+                    response = await resp.json()
+                    data['account_balance'] = f"{response.get('robux', 0):,} R$"
+        except Exception as e:
+            print(f"[ERROR] Account Balance: {str(e)}")
+
+        # Fetch Revenue Summary
+        try:
+            revenue_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/revenue/summary/daily"
+            headers["Cookie"] = ROBLOX_COOKIE
+            async with session.get(revenue_url, headers=headers) as resp:
+                if resp.status == 200:
+                    response = await resp.json()
+                    data['revenue']['pending_robux'] = f"{response.get('pendingRobux', 0):,} R$"
+                    data['revenue']['completed_robux'] = f"{response.get('itemSaleRobux', 0):,} R$"
+        except Exception as e:
+            print(f"[ERROR] Revenue Summary: {str(e)}")
 
     # Build Embed
     embed = discord.Embed(
-        color=discord.Color.from_rgb(0, 0, 0)
+        title="💰 Roblox Financial Stats",
+        color=discord.Color.green(),
+        timestamp=datetime.now(PH_TIMEZONE)
     )
-    embed.add_field(name="Group Funds", value=group_robux, inline=False)
-    embed.add_field(name="Account Balance", value=account_robux, inline=False)
+    
+    embed.add_field(name="Group Funds", value=data['group_funds'], inline=False)
+    embed.add_field(name="Account Balance", value=data['account_balance'], inline=False)
+    embed.add_field(name="Group Pending", value=data['revenue']['pending_robux'], inline=False)
+    embed.add_field(name="Daily Sales", value=data['revenue']['completed_robux'], inline=False)
+    
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.followup.send(embed=embed)
+
 
 # ========== Gamepass Command ==========
 @bot.tree.command(name="gamepass", description="Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL")
@@ -1895,12 +1787,12 @@ async def check_payout(interaction: discord.Interaction, username: str):
                         data = json.loads(text)  # Using json.loads for more reliable parsing
                         # Debugging: Print the raw response to see what we're getting
                         print(f"Raw response data: {data}")
-                        
+
                         # Check the correct structure for payout eligibility
                         if "usersGroupPayoutEligibility" in data:
                             eligibility_data = data["usersGroupPayoutEligibility"]
                             eligibility_status = eligibility_data.get(str(user_id))
-                            
+
                             if eligibility_status is None:
                                 embed.description = f"`{username}` ({display_name}) was not found in the Payout Eligibility list."
                                 embed.color = discord.Color.orange()
@@ -1911,7 +1803,7 @@ async def check_payout(interaction: discord.Interaction, username: str):
                                 else:
                                     # Handle string values
                                     status_text = "✅ Eligible" if str(eligibility_status).lower() in ['true', 'eligible'] else "❌ Not Currently Eligible"
-                                
+
                                 embed.description = f"`{username}` ({display_name}) is **{status_text}**"
                                 embed.color = discord.Color.green() if "✅" in status_text else discord.Color.red()
                         else:
@@ -2310,56 +2202,30 @@ async def roblox(interaction: discord.Interaction, query: str):
 @bot.event
 async def on_ready():
     bot.xcsrf_token = None
-    bot.dm_authorized_users = {}
-
     print(f"Bot is ready! Logged in as {bot.user}")
     await bot.tree.sync()
     print("All commands synced!")
-
-    # Load server-specific permissions from MongoDB
-    global permissions_collection
-    if permissions_collection is not None:
-        try:
-            cursor = permissions_collection.find({})
-            for doc in cursor:
-                guild_id = str(doc["guild_id"])
-                user_id = doc["user_id"]
-                if guild_id not in bot.dm_authorized_users:
-                    bot.dm_authorized_users[guild_id] = set()
-                bot.dm_authorized_users[guild_id].add(user_id)
-            print(f"✅ Loaded permissions for {len(bot.dm_authorized_users)} server(s).")
-        except Exception as e:
-            print(f"[!] Failed to load server-specific permissions: {e}")
-
     # Start background tasks after bot is ready
     if reminders_collection is not None:
         if not check_reminders.is_running():
             print("✅ Starting reminder checker...")
             check_reminders.start()
-
-    # Update bot presence with Roblox group member count
     GROUP_ID = int(os.getenv("GROUP_ID"))
     while True:
         try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")
+            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")   
             data = response.json()
             member_count = data['memberCount']
-            await bot.change_presence(
-                status=discord.Status.dnd,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=f"1cy | {member_count} Members"
-                )
-            )
+            await bot.change_presence(status=discord.Status.dnd,
+                                   activity=discord.Activity(
+                                       type=discord.ActivityType.watching,
+                                       name=f"1cy | {member_count} Members"))
         except Exception as e:
             print(f"Error fetching group info: {str(e)}")
-            await bot.change_presence(
-                status=discord.Status.dnd,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name="1cy"
-                )
-            )
+            await bot.change_presence(status=discord.Status.dnd,
+                                   activity=discord.Activity(
+                                       type=discord.ActivityType.watching,
+                                       name="1cy"))
         await asyncio.sleep(60)
 
 @bot.event
