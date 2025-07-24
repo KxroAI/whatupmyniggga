@@ -1462,7 +1462,7 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Stocks Command ==========
-@bot.tree.command(name="stocks", description="Show Roblox financial stats including pending funds and daily sales")
+@bot.tree.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def stocks(interaction: discord.Interaction):
     await interaction.response.defer()
 
@@ -1533,7 +1533,7 @@ async def stocks(interaction: discord.Interaction):
     # Build Embed
     embed = discord.Embed(
         title="💰 Roblox Financial Stats",
-        color=discord.Color.green(),
+        color=discord.Color.from_rgb(0, 0, 0),
         timestamp=datetime.now(PH_TIMEZONE)
     )
     
