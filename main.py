@@ -2104,32 +2104,32 @@ async def snipe(interaction: discord.Interaction):
 
 # ========== Roblox Command ==========
 @bot.tree.command(name="roblox", description="Get Roblox user information by username or user ID")
-@app_commands.describe(query="The Roblox username or user ID to look up")
-async def roblox(interaction: discord.Interaction, query: str):
+@app_commands.describe(user="The Roblox username or user ID to look up")
+async def roblox(interaction: discord.Interaction, user: str):
     await interaction.response.defer(ephemeral=False)
 
     try:
         async with aiohttp.ClientSession() as session:
             user_id = None
-            username = None
             display_name = None
+            full_data = None
+            last_online = "N/A"
+            status = "Offline"
 
-            # Step 1: Check if input is a number (assume it's a user ID)
-            if query.isdigit():
-                user_id = int(query)
-                # Fetch user info by ID
-                user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
-                async with session.get(user_info_url) as resp:
+            # Resolve username or user ID
+            if user.isdigit():
+                user_id = int(user)
+                url = f"https://users.roblox.com/v1/users/{user_id}"
+                async with session.get(url) as resp:
                     if resp.status != 200:
                         await interaction.followup.send("❌ User not found.", ephemeral=True)
                         return
                     full_data = await resp.json()
-                    username = full_data['name']
+                    user = full_data['name']
                     display_name = full_data['displayName']
             else:
-                # Assume it's a username, resolve it
                 resolve_url = "https://users.roblox.com/v1/usernames/users"
-                payload = {"usernames": [query]}
+                payload = {"usernames": [user]}
                 headers = {"Content-Type": "application/json"}
                 async with session.post(resolve_url, json=payload, headers=headers) as resp:
                     if resp.status != 200:
@@ -2141,19 +2141,33 @@ async def roblox(interaction: discord.Interaction, query: str):
                         return
                     user_data = data['data'][0]
                     user_id = user_data['id']
-                    username = user_data['name']
                     display_name = user_data['displayName']
 
-            # Step 2: Fetch full user info (if not already fetched)
-            if 'full_data' not in locals():
-                user_info_url = f"https://users.roblox.com/v1/users/{user_id}"
-                async with session.get(user_info_url) as resp:
+                url = f"https://users.roblox.com/v1/users/{user_id}"
+                async with session.get(url) as resp:
                     if resp.status != 200:
-                        await interaction.followup.send("❌ Failed to fetch user details.")
+                        await interaction.followup.send("❌ Failed to fetch user details.", ephemeral=True)
                         return
                     full_data = await resp.json()
 
-            # Step 3: Fetch thumbnail
+            # Presence (status and last online)
+            presence_url = "https://presence.roblox.com/v1/presence/users"
+            async with session.post(presence_url, json={"userIds": [user_id]}) as resp:
+                if resp.status == 200:
+                    presence_data = await resp.json()
+                    if presence_data.get("userPresences"):
+                        p = presence_data["userPresences"][0]
+                        is_online = p.get("userPresenceType", 0) != 0
+                        last_location = p.get("lastLocation", "Offline")
+                        status = last_location if is_online else "Offline"
+                        last_online_raw = p.get("lastOnline")
+                        if last_online_raw:
+                            last_dt = isoparse(last_online_raw)
+                            last_online = last_dt.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
+                        else:
+                            last_online = "N/A"
+
+            # Thumbnail
             thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
             async with session.get(thumb_url) as resp:
                 if resp.status == 200:
@@ -2162,37 +2176,56 @@ async def roblox(interaction: discord.Interaction, query: str):
                 else:
                     image_url = "https://www.roblox.com/asset-thumbnail/image?assetId=1&type=HeadShot&width=420&height=420&format=Png"
 
-            # Step 4: Format creation date
+            # Creation date
             created_at = isoparse(full_data['created'])
             created_str = created_at.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
 
-            # Step 5: Clean description
-            description = full_data.get("description", "No description.")
+            # Description
+            description = full_data.get("description", "N/A")
             if not description.strip():
-                description = "No description."
+                description = "N/A"
+
+            # Emojis
+            verified = full_data.get('hasVerifiedBadge', False)
+            premium = full_data.get('isPremium', False)
+            emoji = ""
+            if verified:
+                emoji += "<:RobloxVerified:1400310297184702564> "
+            if premium:
+                emoji += "<:RobloxPremium:1400310411550654495> "
+
+            # Connections API
+            async with session.get(f"https://friends.roblox.com/v1/users/{user_id}/friends/count") as r1, \
+                       session.get(f"https://friends.roblox.com/v1/users/{user_id}/followers/count") as r2, \
+                       session.get(f"https://friends.roblox.com/v1/users/{user_id}/followings/count") as r3:
+                try:
+                    friends = (await r1.json())['count'] if r1.status == 200 else 0
+                    followers = (await r2.json())['count'] if r2.status == 200 else 0
+                    followings = (await r3.json())['count'] if r3.status == 200 else 0
+                except:
+                    friends, followers, followings = 0, 0, 0
+
+            # Build Embed
+            embed = discord.Embed(
+                description=(
+                    f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n"
+                    f"**@{user}** {emoji}\n"
+                    f"**Account Created:** {created_str}\n"
+                    f"```{description}```\n"
+                    f"**Connections:** {friends}/{followers}/{followings}\n"
+                    f"**Status:** {status}" + (f" ({last_online})" if status == "Offline" and last_online != "N/A" else "") + "\n"
+                ),
+                color=discord.Color.from_str("#000001")
+            )
+            embed.set_thumbnail(url=image_url)
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+
+            await interaction.followup.send(embed=embed)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
-        return
+        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`", ephemeral=True)
 
-    # === Build Embed Exactly as Requested ===
-    embed = discord.Embed(
-        title=f"[display_name](https://www.roblox.com/users/{user_id}/profile) `{user_id}`",
-        description=f"**Roblox Information**\n"
-                   f"**@{username}**\n"
-                   f"Account Created: `{created_str}`",
-        color=discord.Color.from_rgb(0, 0, 0)
-    )
-    embed.set_thumbnail(url=image_url)
-    embed.add_field(
-        name="Description",
-        value=f"```\n{description}\n```" if description != "No description." else "No description.",
-        inline=False
-    )
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
-
-    await interaction.followup.send(embed=embed)
 
 
 # ===========================
