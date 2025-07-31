@@ -1480,7 +1480,7 @@ async def stocks(interaction: discord.Interaction):
     if not ROBLOX_COOKIE: missing_vars.append("ROBLOX_COOKIE")
     if not ROBLOX_STOCKS: missing_vars.append("ROBLOX_STOCKS")
     if not roblox_user_id: missing_vars.append("ROBLOX_STOCKS_ID")
-    
+
     if missing_vars:
         await interaction.followup.send(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
         return
@@ -1535,12 +1535,12 @@ async def stocks(interaction: discord.Interaction):
         color=discord.Color.from_rgb(0, 0, 0),
         timestamp=datetime.now(PH_TIMEZONE)
     )
-    
+
     embed.add_field(name="Group Funds", value=data['group_funds'], inline=False)
     embed.add_field(name="Account Balance", value=data['account_balance'], inline=False)
     embed.add_field(name="Group Pending", value=data['revenue']['pending_robux'], inline=False)
     embed.add_field(name="Daily Sales", value=data['revenue']['completed_robux'], inline=False)
-    
+
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
 
     await interaction.followup.send(embed=embed)
@@ -2191,50 +2191,6 @@ async def roblox(interaction: discord.Interaction, query: str):
     )
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
-    await interaction.followup.send(embed=embed)
-
-# ========== Analyze Command ==========
-HIVE_API_KEY = os.getenv("HIVE_API_KEY")
-
-@bot.tree.command(name="analyze_image", description="Analyze if an image is AI-generated.")
-@app_commands.describe(image="Upload an image to analyze")
-async def analyze_image(interaction: discord.Interaction, image: discord.Attachment):
-    await interaction.response.defer()
-
-    img_bytes = await image.read()
-
-    async with aiohttp.ClientSession() as session:
-        headers = {
-            "Authorization": f"Token {HIVE_API_KEY}"
-        }
-        data = aiohttp.FormData()
-        data.add_field("media", img_bytes, filename="image.jpg", content_type="image/jpeg")
-
-        async with session.post("https://api.thehive.ai/api/v2/task/sync", data=data, headers=headers) as resp:
-            if resp.status != 200:
-                error = await resp.text()
-                await interaction.followup.send(f"❌ Error analyzing image: {resp.status}\n
-{error}
-")
-                return
-
-            result = await resp.json()
-
-    try:
-        output = result['tasks'][0]['result']['ai_generated']
-        ai_score = round(output['score'] * 100, 2)
-    except Exception as e:
-        await interaction.followup.send("❌ Couldn't read AI score from response.")
-        return
-
-    # Format embed
-    embed = discord.Embed(
-        title="🧠 Hive Moderation Result",
-        description=f"**AI-Generated Probability:** {ai_score}%",
-        color=discord.Color.red() if ai_score > 80 else discord.Color.green()
-    )
-    embed.set_footer(text="Powered by Hive Moderation")
 
     await interaction.followup.send(embed=embed)
 
