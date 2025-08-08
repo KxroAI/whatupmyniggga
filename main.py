@@ -2108,6 +2108,8 @@ async def snipe(interaction: discord.Interaction):
 async def roblox(interaction: discord.Interaction, user: str):
     await interaction.response.defer(ephemeral=False)
 
+    GROUP_ID = 5838002  # Your real group ID
+
     try:
         async with aiohttp.ClientSession() as session:
             user_id = None
@@ -2116,14 +2118,12 @@ async def roblox(interaction: discord.Interaction, user: str):
             last_online = "N/A"
             status = "Offline"
 
-            # Resolve username or user ID
+            # Resolve username or ID
             if user.isdigit():
                 user_id = int(user)
-                url = f"https://users.roblox.com/v1/users/{user_id}"
-                async with session.get(url) as resp:
+                async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
                     if resp.status != 200:
-                        await interaction.followup.send("❌ User not found.", ephemeral=True)
-                        return
+                        return await interaction.followup.send("❌ User not found.", ephemeral=True)
                     full_data = await resp.json()
                     user = full_data['name']
                     display_name = full_data['displayName']
@@ -2133,24 +2133,20 @@ async def roblox(interaction: discord.Interaction, user: str):
                 headers = {"Content-Type": "application/json"}
                 async with session.post(resolve_url, json=payload, headers=headers) as resp:
                     if resp.status != 200:
-                        await interaction.followup.send("❌ Could not find a Roblox user with that name.", ephemeral=True)
-                        return
+                        return await interaction.followup.send("❌ Could not find that Roblox user.", ephemeral=True)
                     data = await resp.json()
                     if not data['data']:
-                        await interaction.followup.send("❌ User not found.", ephemeral=True)
-                        return
+                        return await interaction.followup.send("❌ User not found.", ephemeral=True)
                     user_data = data['data'][0]
                     user_id = user_data['id']
                     display_name = user_data['displayName']
 
-                url = f"https://users.roblox.com/v1/users/{user_id}"
-                async with session.get(url) as resp:
+                async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
                     if resp.status != 200:
-                        await interaction.followup.send("❌ Failed to fetch user details.", ephemeral=True)
-                        return
+                        return await interaction.followup.send("❌ Failed to fetch user details.", ephemeral=True)
                     full_data = await resp.json()
 
-            # Presence (status and last online)
+            # Presence
             presence_url = "https://presence.roblox.com/v1/presence/users"
             async with session.post(presence_url, json={"userIds": [user_id]}) as resp:
                 if resp.status == 200:
@@ -2164,8 +2160,6 @@ async def roblox(interaction: discord.Interaction, user: str):
                         if last_online_raw:
                             last_dt = isoparse(last_online_raw)
                             last_online = last_dt.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
-                        else:
-                            last_online = "N/A"
 
             # Thumbnail
             thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
@@ -2181,42 +2175,60 @@ async def roblox(interaction: discord.Interaction, user: str):
             created_str = created_at.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
 
             # Description
-            description = full_data.get("description", "N/A")
-            if not description.strip():
-                description = "N/A"
+            description = full_data.get("description", "N/A") or "N/A"
 
             # Emojis
             verified = full_data.get('hasVerifiedBadge', False)
-            premium = full_data.get('isPremium', False)
+            premium = False
+            try:
+                async with session.get(
+                    f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
+                    headers={"Cookie": os.getenv("ROBLOX_COOKIE")}
+                ) as resp:
+                    if resp.status == 200:
+                        premium = await resp.json()
+            except:
+                pass
+
             emoji = ""
             if verified:
-                emoji += "<:RobloxVerified:1400310297184702564> "
+                emoji += "<:RobloxVerified:1400310297184702564>"
             if premium:
-                emoji += "<:RobloxPremium:1400310411550654495> "
+                emoji += "<:RobloxPremium:1400310411550654495>"
 
-            # Connections API
+            # Connections
             async with session.get(f"https://friends.roblox.com/v1/users/{user_id}/friends/count") as r1, \
                        session.get(f"https://friends.roblox.com/v1/users/{user_id}/followers/count") as r2, \
                        session.get(f"https://friends.roblox.com/v1/users/{user_id}/followings/count") as r3:
-                try:
-                    friends = (await r1.json())['count'] if r1.status == 200 else 0
-                    followers = (await r2.json())['count'] if r2.status == 200 else 0
-                    followings = (await r3.json())['count'] if r3.status == 200 else 0
-                except:
-                    friends, followers, followings = 0, 0, 0
+                friends = (await r1.json()).get('count', 0) if r1.status == 200 else 0
+                followers = (await r2.json()).get('count', 0) if r2.status == 200 else 0
+                followings = (await r3.json()).get('count', 0) if r3.status == 200 else 0
 
-            # Build Embed
-            embed = discord.Embed(
-                description=(
-                    f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n"
-                    f"**@{user}** {emoji}\n"
-                    f"**Account Created:** {created_str}\n"
-                    f"```{description}```\n"
-                    f"**Connections:** {friends}/{followers}/{followings}\n"
-                    f"**Status:** {status}" + (f" ({last_online})" if status == "Offline" and last_online != "N/A" else "") + "\n"
-                ),
-                color=discord.Color.from_str("#000001")
+            # Group role check
+            role_name = None
+            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles") as resp:
+                if resp.status == 200:
+                    groups_data = await resp.json()
+                    for g in groups_data.get("data", []):
+                        if g["group"]["id"] == GROUP_ID:
+                            role_name = g["role"]["name"]
+                            break
+
+            # Embed (Status + Role on same block)
+            description_text = (
+                f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n"
+                f"**@{user}** {emoji}\n"
+                f"**Account Created:** {created_str}\n"
+                f"```{description}```\n"
+                f"**Connections:** {friends}/{followers}/{followings}\n"
+                f"**Status:** {status}"
+                + (f" ({last_online})" if status == "Offline" and last_online != "N/A" else "")
             )
+
+            if role_name:
+                description_text += f"\n**Group Role:** {role_name}"
+
+            embed = discord.Embed(description=description_text, color=discord.Color.from_str("#000001"))
             embed.set_thumbnail(url=image_url)
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
