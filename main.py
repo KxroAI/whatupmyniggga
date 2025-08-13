@@ -2218,7 +2218,7 @@ async def roblox(interaction: discord.Interaction, user: str):
             description_text = (
                 f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n"
                 f"**@{user}** {emoji}\n"
-                f"**Account Created:** {created_str}\n"
+                f"**Account Created:** <t:{created_unix}:f>\n"
                 f"```{description}```\n"
                 f"**Connections:** {friends}/{followers}/{followings}\n"
                 f"**Status:** {status}"
