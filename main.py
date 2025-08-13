@@ -2172,6 +2172,7 @@ async def roblox(interaction: discord.Interaction, user: str):
 
             # Creation date
             created_at = isoparse(full_data['created'])
+            created_unix = int(created_at.timestamp())
             created_str = created_at.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
 
             # Description
