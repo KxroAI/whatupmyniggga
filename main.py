@@ -1088,18 +1088,21 @@ async def purge(interaction: discord.Interaction, amount: int):
 async def groupinfo(interaction: discord.Interaction):
     GROUP_ID = int(os.getenv("GROUP_ID"))
     try:
-        async with aiohttp.ClientSession() as session: # ✅ Use aiohttp
+        async with aiohttp.ClientSession() as session:
             async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
                 if response.status != 200:
                     raise Exception(f"API Error: {response.status}")
-                data = await response.json() # ✅ Use 'await'
-
+                data = await response.json()
         formatted_members = "{:,}".format(data['memberCount'])
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})", inline=False)
-        embed.add_field(name="Description", value=f"```
+        embed.add_field(
+            name="Description",
+            value=f"""
 {data.get('description', 'No description')}
-```", inline=False)
+""", 
+            inline=False
+        )
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
         owner = data.get('owner')
         owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
