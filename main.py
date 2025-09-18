@@ -1088,12 +1088,18 @@ async def purge(interaction: discord.Interaction, amount: int):
 async def groupinfo(interaction: discord.Interaction):
     GROUP_ID = int(os.getenv("GROUP_ID"))
     try:
-        response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")
-        data = response.json()
+        async with aiohttp.ClientSession() as session: # ✅ Use aiohttp
+            async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
+                if response.status != 200:
+                    raise Exception(f"API Error: {response.status}")
+                data = await response.json() # ✅ Use 'await'
+
         formatted_members = "{:,}".format(data['memberCount'])
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(name="Group Name", value=f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})", inline=False)
-        embed.add_field(name="Description", value=f"```\n{data.get('description', 'No description')}\n```", inline=False)
+        embed.add_field(name="Description", value=f"```
+{data.get('description', 'No description')}
+```", inline=False)
         embed.add_field(name="Group ID", value=str(data['id']), inline=True)
         owner = data.get('owner')
         owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
@@ -2255,23 +2261,45 @@ async def on_ready():
         if not check_reminders.is_running():
             print("✅ Starting reminder checker...")
             check_reminders.start()
+
     GROUP_ID = int(os.getenv("GROUP_ID"))
-    while True:
-        try:
-            response = requests.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}")   
-            data = response.json()
-            member_count = data['memberCount']
-            await bot.change_presence(status=discord.Status.dnd,
-                                   activity=discord.Activity(
-                                       type=discord.ActivityType.watching,
-                                       name=f"1cy | {member_count} Members"))
-        except Exception as e:
-            print(f"Error fetching group info: {str(e)}")
-            await bot.change_presence(status=discord.Status.dnd,
-                                   activity=discord.Activity(
-                                       type=discord.ActivityType.watching,
-                                       name="1cy"))
-        await asyncio.sleep(60)
+
+    # Create a persistent ClientSession for this loop
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                # Use aiohttp instead of requests
+                async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        member_count = data.get('memberCount', 0)
+                        await bot.change_presence(
+                            status=discord.Status.dnd,
+                            activity=discord.Activity(
+                                type=discord.ActivityType.watching,
+                                name=f"1cy | {member_count:,} Members"
+                            )
+                        )
+                    else:
+                        print(f"[WARNING] Roblox API returned status {response.status}")
+                        await bot.change_presence(
+                            status=discord.Status.dnd,
+                            activity=discord.Activity(
+                                type=discord.ActivityType.watching,
+                                name="1cy"
+                            )
+                        )
+            except Exception as e:
+                print(f"[ERROR] Failed to fetch group info: {str(e)}")
+                await bot.change_presence(
+                    status=discord.Status.dnd,
+                    activity=discord.Activity(
+                        type=discord.ActivityType.watching,
+                        name="1cy"
+                    )
+                )
+            # Wait 60 seconds before next update
+            await asyncio.sleep(60)
 
 @bot.event
 async def on_message(message):
