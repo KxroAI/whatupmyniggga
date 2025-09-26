@@ -1710,16 +1710,36 @@ async def instagram_embedez(interaction: discord.Interaction, link: str, spoiler
 
 
 # ========== Check Payout Command =======
-GROUP_ID = '5838002'
-ROBLOX_COOKIE = os.getenv('ROBLOX_COOKIE')
-
 @bot.tree.command(name="checkpayout", description="Check if a Roblox User is Eligible for Group Payout")
-@app_commands.describe(username="Roblox Username")
-async def check_payout(interaction: discord.Interaction, username: str):
-    await interaction.response.defer(ephemeral=False)
+@app_commands.describe(
+    username="Roblox Username",
+    group="Which group to check (default: 1cy)"
+)
+@app_commands.choices(group=[
+    app_commands.Choice(name="1cy", value="1cy"),
+    app_commands.Choice(name="Modded Corporations", value="mc")
+])
+async def check_payout(interaction: discord.Interaction, username: str, group: app_commands.Choice[str] = None):
+    # Determine group settings
+    if group and group.value == "mc":
+        GROUP_ID = "1081179215"
+        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
+        group_name = "Modded Corporations"
+    else:
+        GROUP_ID = "5838002"
+        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+        group_name = "1cy"
 
+    if not ROBLOX_COOKIE:
+        await interaction.response.send_message(
+            f"❌ `ROBLOX_COOKIE{'2' if group and group.value == 'mc' else ''}` is not set in environment variables.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=False)
     embed = discord.Embed(color=0x00bfff)
-    embed.title = "1cy"
+    embed.title = group_name
     embed.set_footer(text="/group | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
@@ -1729,7 +1749,6 @@ async def check_payout(interaction: discord.Interaction, username: str):
             url = 'https://users.roblox.com/v1/usernames/users'
             headers = {'Content-Type': 'application/json'}
             data = {'usernames': [username], 'excludeBannedUsers': True}
-
             async with session.post(url, headers=headers, json=data) as resp:
                 if resp.status == 200:
                     json_data = await resp.json()
@@ -1760,7 +1779,6 @@ async def check_payout(interaction: discord.Interaction, username: str):
                 if membership_resp.status == 200:
                     groups = await membership_resp.json()
                     in_group = any(group['group']['id'] == int(GROUP_ID) for group in groups['data'])
-
                     if not in_group:
                         embed.description = f"`{username}` ({display_name}) is ❌ not a member of the Group."
                         embed.color = discord.Color.red()
@@ -1786,34 +1804,21 @@ async def check_payout(interaction: discord.Interaction, username: str):
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             }
-
             async with session.get(url, headers=headers) as response:
                 text = await response.text()
-
                 if response.status == 200:
                     try:
-                        data = json.loads(text)  # Using json.loads for more reliable parsing
-                        # Debugging: Print the raw response to see what we're getting
-                        print(f"Raw response data: {data}")
-
-                        # Check the correct structure for payout eligibility
+                        data = json.loads(text)
                         if "usersGroupPayoutEligibility" in data:
-                            eligibility_data = data["usersGroupPayoutEligibility"]
-                            eligibility_status = eligibility_data.get(str(user_id))
-
+                            eligibility_status = data["usersGroupPayoutEligibility"].get(str(user_id))
                             if eligibility_status is None:
                                 embed.description = f"`{username}` ({display_name}) was not found in the Payout Eligibility list."
                                 embed.color = discord.Color.orange()
                             else:
-                                # Check if the value is boolean or a string representation
-                                if isinstance(eligibility_status, bool):
-                                    status_text = "✅ Eligible" if eligibility_status else "❌ Not Currently Eligible"
-                                else:
-                                    # Handle string values
-                                    status_text = "✅ Eligible" if str(eligibility_status).lower() in ['true', 'eligible'] else "❌ Not Currently Eligible"
-
+                                is_eligible = eligibility_status if isinstance(eligibility_status, bool) else str(eligibility_status).lower() in ['true', 'eligible']
+                                status_text = "✅ Eligible" if is_eligible else "❌ Not Currently Eligible"
                                 embed.description = f"`{username}` ({display_name}) is **{status_text}**"
-                                embed.color = discord.Color.green() if "✅" in status_text else discord.Color.red()
+                                embed.color = discord.Color.green() if is_eligible else discord.Color.red()
                         else:
                             embed.description = "❌ Invalid response format from Roblox API."
                             embed.color = discord.Color.red()
@@ -1826,7 +1831,6 @@ async def check_payout(interaction: discord.Interaction, username: str):
                 else:
                     embed.description = f"❌ API Error: Status {response.status}\nResponse: {text}"
                     embed.color = discord.Color.red()
-
     except Exception as e:
         embed.description = f"❌ An error occurred during payout check: `{str(e)}`"
         embed.color = discord.Color.red()
