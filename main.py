@@ -1471,87 +1471,112 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Stocks Command ==========
+# ========== Stocks Command ==========
 @bot.tree.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def stocks(interaction: discord.Interaction):
     await interaction.response.defer()
-
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
-
-    GROUP_ID = int(os.getenv("GROUP_ID"))
-    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID"))
+    GROUP_ID_1CY = 5838002
+    GROUP_ID_MC = 1081179215
+    ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
+    ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
+    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
 
     # Check required variables
     missing_vars = []
-    if not ROBLOX_COOKIE: missing_vars.append("ROBLOX_COOKIE")
+    if not ROBLOX_COOKIE_1CY: missing_vars.append("ROBLOX_COOKIE")
+    if not ROBLOX_COOKIE_MC: missing_vars.append("ROBLOX_COOKIE2")
     if not ROBLOX_STOCKS: missing_vars.append("ROBLOX_STOCKS")
     if not roblox_user_id: missing_vars.append("ROBLOX_STOCKS_ID")
-
     if missing_vars:
         await interaction.followup.send(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
         return
 
     # Initialize data containers
     data = {
-        'group_funds': "||HIDDEN||",
-        'account_balance': "||HIDDEN||", 
-        'revenue': {
-            'pending_robux': "||HIDDEN||",
-            'completed_robux': "||HIDDEN||"
-        }
+        '1cy_group_funds': "||HIDDEN||",
+        'mc_group_funds': "||HIDDEN||",
+        'account_balance': "||HIDDEN||",
+        '1cy_pending': "||HIDDEN||",
+        'mc_pending': "||HIDDEN||",
+        '1cy_daily_sales': "||HIDDEN||",
+        'mc_daily_sales': "||HIDDEN||"
     }
 
     async with aiohttp.ClientSession() as session:
-        # Fetch Group Funds
+        # === 1cy Group Funds ===
         try:
-            group_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/currency"
-            headers["Cookie"] = ROBLOX_COOKIE
-            async with session.get(group_url, headers=headers) as resp:
+            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/currency"
+            headers["Cookie"] = ROBLOX_COOKIE_1CY
+            async with session.get(url, headers=headers) as resp:
                 if resp.status == 200:
-                    response = await resp.json()
-                    data['group_funds'] = f"{response.get('robux', 0):,} R$"
+                    res = await resp.json()
+                    data['1cy_group_funds'] = f"{res.get('robux', 0):,} R$"
         except Exception as e:
-            print(f"[ERROR] Group Funds: {str(e)}")
+            print(f"[ERROR] 1cy Group Funds: {str(e)}")
 
-        # Fetch Account Balance
+        # === Modded Corporations Group Funds ===
         try:
-            account_url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
-            headers["Cookie"] = ROBLOX_STOCKS
-            async with session.get(account_url, headers=headers) as resp:
+            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency"
+            headers["Cookie"] = ROBLOX_COOKIE_MC
+            async with session.get(url, headers=headers) as resp:
                 if resp.status == 200:
-                    response = await resp.json()
-                    data['account_balance'] = f"{response.get('robux', 0):,} R$"
+                    res = await resp.json()
+                    data['mc_group_funds'] = f"{res.get('robux', 0):,} R$"
+        except Exception as e:
+            print(f"[ERROR] MC Group Funds: {str(e)}")
+
+        # === Account Balance (from ROBLOX_STOCKS cookie) ===
+        try:
+            url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
+            headers["Cookie"] = ROBLOX_STOCKS
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    data['account_balance'] = f"{res.get('robux', 0):,} R$"
         except Exception as e:
             print(f"[ERROR] Account Balance: {str(e)}")
 
-        # Fetch Revenue Summary
+        # === 1cy Revenue ===
         try:
-            revenue_url = f"https://economy.roblox.com/v1/groups/{GROUP_ID}/revenue/summary/daily"
-            headers["Cookie"] = ROBLOX_COOKIE
-            async with session.get(revenue_url, headers=headers) as resp:
+            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily"
+            headers["Cookie"] = ROBLOX_COOKIE_1CY
+            async with session.get(url, headers=headers) as resp:
                 if resp.status == 200:
-                    response = await resp.json()
-                    data['revenue']['pending_robux'] = f"{response.get('pendingRobux', 0):,} R$"
-                    data['revenue']['completed_robux'] = f"{response.get('itemSaleRobux', 0):,} R$"
+                    res = await resp.json()
+                    data['1cy_pending'] = f"{res.get('pendingRobux', 0):,} R$"
+                    data['1cy_daily_sales'] = f"{res.get('itemSaleRobux', 0):,} R$"
         except Exception as e:
-            print(f"[ERROR] Revenue Summary: {str(e)}")
+            print(f"[ERROR] 1cy Revenue: {str(e)}")
+
+        # === Modded Corporations Revenue ===
+        try:
+            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily"
+            headers["Cookie"] = ROBLOX_COOKIE_MC
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    data['mc_pending'] = f"{res.get('pendingRobux', 0):,} R$"
+                    data['mc_daily_sales'] = f"{res.get('itemSaleRobux', 0):,} R$"
+        except Exception as e:
+            print(f"[ERROR] MC Revenue: {str(e)}")
 
     # Build Embed
     embed = discord.Embed(
         color=discord.Color.from_rgb(0, 0, 0),
         timestamp=datetime.now(PH_TIMEZONE)
     )
-
-    embed.add_field(name="Group Funds", value=data['group_funds'], inline=False)
+    embed.add_field(name="1cy Group Funds", value=data['1cy_group_funds'], inline=False)
+    embed.add_field(name="Modded Corporations Group Funds", value=data['mc_group_funds'], inline=False)
     embed.add_field(name="Account Balance", value=data['account_balance'], inline=False)
-    embed.add_field(name="Group Pending", value=data['revenue']['pending_robux'], inline=False)
-    embed.add_field(name="Daily Sales", value=data['revenue']['completed_robux'], inline=False)
-
+    embed.add_field(name="1cy Group Pending", value=data['1cy_pending'], inline=False)
+    embed.add_field(name="Modded Corporations Group Pending", value=data['mc_pending'], inline=False)
+    embed.add_field(name="1cy Daily Sales", value=data['1cy_daily_sales'], inline=False)
+    embed.add_field(name="Modded Corporations Daily Sales", value=data['mc_daily_sales'], inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
-
     await interaction.followup.send(embed=embed)
 
 
