@@ -1471,7 +1471,6 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Stocks Command ==========
-# ========== Stocks Command ==========
 @bot.tree.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def stocks(interaction: discord.Interaction):
     await interaction.response.defer()
