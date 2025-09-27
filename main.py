@@ -437,21 +437,51 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
 # Announcement Command
 # ===========================
 @bot.tree.command(name="announcement", description="Send an embedded announcement to a specific channel")
-@app_commands.describe(message="The message to include in the announcement", channel="The channel to send the announcement to")
-async def announcement(interaction: discord.Interaction, message: str, channel: discord.TextChannel):
+@app_commands.describe(
+    message="The message to include in the announcement",
+    channel="The channel to send the announcement to",
+    image_url="Optional: URL of an image to attach to the announcement"
+)
+async def announcement(
+    interaction: discord.Interaction,
+    message: str,
+    channel: discord.TextChannel,
+    image_url: str = None
+):
     BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
     if not is_owner and not is_admin:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
+
     embed = discord.Embed(
         title="ANNOUNCEMENT",
-        description=f"```\n{message}\n```",
+        description=f"```
+{message}
+```",
         color=discord.Color.from_rgb(0, 0, 0)
     )
+
+    # Validate and set image if provided
+    if image_url:
+        try:
+            # Basic URL validation
+            parsed = urlparse(image_url)
+            if parsed.scheme in ("http", "https") and any(
+                image_url.lower().endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp")
+            ):
+                embed.set_image(url=image_url)
+            else:
+                await interaction.response.send_message("⚠️ Invalid image URL. Must be a direct link ending in .png, .jpg, .jpeg, .gif, or .webp.", ephemeral=True)
+                return
+        except Exception:
+            await interaction.response.send_message("⚠️ Invalid image URL format.", ephemeral=True)
+            return
+
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
+
     try:
         await channel.send(embed=embed)
         await interaction.response.send_message(f"✅ Announcement sent to {channel.mention}", ephemeral=True)
