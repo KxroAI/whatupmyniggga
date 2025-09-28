@@ -438,14 +438,18 @@ async def userinfo(interaction: discord.Interaction, user: discord.User = None):
 # ===========================
 @bot.tree.command(name="announcement", description="Send an embedded announcement to a specific channel")
 @app_commands.describe(
-    message="The message to include in the announcement",
+    message="The message to include in the announcement (supports line breaks if pasted)",
     channel="The channel to send the announcement to",
+    title="Optional: Custom title (defaults to 'ANNOUNCEMENT')",
+    use_codeblock="Wrap message in a code block? (default: Yes)",
     image="Optional: Upload an image to attach to the announcement"
 )
 async def announcement(
     interaction: discord.Interaction,
     message: str,
     channel: discord.TextChannel,
+    title: str = "ANNOUNCEMENT",
+    use_codeblock: bool = True,
     image: discord.Attachment = None
 ):
     BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
@@ -455,15 +459,20 @@ async def announcement(
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
+    # Format description with or without code block
+    if use_codeblock:
+        description = f"```\n{message}\n```"
+    else:
+        description = message
+
     embed = discord.Embed(
-        title="ANNOUNCEMENT",
-        description=f"```\n{message}\n```",
+        title=title,
+        description=description,
         color=discord.Color.from_rgb(0, 0, 0)
     )
 
     # Handle uploaded image
     if image:
-        # Check if it's a valid image type
         if image.content_type and image.content_type.startswith('image/'):
             embed.set_image(url=image.url)
         else:
@@ -1254,104 +1263,126 @@ async def calculator(interaction: discord.Interaction, num1: float, operation: a
         await interaction.response.send_message(f"⚠️ An error occurred: {str(e)}")
 
 # List All Commands
-@bot.tree.command(name="listallcommands", description="List all available slash commands, optionally filtered by category.")
-@app_commands.describe(category="Optional: Filter commands by category")
-@app_commands.choices(category=[
-    app_commands.Choice(name="AI Assistant", value="ai"),
-    app_commands.Choice(name="Currency Conversion", value="currency"),
-    app_commands.Choice(name="Utility Tools", value="utility"),
-    app_commands.Choice(name="Reminders & Polls", value="reminders_polls"),
-    app_commands.Choice(name="Fun Commands", value="fun"),
-    app_commands.Choice(name="Developer Tools", value="developer"),
-])
-async def listallcommands(interaction: discord.Interaction, category: app_commands.Choice[str] = None):
-    embed = discord.Embed(
-        title="📚 All Available Commands",
-        description="A categorized list of all commands for easy navigation.",
-        color=discord.Color.from_rgb(0, 0, 0)  # Black
-    )
+class CommandPaginator(ui.View):
+    def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
+        super().__init__(timeout=timeout)
+        self.embeds = embeds
+        self.current_page = 0
+        self.update_buttons()
 
-    commands_by_category = {
-        "ai": """
-- `/ask <prompt>` - Chat with Llama 3 AI  
-- `/clearhistory` - Clear your AI conversation history
-        """,
-        "currency": """
-- `/setrate <rates>` - Set custom Conversion Rates
-- `/resetrate <rates>` - Reset specific Conversion Rates back to Default
-- `/payout <robux>` - Convert Robux to PHP at Payout rate
-- `/payoutreverse <php>` - Convert PHP to Robux at Payout rate
-- `/gift <robux>` - Convert Robux to PHP at Gift rate
-- `/giftreverse <php>` - Convert PHP to Robux at Gift rate
-- `/nct <robux>` - Convert Robux to PHP at NCT rate
-- `/nctreverse <php>` - Convert PHP to Robux at NCT rate
-- `/ct <robux>` - Convert Robux to PHP at CT rate
-- `/ctreverse <php>` - Convert PHP to Robux at CT rate
-- `/allrates <robux>` - See PHP equivalent across all rates for given Robux
-- `/allratesreverse <robux>` - See Robux equivalent across all rates for given PHP
-- `/convertcurrency <amount> <from> <to>` - Convert between currencies
-- `/beforetax <robux>` - Calculate how much Robux you'll receive after 30% tax
-- `/aftertax <robux>` - Calculate how much Robux to send to receive desired amount after 30% tax
-- `/checkpayout <user_id>` - Check if a Roblox User is Eligible for Group Payout
-        """,
-        "utility": """
-- `/userinfo [user]` - View detailed info about a user  
-- `/purge <amount>` - Delete messages (requires mod permissions)    
-- `/group` - Show info about the 1cy Roblox Group  
-- `/stocks` - Show both Group Funds or Robux Stocks
-- `/announcement <message> <channel>` - Send an embedded announcement
-- `/gamepass <id>` - Show a public Roblox Gamepass Link using an ID or Creator Dashboard URL
-- `/avatar [user]` - Display a user's profile picture
-- `/banner [user]` - Display a user's bannner
-        """,
-        "reminders_polls": """
-- `/remindme <minutes> <note>` - Set a personal reminder  
-- `/poll <question> <time> <unit>` - Create a timed poll  
-        """,
-        "fun": """
-- `/donate <user> <amount>` - Donate Robux to someone
-- `/say <message>` - Make the bot say something
-- `/calculator <num1> <operation> <num2>` - Perform math operations
-- `/weather <city> [unit]` - Get weather in a city  
-- `/tiktok <link>` - Convert a TikTok Link into a Video
-- `/instagram <link>` - Convert Instagram Link into a Media/Video
-- `/` - Show the last deleted message
-        """,
-        "developer": """
-- `/dm <user> <message>` - Send a direct message to a specific user  
-- `/dmall <message>` - Send a direct message to all members in the server
-- `/invite` - Get the invite link for the bot  
-- `/status` - Show how many servers the bot is in and total user count
-- `/payment <method>` - Show payment instructions (Gcash/PayMaya/GoTyme)
-        """
+    def update_buttons(self):
+        self.children[0].disabled = self.current_page == 0  # Previous
+        self.children[1].disabled = self.current_page == len(self.embeds) - 1  # Next
+
+    @ui.button(label="◀️ Previous", style=ButtonStyle.gray)
+    async def previous_page(self, interaction: Interaction, button: ui.Button):
+        self.current_page -= 1
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+
+    @ui.button(label="Next ▶️", style=ButtonStyle.gray)
+    async def next_page(self, interaction: Interaction, button: ui.Button):
+        self.current_page += 1
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        # Edit original message to disable buttons
+        try:
+            await self.message.edit(view=self)
+        except:
+            pass
+
+
+@bot.tree.command(name="listallcommands", description="List all available slash commands with pagination.")
+async def listallcommands(interaction: discord.Interaction):
+    # Define all commands by category (verified against your code)
+    categories = {
+        "🤖 AI Assistant": [
+            "`/ask <prompt>` – Chat with Llama 3 AI",
+            "`/clearhistory` – Clear your AI conversation history"
+        ],
+        "💰 Currency & Rates": [
+            "`/payout <robux>` – Convert Robux to PHP (Payout rate)",
+            "`/payoutreverse <php>` – Convert PHP to Robux (Payout rate)",
+            "`/gift <robux>` – Convert using Gift rate",
+            "`/giftreverse <php>` – Reverse Gift conversion",
+            "`/nct <robux>` – Convert using NCT rate",
+            "`/nctreverse <php>` – Reverse NCT conversion",
+            "`/ct <robux>` – Convert using CT rate",
+            "`/ctreverse <php>` – Reverse CT conversion",
+            "`/allrates <robux>` – Compare all rates for given Robux",
+            "`/allratesreverse <php>` – Compare all rates for given PHP",
+            "`/setrate` – Set custom conversion rates (admin)",
+            "`/resetrate` – Reset rates to default (admin)",
+            "`/devex` – Convert Robux ↔ USD using DevEx rate"
+        ],
+        "💱 Currency & Tax Tools": [
+            "`/convertcurrency <amount> <from> <to>` – Convert between world currencies",
+            "`/beforetax <robux>` – Calculate received Robux after 30% tax",
+            "`/aftertax <target>` – Calculate how much to send to receive target after tax"
+        ],
+        "🛠️ Utility Tools": [
+            "`/userinfo [user]` – View user info",
+            "`/avatar [user]` – Show user’s avatar",
+            "`/banner [user]` – Show user’s banner",
+            "`/group` – Show 1cy Roblox group info",
+            "`/gamepass <id|link>` – Get public Gamepass link",
+            "`/roblox <username|id>` – Get Roblox user profile",
+            "`/stocks` – Show group funds & Robux stocks",
+            "`/weather <city>` – Get weather info",
+            "`/calculator <num1> <op> <num2>` – Basic math",
+            "`/purge <amount>` – Delete messages (mod only)"
+        ],
+        "📢 Announcements & Messaging": [
+            "`/announcement <message> <channel> [title] [use_codeblock] [image]` – Send embed announcement",
+            "`/say <message>` – Make bot say something",
+            "`/donate <user> <amount>` – Donate Robux (fun command)",
+            "`/dm <user> <message>` – DM a user (owner only)",
+            "`/dmall <message>` – DM all server members (owner only)"
+        ],
+        "⏰ Reminders & Polls": [
+            "`/remindme <minutes> <note>` – Set a reminder",
+            "`/poll <question> <time> <unit>` – Create a timed poll"
+        ],
+        "📱 Social Media Tools": [
+            "`/tiktok <link>` – Download TikTok video",
+            "`/instagram <link>` – Convert Instagram post to EmbedEZ link"
+        ],
+        "💳 Payments & Verification": [
+            "`/payment <method>` – Show Gcash/PayMaya/GoTyme info",
+            "`/checkpayout <username>` – Check Roblox payout eligibility",
+            "`/check [cookie|creds]` – Check Roblox account details"
+        ],
+        "🔧 Developer & Info": [
+            "`/invite` – Get bot invite link",
+            "`/status` – Show bot server/user stats",
+            "`/snipe` – Show last deleted message in channel"
+        ]
     }
 
-    if category is None:
-        # No filter — show all categories
-        embed.add_field(name="🤖 AI Assistant", value=commands_by_category["ai"], inline=False)
-        embed.add_field(name="💰 Currency Conversion", value=commands_by_category["currency"], inline=False)
-        embed.add_field(name="🛠️ Utility Tools", value=commands_by_category["utility"], inline=False)
-        embed.add_field(name="⏰ Reminders & Polls", value=commands_by_category["reminders_polls"], inline=False)
-        embed.add_field(name="🎉 Fun", value=commands_by_category["fun"], inline=False)
-        embed.add_field(name="🔧 Developer Tools", value=commands_by_category["developer"], inline=False)
-    else:
-        # Show only selected category
-        category_key = category.value
-        category_name_map = {
-            "ai": "🤖 AI Assistant",
-            "currency": "💰 Currency Conversion",
-            "utility": "🛠️ Utility Tools",
-            "reminders_polls": "⏰ Reminders & Polls",
-            "fun": "🎉 Fun",
-            "developer": "🔧 Developer Tools"
-        }
-        full_category_name = category_name_map.get(category_key, "Unknown Category")
-        field_value = commands_by_category.get(category_key, "No commands found for this category.")
-        embed.add_field(name=full_category_name, value=field_value, inline=False)
+    # Build embeds (1 per category)
+    embeds = []
+    for name, cmds in categories.items():
+        embed = discord.Embed(
+            title=name,
+            description="\n".join(cmds),
+            color=discord.Color.from_rgb(0, 0, 0)
+        )
+        embed.set_footer(text="Neroniel • Use buttons to navigate")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        embeds.append(embed)
 
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
-    await interaction.response.send_message(embed=embed)
+    if not embeds:
+        await interaction.response.send_message("❌ No commands found.", ephemeral=True)
+        return
+
+    view = CommandPaginator(embeds)
+    await interaction.response.send_message(embed=embeds[0], view=view)
+    # Store message ref for timeout cleanup
+    view.message = await interaction.original_response()
 
 
 # ===========================
