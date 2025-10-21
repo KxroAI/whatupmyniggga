@@ -2335,11 +2335,32 @@ async def check_payout(interaction: discord.Interaction,
                     groups = await membership_resp.json()
                     in_group = any(group['group']['id'] == int(GROUP_ID)
                                    for group in groups['data'])
-                    if not in_group:
-                        embed.description = f"`{username}` ({display_name}) is ❌ not a member of the Group."
-                        embed.color = discord.Color.red()
-                        await interaction.followup.send(embed=embed)
-                        return
+                else:
+                    embed.description = f"`{username}` ({display_name}) is ❌ not a member of the Group."
+                    embed.color = discord.Color.red()
+                    await interaction.followup.send(embed=embed)
+                    return
+    except Exception as e:
+        embed.description = f"❌ An error occurred during Group Membership check: `{str(e)}`"
+        embed.color = discord.Color.red()
+        await interaction.followup.send(embed=embed)
+        return
+
+    # Step 3: Fetch the user's group role
+    role_name = "Unknown"
+    try:
+        async with aiohttp.ClientSession() as session:
+            roles_url = f'https://groups.roblox.com/v2/users/{user_id}/groups/roles'
+            async with session.get(roles_url) as roles_resp:
+                if roles_resp.status == 200:
+                    roles_data = await roles_resp.json()
+                    for group_entry in roles_data.get('data', []):
+                        if str(group_entry['group']['id']) == GROUP_ID:
+                            role_name = group_entry['role']['name']
+                            break
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch group role: {e}")
+        role_name = "Error fetching role"
                 else:
                     embed.description = f"❌ Error checking Group Membership. Status code: {membership_resp.status}"
                     embed.color = discord.Color.red()
@@ -2378,7 +2399,7 @@ async def check_payout(interaction: discord.Interaction,
                                     bool) else str(eligibility_status).lower(
                                     ) in ['true', 'eligible']
                                 status_text = "✅ Eligible" if is_eligible else "❌ Not Currently Eligible"
-                                embed.description = f"`{username}` ({display_name}) is **{status_text}**"
+                                embed.description = f"`{username}` ({display_name}) is **{status_text}**\n**Group Role:** {role_name}"
                                 embed.color = discord.Color.green(
                                 ) if is_eligible else discord.Color.red()
                         else:
