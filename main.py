@@ -2361,16 +2361,6 @@ async def check_payout(interaction: discord.Interaction,
     except Exception as e:
         print(f"[ERROR] Failed to fetch group role: {e}")
         role_name = "Error fetching role"
-                else:
-                    embed.description = f"❌ Error checking Group Membership. Status code: {membership_resp.status}"
-                    embed.color = discord.Color.red()
-                    await interaction.followup.send(embed=embed)
-                    return
-    except Exception as e:
-        embed.description = f"❌ An error occurred during Group Membership check: `{str(e)}`"
-        embed.color = discord.Color.red()
-        await interaction.followup.send(embed=embed)
-        return
 
     # Step 3: Check payout eligibility
     try:
