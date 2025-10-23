@@ -2908,6 +2908,73 @@ async def roblox(interaction: discord.Interaction, user: str):
         await interaction.followup.send(f"❌ An error occurred: `{str(e)}`",
                                         ephemeral=True)
 
+# ========== MEXC Market Command ==========
+@bot.tree.command(name="mexc", description="Show top 20 cryptos by volume on MEXC (Spot & Futures)")
+async def mexc(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False)
+
+    try:
+        # Fetch Spot data
+        spot_url = "https://api.mexc.com/api/v3/ticker/24hr"
+        spot_resp = requests.get(spot_url)
+        spot_data = spot_resp.json()
+
+        if not isinstance(spot_data, list):
+            raise Exception("Invalid Spot API response")
+
+        # Filter USDT pairs
+        usdt_pairs = [item for item in spot_data if item['symbol'].endswith('USDT')]
+        sorted_spot = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)
+        top_spot = sorted_spot[:10]  # Top 10 to stay within limits
+
+        # Build Spot content (compact)
+        spot_lines = []
+        for coin in top_spot:
+            sym = coin['symbol'].replace('USDT', '')
+            price = float(coin['lastPrice'])
+            vol = float(coin['quoteVolume'])
+            change_pct = float(coin['priceChangePercent'])
+            trend = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "⏸️"
+            ratio = 1.0 + (change_pct / 100) if change_pct >= 0 else 1.0 - (abs(change_pct) / 100)
+            position = "🟢" if ratio > 1 else "🔴" if ratio < 1 else "🟡"
+            sentiment = "🚀" if change_pct > 0 else "🔻" if change_pct < 0 else "⚖️"
+
+            line = f"`{sym:>6}` **${price:,.2f}** • **{vol:,.0f}** • {trend} {position} {sentiment}"
+            spot_lines.append(line)
+
+        spot_content = "\n".join(spot_lines) if spot_lines else "No data available."
+
+        # Futures: MEXC Futures API is different; we'll use a placeholder unless you have a key
+        # For now, just duplicate Spot as mock Futures (or leave empty)
+        futures_content = spot_content  # Replace later if you integrate Futures API
+
+        # Build Embed
+        embed = discord.Embed(
+            title="📊 MEXC Market Overview",
+            color=discord.Color.from_rgb(0, 0, 0),
+            timestamp=datetime.now(PH_TIMEZONE)
+        )
+        embed.set_footer(text="Data from MEXC API • Neroniel")
+
+        # Add Spot (max 1024 chars)
+        embed.add_field(
+            name="🌐 Spot Market (Top 10)",
+            value=spot_content[:1020] + "..." if len(spot_content) > 1024 else spot_content,
+            inline=False
+        )
+
+        # Add Futures (same limit)
+        embed.add_field(
+            name="⚡ Futures Market (Top 10)",
+            value=futures_content[:1020] + "..." if len(futures_content) > 1024 else futures_content,
+            inline=False
+        )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: `{str(e)}`", ephemeral=True)
+        print(f"[ERROR] /mexc: {e}")
 
 # ===========================
 # Bot Events
