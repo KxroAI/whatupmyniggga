@@ -2912,22 +2912,18 @@ async def roblox(interaction: discord.Interaction, user: str):
 @bot.tree.command(name="mexc", description="Show top 20 cryptos by volume on MEXC (Spot & Futures)")
 async def mexc(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
-
     try:
-        # Fetch Spot data
+        # ===== SPOT DATA (Public) =====
         spot_url = "https://api.mexc.com/api/v3/ticker/24hr"
         spot_resp = requests.get(spot_url)
         spot_data = spot_resp.json()
-
         if not isinstance(spot_data, list):
             raise Exception("Invalid Spot API response")
 
-        # Filter USDT pairs
         usdt_pairs = [item for item in spot_data if item['symbol'].endswith('USDT')]
         sorted_spot = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)
-        top_spot = sorted_spot[:10]  # Top 10 to stay within limits
+        top_spot = sorted_spot[:10]
 
-        # Build Spot content (compact)
         spot_lines = []
         for coin in top_spot:
             sym = coin['symbol'].replace('USDT', '')
@@ -2935,18 +2931,58 @@ async def mexc(interaction: discord.Interaction):
             vol = float(coin['quoteVolume'])
             change_pct = float(coin['priceChangePercent'])
             trend = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "⏸️"
-            ratio = 1.0 + (change_pct / 100) if change_pct >= 0 else 1.0 - (abs(change_pct) / 100)
-            position = "🟢" if ratio > 1 else "🔴" if ratio < 1 else "🟡"
-            sentiment = "🚀" if change_pct > 0 else "🔻" if change_pct < 0 else "⚖️"
-
-            line = f"`{sym:>6}` **${price:,.2f}** • **{vol:,.0f}** • {trend} {position} {sentiment}"
+            line = f"`{sym:>6}` **${price:,.2f}** • **{vol:,.0f}** • {trend}"
             spot_lines.append(line)
-
         spot_content = "\n".join(spot_lines) if spot_lines else "No data available."
 
-        # Futures: MEXC Futures API is different; we'll use a placeholder unless you have a key
-        # For now, just duplicate Spot as mock Futures (or leave empty)
-        futures_content = spot_content  # Replace later if you integrate Futures API
+        # ===== FUTURES DATA (Authenticated) =====
+        futures_url = "https://contract.mexc.com/api/v1/contract/depth/BTC_USDT"  # Example symbol
+        # If you want ALL symbols, use: https://contract.mexc.com/api/v1/contract/contract/list
+        # But for top 10, we'll simulate or fetch from public endpoint since MEXC Futures doesn't have a direct "top 10 by volume" public endpoint
+
+        # Since MEXC Futures doesn't have a simple top-volume public endpoint, let's show BTC/ETH futures stats instead
+        futures_symbols = ["BTC_USDT", "ETH_USDT", "SOL_USDT", "BNB_USDT", "DOGE_USDT"]
+        futures_lines = []
+        for symbol in futures_symbols:
+            fut_url = f"https://contract.mexc.com/api/v1/contract/depth/{symbol}"
+            fut_resp = requests.get(fut_url)
+            fut_data = fut_resp.json()
+            if fut_data.get("success") and "asks" in fut_data["data"]:
+                best_ask = float(fut_data["data"]["asks"][0][0]) if fut_data["data"]["asks"] else 0
+                best_bid = float(fut_data["data"]["bids"][0][0]) if fut_data["data"]["bids"] else 0
+                mid_price = (best_ask + best_bid) / 2
+                futures_lines.append(f"`{symbol.replace('_USDT', '')}` **${mid_price:,.2f}**")
+
+        futures_content = "\n".join(futures_lines) if futures_lines else "No Futures data available."
+
+        # ===== ACCOUNT BALANCE (Optional - if you want to show user's balance) =====
+        # Uncomment below if you want to show balance (requires auth)
+        """
+        api_key = os.getenv("MEXC_API_KEY")
+        secret_key = os.getenv("MEXC_SECRET_KEY")
+        if not api_key or not secret_key:
+            raise Exception("MEXC API keys not set in environment.")
+
+        # Sign request for balance
+        timestamp = str(int(time.time() * 1000))
+        signature = hmac.new(secret_key.encode(), f"{timestamp}".encode(), hashlib.sha256).hexdigest()
+
+        headers = {
+            'X-MEXC-APIKEY': api_key,
+            'X-MEXC-SIGNATURE': signature,
+            'X-MEXC-TIMESTAMP': timestamp,
+            'Content-Type': 'application/json'
+        }
+
+        balance_url = "https://contract.mexc.com/api/v1/contract/account/balance"
+        balance_resp = requests.get(balance_url, headers=headers)
+        balance_data = balance_resp.json()
+        if balance_data.get("success"):
+            usdt_balance = balance_data["data"].get("availableBalance", 0)
+            futures_content += f"
+
+**Your USDT Balance:** ${usdt_balance:,.2f}"
+        """
 
         # Build Embed
         embed = discord.Embed(
@@ -2956,16 +2992,14 @@ async def mexc(interaction: discord.Interaction):
         )
         embed.set_footer(text="Data from MEXC API • Neroniel")
 
-        # Add Spot (max 1024 chars)
         embed.add_field(
             name="🌐 Spot Market (Top 10)",
             value=spot_content[:1020] + "..." if len(spot_content) > 1024 else spot_content,
             inline=False
         )
 
-        # Add Futures (same limit)
         embed.add_field(
-            name="⚡ Futures Market (Top 10)",
+            name="⚡ Futures Market (Top 5)",
             value=futures_content[:1020] + "..." if len(futures_content) > 1024 else futures_content,
             inline=False
         )
