@@ -1599,6 +1599,7 @@ class CommandPaginator(ui.View):
 
 
 # ========== List All Commands ==========
+
 class CommandPaginator(ui.View):
     def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
         super().__init__(timeout=timeout)
@@ -1630,37 +1631,6 @@ class CommandPaginator(ui.View):
         except:
             pass
 
-# ========== List All Commands ==========
-class CommandPaginator(ui.View):
-    def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
-        super().__init__(timeout=timeout)
-        self.embeds = embeds
-        self.current_page = 0
-        self.update_buttons()
-
-    def update_buttons(self):
-        self.children[0].disabled = self.current_page == 0  # Previous
-        self.children[1].disabled = self.current_page == len(self.embeds) - 1  # Next
-
-    @ui.button(label="◀️ Previous", style=ButtonStyle.gray)
-    async def previous_page(self, interaction: Interaction, button: ui.Button):
-        self.current_page -= 1
-        self.update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
-
-    @ui.button(label="Next ▶️", style=ButtonStyle.gray)
-    async def next_page(self, interaction: Interaction, button: ui.Button):
-        self.current_page += 1
-        self.update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
-
-    async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
-        try:
-            await self.message.edit(view=self)
-        except:
-            pass
 
 @bot.tree.command(
     name="listallcommands",
@@ -1691,8 +1661,8 @@ async def listallcommands(interaction: discord.Interaction):
             "`/ct` – Convert Robux ↔ PHP (CT rate)",
             "`/allrates` – Compare all PHP/Robux rates",
             "`/convertcurrency <amount> <from> <to>` – World currency converter",
-            "`/setrate` – Set custom conversion rates (admin)",
-            "`/resetrate` – Reset rates to default (admin)"
+            "`/setrate` – Set custom conversion rates (administrator)",
+            "`/resetrate` – Reset rates to default (administrator)"
         ],
         "🛠️ Utility & Info": [
             "`/userinfo [user]` – View Discord user info",
@@ -1700,15 +1670,15 @@ async def listallcommands(interaction: discord.Interaction):
             "`/banner [user]` – Show Discord user’s banner",
             "`/weather <city>` – Get weather info",
             "`/calculator <num1> <op> <num2>` – Basic math operations",
-            "`/purge <amount>` – Delete messages (mod only)",
+            "`/purge <amount>` – Delete messages (moderator)",
             "`/mexc` – Show top crypto by volume on MEXC"
         ],
         "📢 Announcements & Messaging": [
-            "`/announcement` – Create a rich embed announcement (admin)",
+            "`/announcement` – Create a rich embed announcement (administrator)",
             "`/say <message>` – Make bot say something",
             "`/donate <user> <amount>` – Fun Robux donation message",
-            "`/dm <user> <message>` – DM a user (owner only)",
-            "`/dmall <message>` – DM all members (owner only)"
+            "`/dm <user> <message>` – DM a user (owner)",
+            "`/dmall <message>` – DM all members (owner)"
         ],
         "⏰ Reminders & Polls": [
             "`/remindme <minutes> <note>` – Set a reminder in this channel",
@@ -1718,13 +1688,12 @@ async def listallcommands(interaction: discord.Interaction):
             "`/tiktok <link>` – Download TikTok video",
             "`/instagram <link>` – Convert to EmbedEZ link"
         ],
-        "💳 Payments & Admin": [
-            "`/payment <method>` – Show Gcash/PayMaya/GoTyme info"
-        ],
         "🔧 Bot & Server": [
             "`/invite` – Get bot invite link",
             "`/status` – Show bot stats (servers/users)",
             "`/snipe` – Show last deleted message in channel"
+             "`/payment <method>` – Show Gcash/PayMaya/GoTyme info"
+            "`/createinvite` – Create 30-min invites for all servers (owner)"
         ]
     }
 
@@ -1746,7 +1715,6 @@ async def listallcommands(interaction: discord.Interaction):
     view = CommandPaginator(embeds)
     await interaction.response.send_message(embed=embeds[0], view=view)
     view.message = await interaction.original_response()
-
 
 # ===========================
 # Payment Command
@@ -1904,6 +1872,43 @@ async def status(interaction: discord.Interaction):
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
+
+# ========== Create Invite Command ==========
+@bot.tree.command(name="createinvite", description="Create 30-minute invites for all servers (Owner only)")
+async def createinvite(interaction: discord.Interaction):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    invites = []
+    for guild in bot.guilds:
+        try:
+            # Find a text channel the bot can create invites in
+            channel = next((ch for ch in guild.text_channels if ch.permissions_for(guild.me).create_instant_invite), None)
+            if channel:
+                invite = await channel.create_invite(max_age=1800, reason="Owner request via /createinvite")
+                invites.append(f"**{guild.name}** (`{guild.id}`): {invite.url}")
+            else:
+                invites.append(f"**{guild.name}** (`{guild.id}`): ❌ No suitable channel")
+        except discord.Forbidden:
+            invites.append(f"**{guild.name}** (`{guild.id}`): ❌ Missing permissions")
+        except Exception as e:
+            invites.append(f"**{guild.name}** (`{guild.id}`): ❌ Error: `{e}`")
+
+    # Split long messages to respect Discord's 2000-char limit
+    full_message = "\n".join(invites)
+    if len(full_message) > 1900:
+        # Send as multiple messages if needed
+        chunks = [full_message[i:i+1900] for i in range(0, len(full_message), 1900)]
+        await interaction.followup.send(chunks[0], ephemeral=True)
+        for chunk in chunks[1:]:
+            await interaction.followup.send(chunk, ephemeral=True)
+    else:
+        await interaction.followup.send(full_message or "No servers found.", ephemeral=True)
 
 
 # ========== Devex Command ==========
