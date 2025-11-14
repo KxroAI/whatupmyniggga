@@ -10,3 +10,4 @@ flask==3.1.1
 instaloader==4.14.1
 langdetect==1.0.9
 pyktok==0.0.31
+psutil==6.0.0
