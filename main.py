@@ -990,24 +990,24 @@ async def payout(interaction: discord.Interaction, conversion_type: app_commands
     if amount <= 0:
         await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
         return
-
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    payout_rate = rates["payout"]  # PHP per 1000 Robux
-
+    payout_rate = rates["payout"] 
+    robux_emoji = "<:robux:1438835687741853709>"
+    php_emoji = "<:PHP:1438894048222908416>"
+    def format_php(value: float) -> str:
+        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (payout_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-    else:  # php_to_robux
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+    else: 
         php = amount
-        robux = round((php / payout_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-
+        robux = int((php / payout_rate) * 1000) 
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
     embed.add_field(
         name="Note:",
         value=(
@@ -1015,7 +1015,6 @@ async def payout(interaction: discord.Interaction, conversion_type: app_commands
         ),
         inline=False
     )
-
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -1037,24 +1036,24 @@ async def gift(interaction: discord.Interaction, conversion_type: app_commands.C
     if amount <= 0:
         await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
         return
-
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    gift_rate = rates["gift"]  # PHP per 1000 Robux
-
+    gift_rate = rates["gift"]  
+    robux_emoji = "<:robux:1438835687741853709>"
+    php_emoji = "<:PHP:1438894048222908416>"
+    def format_php(value: float) -> str:
+        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (gift_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-    else:  # php_to_robux
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+    else:  
         php = amount
-        robux = round((php / gift_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-
+        robux = int((php / gift_rate) * 1000)  
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -1076,24 +1075,24 @@ async def nct(interaction: discord.Interaction, conversion_type: app_commands.Ch
     if amount <= 0:
         await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
         return
-
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    nct_rate = rates["nct"]  # PHP per 1000 Robux
-
+    nct_rate = rates["nct"] 
+    robux_emoji = "<:robux:1438835687741853709>"
+    php_emoji = "<:PHP:1438894048222908416>"
+    def format_php(value: float) -> str:
+        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (nct_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-    else:  # php_to_robux
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+    else: 
         php = amount
-        robux = round((php / nct_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-
+        robux = int((php / nct_rate) * 1000) 
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
     embed.add_field(
         name="Note:",
         value=(
@@ -1101,7 +1100,6 @@ async def nct(interaction: discord.Interaction, conversion_type: app_commands.Ch
         ),
         inline=False
     )
-
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -1123,25 +1121,25 @@ async def ct(interaction: discord.Interaction, conversion_type: app_commands.Cho
     if amount <= 0:
         await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
         return
-
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    ct_rate = rates["ct"]  # PHP per 1000 Robux
-
+    ct_rate = rates["ct"]  
+    robux_emoji = "<:robux:1438835687741853709>"
+    php_emoji = "<:PHP:1438894048222908416>"
+    def format_php(value: float) -> str:
+        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (ct_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-    else:  # php_to_robux
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+    else: 
         php = amount
-        robux = round((php / ct_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"₱{php:.2f} PHP", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux} Robux", inline=False)
-
-    # 🔒 YOUR EXACT NOTE (UNCHANGED)
+        robux = int((php / ct_rate) * 1000) 
+        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+    
     embed.add_field(
         name="Note:",
         value=(
@@ -1149,7 +1147,6 @@ async def ct(interaction: discord.Interaction, conversion_type: app_commands.Cho
         ),
         inline=False
     )
-
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -1171,9 +1168,13 @@ async def allrates(interaction: discord.Interaction, conversion_type: app_comman
     if amount <= 0:
         await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
         return
-
     guild_id = str(interaction.guild.id)
     rates = get_current_rates(guild_id)
+    robux_emoji = "<:robux:1438835687741853709>"
+    php_emoji = "<:PHP:1438894048222908416>"
+    
+    def format_php(value: float) -> str:
+        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
 
     embed = discord.Embed(
         title="All Conversion Rates",
@@ -1182,16 +1183,18 @@ async def allrates(interaction: discord.Interaction, conversion_type: app_comman
 
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
-        embed.description = f"**{robux} Robux** → PHP equivalent across all rates:"
+        embed.description = f"{robux_emoji} {robux} → PHP equivalent across all rates:"
         for label, rate in [("Payout Rate", rates["payout"]), ("Gift Rate", rates["gift"]), ("NCT Rate", rates["nct"]), ("CT Rate", rates["ct"])]:
             php_value = (rate / 1000) * robux
-            embed.add_field(name=f"• {label}", value=f"₱{php_value:.2f}", inline=False)
-    else:  # php_to_robux
+            formatted_php = format_php(php_value)
+            embed.add_field(name=f"• {label}", value=f"{php_emoji} {formatted_php}", inline=False)
+    else:  # php_to_robux — FLOOR
         php = amount
-        embed.description = f"**₱{php:.2f} PHP** → Robux equivalent across all rates:"
+        formatted_php = format_php(php)
+        embed.description = f"{php_emoji} {formatted_php} → Robux equivalent across all rates:"
         for label, rate in [("Payout Rate", rates["payout"]), ("Gift Rate", rates["gift"]), ("NCT Rate", rates["nct"]), ("CT Rate", rates["ct"])]:
-            robux_value = round((php / rate) * 1000)
-            embed.add_field(name=f"• {label}", value=f"{robux_value} Robux", inline=False)
+            robux_value = int((php / rate) * 1000)  # 👈 FLOOR
+            embed.add_field(name=f"• {label}", value=f"{robux_emoji} {robux_value}", inline=False)
 
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
@@ -1905,60 +1908,6 @@ async def createinvite(interaction: discord.Interaction):
             await interaction.followup.send(chunk, ephemeral=True)
     else:
         await interaction.followup.send(full_message or "No servers found.", ephemeral=True)
-
-
-# ========== Devex Command ==========
-@bot.tree.command(
-    name="devex",
-    description="Convert between Robux and USD using the current DevEx rate")
-@app_commands.describe(
-    conversion_type="Choose the type of value you're entering",
-    amount="The amount of Robux or USD to convert")
-@app_commands.choices(conversion_type=[
-    app_commands.Choice(name="Robux to USD", value="robux"),
-    app_commands.Choice(name="USD to Robux", value="usd")
-])
-async def devex(interaction: discord.Interaction,
-                conversion_type: app_commands.Choice[str], amount: float):
-    if amount <= 0:
-        await interaction.response.send_message(
-            "❗ Please enter a positive amount.", ephemeral=True)
-        return
-
-    devex_rate = 0.0035  # $0.0035 per Robux
-
-    if conversion_type.value == "robux":
-        robux = amount
-        usd = robux * devex_rate
-        embed = discord.Embed(
-            title="💎 DevEx Conversion: Robux → USD",
-            description=
-            f"Converting **{robux} Robux** at the rate of **$0.0035/Robux**:",
-            color=discord.Color.green())
-        embed.add_field(name="Total USD Value",
-                        value=f"**${usd:.4f} USD**",
-                        inline=False)
-    else:
-        usd = amount
-        robux = usd / devex_rate
-        embed = discord.Embed(
-            title="💎 DevEx Conversion: USD → Robux",
-            description=
-            f"Converting **${usd:.4f} USD** at the rate of **$0.0035/Robux**:",
-            color=discord.Color.from_rgb(0, 0, 0))
-        embed.add_field(name="Total Robux Value",
-                        value=f"**{int(robux)} Robux**",
-                        inline=False)
-
-    embed.add_field(
-        name="Note",
-        value=
-        "This is an estimate based on the current DevEx rate. Actual payout may vary.",
-        inline=False)
-    embed.set_footer(text="Neroniel")
-    embed.timestamp = datetime.now(PH_TIMEZONE)
-
-    await interaction.response.send_message(embed=embed)
 
 
 # ========== Tiktok Command ==========
