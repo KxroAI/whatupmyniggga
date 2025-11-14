@@ -1840,8 +1840,8 @@ async def status(interaction: discord.Interaction):
     ram_total_gb = ram.total / (1024**3)
 
     os_section = (
-        f"CPU: {cpu_percent:.1f}% ({cpu_count}Core @ {int(cpu_freq)}MHz)\n"
-        f"Ram: {ram_percent:.1f}% ({ram_used_gb:.2f}GB/{ram_total_gb:.2f}GB)"
+        f"**CPU:** {cpu_percent:.1f}% ({cpu_count}Core @ {int(cpu_freq)}MHz)\n"
+        f"**Ram:** {ram_percent:.1f}% ({ram_used_gb:.2f}GB/{ram_total_gb:.2f}GB)"
     )
 
     # ========== Bot Stats ==========
@@ -1855,10 +1855,10 @@ async def status(interaction: discord.Interaction):
     total_members = sum(guild.member_count for guild in bot.guilds)
 
     bot_section = (
-        f"Servers: {total_servers:,}\n"
-        f"Members: {total_members:,}\n"
-        f"UpTime: {uptime_str}\n"
-        f"Commands ran in UpTime: {bot.command_count:,}"
+        f"**Servers:** {total_servers:,}\n"
+        f"**Members:** {total_members:,}\n"
+        f"**UpTime:** {uptime_str}\n"
+        f"**Commands ran in UpTime:** {bot.command_count:,}"
     )
 
     # ========== Embed ==========
@@ -1870,7 +1870,7 @@ async def status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ========== Create Invite Command ==========
-@bot.tree.command(name="createinvite", description="Create 30-minute invites for all servers (Owner only)")
+@bot.tree.command(name="createinvite", description="Create 30-minute invites for all servers")
 async def createinvite(interaction: discord.Interaction):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
@@ -2182,7 +2182,7 @@ async def roblox_group_info(interaction: discord.Interaction):
             # Fetch group icon
             icon_url = None
             try:
-                async with session.get(f"https://thumbnails.roblox.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png") as icon_resp:
+                async with session.get(f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png") as icon_resp:
                     if icon_resp.status == 200:
                         icon_data = await icon_resp.json()
                         if icon_data.get('data'):
@@ -2217,7 +2217,6 @@ async def roblox_group_info(interaction: discord.Interaction):
 @roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
-    headers = {"User-Agent": "Mozilla/5.0"}
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
@@ -2234,14 +2233,24 @@ async def roblox_stocks(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
         return
 
+    # Initialize all values as HIDDEN
     data = {
-        '1cy_group_funds': "||HIDDEN||",
-        'mc_group_funds': "||HIDDEN||",
-        'account_balance': "||HIDDEN||",
-        '1cy_pending': "||HIDDEN||",
-        'mc_pending': "||HIDDEN||",
-        '1cy_daily_sales': "||HIDDEN||",
-        'mc_daily_sales': "||HIDDEN||"
+        '1cy_group_funds': 0,
+        'mc_group_funds': 0,
+        '1cy_pending': 0,
+        'mc_pending': 0,
+        '1cy_daily_sales': 0,
+        'mc_daily_sales': 0,
+        'account_balance': 0
+    }
+    visible = {
+        '1cy_group_funds': False,
+        'mc_group_funds': False,
+        '1cy_pending': False,
+        'mc_pending': False,
+        '1cy_daily_sales': False,
+        'mc_daily_sales': False,
+        'account_balance': False
     }
 
     async with aiohttp.ClientSession() as session:
@@ -2251,56 +2260,86 @@ async def roblox_stocks(interaction: discord.Interaction):
             async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_1CY}) as resp:
                 if resp.status == 200:
                     res = await resp.json()
-                    data['1cy_group_funds'] = f"{res.get('robux', 0):,} R$"
+                    data['1cy_group_funds'] = res.get('robux', 0)
+                    visible['1cy_group_funds'] = True
         except Exception as e:
             print(f"[ERROR] 1cy Group Funds: {e}")
+
         # === MC Group Funds ===
         try:
             url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency"
             async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_MC}) as resp:
                 if resp.status == 200:
                     res = await resp.json()
-                    data['mc_group_funds'] = f"{res.get('robux', 0):,} R$"
+                    data['mc_group_funds'] = res.get('robux', 0)
+                    visible['mc_group_funds'] = True
         except Exception as e:
             print(f"[ERROR] MC Group Funds: {e}")
-        # === Account Balance ===
-        try:
-            url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
-            async with session.get(url, headers={"Cookie": ROBLOX_STOCKS}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['account_balance'] = f"{res.get('robux', 0):,} R$"
-        except Exception as e:
-            print(f"[ERROR] Account Balance: {e}")
+
         # === 1cy Revenue ===
         try:
             url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily"
             async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_1CY}) as resp:
                 if resp.status == 200:
                     res = await resp.json()
-                    data['1cy_pending'] = f"{res.get('pendingRobux', 0):,} R$"
-                    data['1cy_daily_sales'] = f"{res.get('itemSaleRobux', 0):,} R$"
+                    data['1cy_pending'] = res.get('pendingRobux', 0)
+                    data['1cy_daily_sales'] = res.get('itemSaleRobux', 0)
+                    visible['1cy_pending'] = True
+                    visible['1cy_daily_sales'] = True
         except Exception as e:
             print(f"[ERROR] 1cy Revenue: {e}")
+
         # === MC Revenue ===
         try:
             url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily"
             async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_MC}) as resp:
                 if resp.status == 200:
                     res = await resp.json()
-                    data['mc_pending'] = f"{res.get('pendingRobux', 0):,} R$"
-                    data['mc_daily_sales'] = f"{res.get('itemSaleRobux', 0):,} R$"
+                    data['mc_pending'] = res.get('pendingRobux', 0)
+                    data['mc_daily_sales'] = res.get('itemSaleRobux', 0)
+                    visible['mc_pending'] = True
+                    visible['mc_daily_sales'] = True
         except Exception as e:
             print(f"[ERROR] MC Revenue: {e}")
+            
+        # === Account Balance ===
+        try:
+            url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
+            async with session.get(url, headers={"Cookie": ROBLOX_STOCKS}) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    data['account_balance'] = res.get('robux', 0)
+                    visible['account_balance'] = True
+        except Exception as e:
+            print(f"[ERROR] Account Balance: {e}")
+
+    
+    robux_emoji = "<:robux:1438835687741853709>"
+
+    def format_value(key):
+        return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
 
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
-    embed.add_field(name="1cy Group Funds", value=data['1cy_group_funds'], inline=False)
-    embed.add_field(name="Modded Corporations Group Funds", value=data['mc_group_funds'], inline=False)
-    embed.add_field(name="Account Balance", value=data['account_balance'], inline=False)
-    embed.add_field(name="1cy Group Pending", value=data['1cy_pending'], inline=False)
-    embed.add_field(name="Modded Corporations Group Pending", value=data['mc_pending'], inline=False)
-    embed.add_field(name="1cy Daily Sales", value=data['1cy_daily_sales'], inline=False)
-    embed.add_field(name="Modded Corporations Daily Sales", value=data['mc_daily_sales'], inline=False)
+    embed.add_field(
+        name="**⌖ __1cy__ Community Funds | Pending Robux**",
+        value=f"{format_value('1cy_group_funds')} | {format_value('1cy_pending')}",
+        inline=False
+    )
+    embed.add_field(
+        name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**",
+        value=f"{format_value('mc_group_funds')} | {format_value('mc_pending')}",
+        inline=False
+    )
+    embed.add_field(
+        name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**",
+        value=f"{format_value('1cy_daily_sales')} | {format_value('mc_daily_sales')}",
+        inline=False
+    )
+    embed.add_field(
+        name="**⌖ Account Balance**",
+        value=format_value('account_balance'),
+        inline=False
+    )
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
@@ -2574,13 +2613,13 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
                                 PH_TIMEZONE).strftime(
                                     "%A, %d %B %Y • %I:%M %p")
             # Thumbnail
-            thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
+            thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
             async with session.get(thumb_url) as resp:
                 if resp.status == 200:
                     thumb_data = await resp.json()
                     image_url = thumb_data['data'][0]['imageUrl']
                 else:
-                    image_url = "https://www.roblox.com/asset-thumbnail/image?assetId=1&type=HeadShot&width=420&height=420&format=Png"
+                    image_url = "https://www.roproxy.com/asset-thumbnail/image?assetId=1&type=HeadShot&width=420&height=420&format=Png"
             # Creation date
             created_at = isoparse(full_data['created'])
             created_unix = int(created_at.timestamp())
@@ -2604,7 +2643,7 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
             if verified:
                 emoji += "<:RobloxVerified:1400310297184702564>"
             if premium:
-                emoji += "<:RobloxPremium:1400310411550654495>"
+                emoji += "<:RobloxPremium:1438836163816198245>"
             # Connections
             async with session.get(f"https://friends.roblox.com/v1/users/{user_id}/friends/count") as r1, \
                        session.get(f"https://friends.roblox.com/v1/users/{user_id}/followers/count") as r2, \
@@ -2862,14 +2901,14 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
                     username = data['data'][0]['name']
 
             # Fetch FULL-BODY avatar (not headshot)
-            thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&scale=1"
+            thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&scale=1"
             async with session.get(thumb_url) as resp:
                 if resp.status == 200:
                     thumb_data = await resp.json()
                     image_url = thumb_data['data'][0]['imageUrl']
                 else:
                     # Fallback if API fails
-                    image_url = f"https://www.roblox.com/avatar-thumbnail/image?userId={user_id}&width=420&height=420&format=png"
+                    image_url = f"https://www.roproxy.com/avatar-thumbnail/image?userId={user_id}&width=420&height=420&format=png"
 
         # Build embed with ONLY the username as title
         embed = discord.Embed(
@@ -2986,7 +3025,7 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
                         game_name = data['data'][0].get('name', game_name)
 
             # ✅ Use your requested API endpoint
-            icon_url = f"https://thumbnails.roblox.com/v1/places/gameicons?placeIds={place_id}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false"
+            icon_url = f"https://thumbnails.roproxy.com/v1/places/gameicons?placeIds={place_id}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false"
             async with session.get(icon_url) as icon_resp:
                 if icon_resp.status != 200:
                     raise Exception("Failed to fetch icon")
