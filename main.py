@@ -26,6 +26,7 @@ import pyktok as pyk
 from instaloader import Instaloader, Post, TwoFactorAuthRequiredException
 import tempfile
 from urllib.parse import urlencode, urlparse, parse_qs
+import psutil
 
 # Set timezone to Philippines (GMT+8)
 PH_TIMEZONE = pytz.timezone("Asia/Manila")
@@ -1560,46 +1561,7 @@ async def calculator(interaction: discord.Interaction, num1: float,
             f"⚠️ An error occurred: {str(e)}")
 
 
-# List All Commands
-class CommandPaginator(ui.View):
-
-    def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
-        super().__init__(timeout=timeout)
-        self.embeds = embeds
-        self.current_page = 0
-        self.update_buttons()
-
-    def update_buttons(self):
-        self.children[0].disabled = self.current_page == 0  # Previous
-        self.children[1].disabled = self.current_page == len(
-            self.embeds) - 1  # Next
-
-    @ui.button(label="◀️ Previous", style=ButtonStyle.gray)
-    async def previous_page(self, interaction: Interaction, button: ui.Button):
-        self.current_page -= 1
-        self.update_buttons()
-        await interaction.response.edit_message(
-            embed=self.embeds[self.current_page], view=self)
-
-    @ui.button(label="Next ▶️", style=ButtonStyle.gray)
-    async def next_page(self, interaction: Interaction, button: ui.Button):
-        self.current_page += 1
-        self.update_buttons()
-        await interaction.response.edit_message(
-            embed=self.embeds[self.current_page], view=self)
-
-    async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
-        # Edit original message to disable buttons
-        try:
-            await self.message.edit(view=self)
-        except:
-            pass
-
-
-# ========== List All Commands ==========
-
+# ========== Command Paginator ==========
 class CommandPaginator(ui.View):
     def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
         super().__init__(timeout=timeout)
@@ -1608,8 +1570,8 @@ class CommandPaginator(ui.View):
         self.update_buttons()
 
     def update_buttons(self):
-        self.children[0].disabled = self.current_page == 0  # Previous
-        self.children[1].disabled = self.current_page == len(self.embeds) - 1  # Next
+        self.children[0].disabled = self.current_page == 0
+        self.children[1].disabled = self.current_page == len(self.embeds) - 1
 
     @ui.button(label="◀️ Previous", style=ButtonStyle.gray)
     async def previous_page(self, interaction: Interaction, button: ui.Button):
@@ -1632,6 +1594,7 @@ class CommandPaginator(ui.View):
             pass
 
 
+# ========== Updated /listallcommands ==========
 @bot.tree.command(
     name="listallcommands",
     description="List all available slash commands with pagination."
@@ -1642,27 +1605,28 @@ async def listallcommands(interaction: discord.Interaction):
             "`/ask <prompt>` – Chat with Llama 3 AI",
             "`/clearhistory` – Clear your AI conversation history"
         ],
-        "💰 Roblox Tools (`/roblox` group)": [
+        "🧱 Roblox Tools (`/roblox` group)": [
             "`/roblox group` – Show 1cy Roblox group info",
             "`/roblox community <name|ID>` – Search any public Roblox group",
             "`/roblox profile <username|ID>` – View Roblox user profile",
             "`/roblox avatar <username|ID>` – View full Roblox avatar",
-            "`/roblox stocks` – Show group funds & Robux stocks",
-            "`/roblox checkpayout <username>` – Check payout eligibility",
-            "`/roblox check` – View full account details (cookie or login)",
+            "`/roblox icon <place_id|URL>` – Get game icon (supports ID or link)",
+            "`/roblox stocks` – Show group funds & Robux stocks (private)",
+            "`/roblox checkpayout <username> [group]` – Check payout eligibility",
+            "`/roblox check [cookie] [username+pass]` – View account details",
             "`/roblox gamepass <ID|link>` – Get public Gamepass link",
-            "`/roblox devex` – Convert Robux ↔ USD (DevEx rate)",
+            "`/roblox devex <type> <amount>` – Convert Robux ↔ USD (DevEx)",
             "`/roblox tax <amount>` – Show 30% Roblox transaction tax breakdown"
         ],
-        "💱 Currency & Rates": [
-            "`/payout` – Convert Robux ↔ PHP (Payout rate)",
-            "`/gift` – Convert Robux ↔ PHP (Gift rate)",
-            "`/nct` – Convert Robux ↔ PHP (NCT rate)",
-            "`/ct` – Convert Robux ↔ PHP (CT rate)",
-            "`/allrates` – Compare all PHP/Robux rates",
+        "💱 Currency & Conversion": [
+            "`/payout <type> <amount>` – Convert Robux ↔ PHP (Payout rate)",
+            "`/gift <type> <amount>` – Convert Robux ↔ PHP (Gift rate)",
+            "`/nct <type> <amount>` – Convert Robux ↔ PHP (NCT rate)",
+            "`/ct <type> <amount>` – Convert Robux ↔ PHP (CT rate)",
+            "`/allrates <type> <amount>` – Compare all PHP/Robux rates",
             "`/convertcurrency <amount> <from> <to>` – World currency converter",
-            "`/setrate` – Set custom conversion rates (administrator)",
-            "`/resetrate` – Reset rates to default (administrator)"
+            "`/setrate [rates...]` – Set custom rates (admin)",
+            "`/resetrate [flags]` – Reset rates to default (admin)"
         ],
         "🛠️ Utility & Info": [
             "`/userinfo [user]` – View Discord user info",
@@ -1670,30 +1634,30 @@ async def listallcommands(interaction: discord.Interaction):
             "`/banner [user]` – Show Discord user’s banner",
             "`/weather <city>` – Get weather info",
             "`/calculator <num1> <op> <num2>` – Basic math operations",
-            "`/purge <amount>` – Delete messages (moderator)",
-            "`/mexc` – Show top crypto by volume on MEXC"
+            "`/mexc` – Show top crypto by volume on MEXC (Spot & Futures)",
+            "`/snipe` – Show last deleted message in channel",
+            "`/payment <method>` – Show Gcash/PayMaya/GoTyme info"
         ],
-        "📢 Announcements & Messaging": [
-            "`/announcement` – Create a rich embed announcement (administrator)",
-            "`/say <message>` – Make bot say something",
+        "📢 Messaging & Announcements": [
+            "`/announcement` – Create a rich embed announcement (admin)",
+            "`/say <message>` – Make bot say something (no @everyone)",
             "`/donate <user> <amount>` – Fun Robux donation message",
-            "`/dm <user> <message>` – DM a user (owner)",
-            "`/dmall <message>` – DM all members (owner)"
-        ],
-        "⏰ Reminders & Polls": [
-            "`/remindme <minutes> <note>` – Set a reminder in this channel",
-            "`/poll <question> <time> <unit>` – Create a timed poll"
+            "`/poll <question> <time> <unit>` – Create a timed poll",
+            "`/remindme <minutes> <note>` – Set a reminder in this channel"
         ],
         "📱 Social Media": [
-            "`/tiktok <link>` – Download TikTok video",
-            "`/instagram <link>` – Convert to EmbedEZ link"
+            "`/tiktok <link> [spoiler]` – Download TikTok video",
+            "`/instagram <link> [spoiler]` – Convert to EmbedEZ link"
+        ],
+        "🛡️ Owner & Admin": [
+            "`/dm <user> <message>` – DM a user (owner only)",
+            "`/dmall <message>` – DM all server members (owner only)",
+            "`/createinvite` – Create 30-min invites for all servers (owner)",
+            "`/purge <amount>` – Delete messages (mod/owner)"
         ],
         "🔧 Bot & Server": [
             "`/invite` – Get bot invite link",
-            "`/status` – Show bot stats (servers/users)",
-            "`/snipe` – Show last deleted message in channel"
-             "`/payment <method>` – Show Gcash/PayMaya/GoTyme info"
-            "`/createinvite` – Create 30-min invites for all servers (owner)"
+            "`/status` – Show bot stats (Servers, Members, Uptime, Commands ran)"
         ]
     }
 
@@ -1715,6 +1679,7 @@ async def listallcommands(interaction: discord.Interaction):
     view = CommandPaginator(embeds)
     await interaction.response.send_message(embed=embeds[0], view=view)
     view.message = await interaction.original_response()
+
 
 # ===========================
 # Payment Command
@@ -1852,25 +1817,56 @@ async def invite(interaction: discord.Interaction):
 
 
 # ========== Status Command ==========
+bot.start_time = datetime.now(PH_TIMEZONE)
+bot.command_count = 0
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type == discord.InteractionType.application_command:
+        bot.command_count += 1
+
 @bot.tree.command(
     name="status",
-    description="Show how many servers the bot is in and total user count")
+    description="Show bot stats including uptime, command usage, and system resources"
+)
 async def status(interaction: discord.Interaction):
-    guilds = interaction.client.guilds
-    total_servers = len(guilds)
-    total_users = sum(guild.member_count for guild in guilds)
+    # ========== System Stats ==========
+    cpu_percent = psutil.cpu_percent(interval=1)
+    cpu_count = psutil.cpu_count(logical=True)
+    cpu_freq = psutil.cpu_freq().current if psutil.cpu_freq() else 0
+    ram = psutil.virtual_memory()
+    ram_percent = ram.percent
+    ram_used_gb = ram.used / (1024**3)
+    ram_total_gb = ram.total / (1024**3)
 
-    description = f"**Total Servers:** {total_servers}\n"
-    description += f"**Total Users:** {total_users}\n"
-
-    embed = discord.Embed(
-        title="📊 Bot Status",
-        description=description,
-        color=discord.Color.from_rgb(0, 0, 0)  # Black using RGB
+    os_section = (
+        f"CPU: {cpu_percent:.1f}% ({cpu_count}Core @ {int(cpu_freq)}MHz)\n"
+        f"Ram: {ram_percent:.1f}% ({ram_used_gb:.2f}GB/{ram_total_gb:.2f}GB)"
     )
+
+    # ========== Bot Stats ==========
+    uptime = datetime.now(PH_TIMEZONE) - bot.start_time
+    days = uptime.days
+    hours, remainder = divmod(uptime.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime_str = f"{days} days, {hours} hours, {minutes} minutes & {seconds} seconds"
+
+    total_servers = len(bot.guilds)
+    total_members = sum(guild.member_count for guild in bot.guilds)
+
+    bot_section = (
+        f"Servers: {total_servers:,}\n"
+        f"Members: {total_members:,}\n"
+        f"UpTime: {uptime_str}\n"
+        f"Commands ran in UpTime: {bot.command_count:,}"
+    )
+
+    # ========== Embed ==========
+    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+    embed.add_field(name="⌖ __Operating System__", value=os_section, inline=False)
+    embed.add_field(name="⌖ __Bot Info__", value=bot_section, inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     await interaction.response.send_message(embed=embed)
 
 # ========== Create Invite Command ==========
@@ -2177,10 +2173,23 @@ async def roblox_group_info(interaction: discord.Interaction):
     GROUP_ID = int(os.getenv("GROUP_ID"))
     try:
         async with aiohttp.ClientSession() as session:
+            # Fetch group info
             async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
                 if response.status != 200:
                     raise Exception(f"API Error: {response.status}")
                 data = await response.json()
+
+            # Fetch group icon
+            icon_url = None
+            try:
+                async with session.get(f"https://thumbnails.roblox.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png") as icon_resp:
+                    if icon_resp.status == 200:
+                        icon_data = await icon_resp.json()
+                        if icon_data.get('data'):
+                            icon_url = icon_data['data'][0]['imageUrl']
+            except Exception as e:
+                print(f"[WARNING] Failed to fetch group icon: {e}")
+
         formatted_members = "{:,}".format(data['memberCount'])
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(
@@ -2194,11 +2203,16 @@ async def roblox_group_info(interaction: discord.Interaction):
         owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
+
+        if icon_url:
+            embed.set_thumbnail(url=icon_url)
+
         embed.set_footer(text="Neroniel")
         embed.timestamp = discord.utils.utcnow()
         await interaction.response.send_message(embed=embed)
     except Exception as e:
         await interaction.response.send_message(f"❌ Error fetching group info: {e}", ephemeral=True)
+
 
 @roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def roblox_stocks(interaction: discord.Interaction):
@@ -2734,19 +2748,16 @@ async def roblox_devex(interaction: discord.Interaction, conversion_type: app_co
     name="community",
     description="Search and display info for any Roblox group by name or ID"
 )
-@app_commands.describe(query="Name or ID")
-async def roblox_community(interaction: discord.Interaction, query: str):
+@app_commands.describe(name="Name or ID")
+async def roblox_community(interaction: discord.Interaction, name: str):
     await interaction.response.defer()
     try:
         group_id = None
-
-        # Case 1: Input is a numeric ID (e.g., "5838002")
-        if query.isdigit():
-            group_id = int(query)
+        if name.isdigit():
+            group_id = int(name)
         else:
-            # Case 2: Input is a group name (e.g., "1cy")
-            # Search Roblox groups by keyword
-            search_url = f"https://groups.roblox.com/v1/groups/search?keyword={query}&limit=10"
+            # Search by name
+            search_url = f"https://groups.roblox.com/v1/groups/search?keyword={name}&limit=10"
             async with aiohttp.ClientSession() as session:
                 async with session.get(search_url) as resp:
                     if resp.status != 200:
@@ -2758,13 +2769,11 @@ async def roblox_community(interaction: discord.Interaction, query: str):
                     groups = data.get('data', [])
                     if not groups:
                         return await interaction.followup.send(
-                            f"❌ No public group found with name: `{query}`",
+                            f"❌ No public group found with name: `{name}`",
                             ephemeral=True
                         )
-                    # Use the first match
                     group_id = groups[0]['id']
 
-        # Fetch group details
         async with aiohttp.ClientSession() as session:
             async with session.get(f"https://groups.roblox.com/v1/groups/{group_id}") as response:
                 if response.status != 200:
@@ -2774,7 +2783,17 @@ async def roblox_community(interaction: discord.Interaction, query: str):
                     )
                 group_data = await response.json()
 
-        # Format embed
+            # Fetch group icon
+            icon_url = None
+            try:
+                async with session.get(f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={group_id}&size=420x420&format=Png") as icon_resp:
+                    if icon_resp.status == 200:
+                        icon_data = await icon_resp.json()
+                        if icon_data.get('data'):
+                            icon_url = icon_data['data'][0]['imageUrl']
+            except Exception as e:
+                print(f"[WARNING] Failed to fetch community group icon: {e}")
+
         formatted_members = "{:,}".format(group_data['memberCount'])
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(
@@ -2795,10 +2814,13 @@ async def roblox_community(interaction: discord.Interaction, query: str):
         )
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
+
+        if icon_url:
+            embed.set_thumbnail(url=icon_url)
+
         embed.set_footer(text="Neroniel • /roblox community")
         embed.timestamp = discord.utils.utcnow()
         await interaction.followup.send(embed=embed)
-
     except Exception as e:
         await interaction.followup.send(
             f"❌ An error occurred: {str(e)}",
@@ -2927,6 +2949,67 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
+
+@roblox_group.command(
+    name="icon",
+    description="Get the icon of a Roblox Game by Place ID or Game URL"
+)
+@app_commands.describe(id="Place ID or full Roblox Game URL")
+async def roblox_icon(interaction: discord.Interaction, id: str):
+    place_id = None
+
+    # Try to parse as integer (direct Place ID)
+    if id.isdigit():
+        place_id = int(id)
+    else:
+        # Try to extract Place ID from URL
+        match = re.search(r'roblox\.com/games/(\d+)', id)
+        if match:
+            place_id = int(match.group(1))
+        else:
+            await interaction.response.send_message(
+                "❌ Invalid input. Please provide a valid Place ID (e.g., `123456789`) or a Roblox Game URL (e.g., `https://www.roblox.com/games/123456789/...`).",
+                ephemeral=True
+            )
+            return
+
+    await interaction.response.defer()
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Optional: fetch game name
+            game_name = "Unknown Game"
+            game_info_url = f"https://games.roblox.com/v1/games?universeIds=0&placeIds={place_id}"
+            async with session.get(game_info_url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get('data'):
+                        game_name = data['data'][0].get('name', game_name)
+
+            # ✅ Use your requested API endpoint
+            icon_url = f"https://thumbnails.roblox.com/v1/places/gameicons?placeIds={place_id}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false"
+            async with session.get(icon_url) as icon_resp:
+                if icon_resp.status != 200:
+                    raise Exception("Failed to fetch icon")
+                icon_data = await icon_resp.json()
+                if not icon_data.get('data') or not icon_data['data'][0].get('imageUrl'):
+                    raise Exception("No icon available")
+                image = icon_data['data'][0]['imageUrl']
+
+        embed = discord.Embed(
+            title=game_name,
+            url=f"https://www.roblox.com/games/{place_id}",
+            color=discord.Color.from_rgb(0, 0, 0)
+        )
+        embed.set_image(url=image)
+        embed.set_footer(text="Neroniel • /roblox icon")
+        embed.timestamp = datetime.now(PH_TIMEZONE)
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Failed to fetch game icon: `{str(e)}`",
+            ephemeral=True
+        )
 
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
