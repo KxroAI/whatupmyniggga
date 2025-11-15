@@ -973,6 +973,77 @@ async def resetrate(interaction: discord.Interaction,
         await interaction.followup.send(f"❌ Error resetting rates: {str(e)}",
                                         ephemeral=True)
 
+@bot.tree.command(name="viewrates", description="View all saved server rates (Owner only)")
+async def viewrates(interaction: discord.Interaction):
+    # Owner-only check
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.", ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    if rates_collection is None:
+        await interaction.followup.send("❌ Database not connected.", ephemeral=True)
+        return
+
+    all_rate_docs = list(rates_collection.find())
+    if not all_rate_docs:
+        await interaction.followup.send("📭 No rate data found in the database.", ephemeral=True)
+        return
+
+    # --- Use same formatting as /allrates ---
+    def format_php(value: float) -> str:
+        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+
+    robux_emoji = "<:robux:1438835687741853709>"
+    php_emoji = "<:PHP:1438894048222908416>"
+
+    embeds = []
+    for doc in all_rate_docs:
+        guild_id = int(doc["guild_id"])
+        guild = bot.get_guild(guild_id)
+        guild_name = guild.name if guild else f"Unknown Server ({guild_id})"
+
+        embed = discord.Embed(
+            title=f"📊 Rates for: {guild_name}",
+            color=discord.Color.from_rgb(0, 0, 0)
+        )
+        embed.add_field(
+            name="• Payout Rate",
+            value=f"{robux_emoji} 1000 → {php_emoji} {format_php(doc.get('payout_rate', 330.0))}",
+            inline=False
+        )
+        embed.add_field(
+            name="• Gift Rate",
+            value=f"{robux_emoji} 1000 → {php_emoji} {format_php(doc.get('gift_rate', 260.0))}",
+            inline=False
+        )
+        embed.add_field(
+            name="• NCT Rate",
+            value=f"{robux_emoji} 1000 → {php_emoji} {format_php(doc.get('nct_rate', 245.0))}",
+            inline=False
+        )
+        embed.add_field(
+            name="• CT Rate",
+            value=f"{robux_emoji} 1000 → {php_emoji} {format_php(doc.get('ct_rate', 350.0))}",
+            inline=False
+        )
+
+        updated_at = doc.get("updated_at")
+        if updated_at:
+            if isinstance(updated_at, str):
+                updated_at = isoparse(updated_at)
+            embed.timestamp = updated_at
+            embed.set_footer(text="Last updated")
+
+        embeds.append(embed)
+
+    # Send embeds (1 per server)
+    await interaction.followup.send(embed=embeds[0], ephemeral=True)
+    for embed in embeds[1:]:
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.tree.command(
     name="payout",
