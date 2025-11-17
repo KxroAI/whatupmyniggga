@@ -1210,7 +1210,7 @@ async def ct(interaction: discord.Interaction, conversion_type: app_commands.Cho
         robux = int((php / ct_rate) * 1000) 
         embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
         embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
-    
+
     embed.add_field(
         name="Note:",
         value=(
@@ -1243,7 +1243,7 @@ async def allrates(interaction: discord.Interaction, conversion_type: app_comman
     rates = get_current_rates(guild_id)
     robux_emoji = "<:robux:1438835687741853709>"
     php_emoji = "<:PHP:1438894048222908416>"
-    
+
     def format_php(value: float) -> str:
         return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
 
@@ -1674,7 +1674,7 @@ class CommandPaginator(ui.View):
     description="List all available slash commands with pagination."
 )
 async def listallcommands(interaction: discord.Interaction):
-categories = {
+    categories = {
     "🤖 AI Assistant": [
         "`/ask <prompt>` – Chat with Llama 3 AI",
         "`/clearhistory` – Clear your AI conversation history"
@@ -2324,7 +2324,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                     visible['mc_daily_sales'] = True
         except Exception as e:
             print(f"[ERROR] MC Revenue: {e}")
-            
+
         # === Account Balance ===
         try:
             url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
@@ -2336,7 +2336,7 @@ async def roblox_stocks(interaction: discord.Interaction):
         except Exception as e:
             print(f"[ERROR] Account Balance: {e}")
 
-    
+
     robux_emoji = "<:robux:1438835687741853709>"
 
     def format_value(key):
