@@ -1674,66 +1674,69 @@ class CommandPaginator(ui.View):
     description="List all available slash commands with pagination."
 )
 async def listallcommands(interaction: discord.Interaction):
-    categories = {
-        "🤖 AI Assistant": [
-            "`/ask <prompt>` – Chat with Llama 3 AI",
-            "`/clearhistory` – Clear your AI conversation history"
-        ],
-        "🧱 Roblox Tools (`/roblox` group)": [
-            "`/roblox group` – Show 1cy Roblox group info",
-            "`/roblox community <name|ID>` – Search any public Roblox group",
-            "`/roblox profile <username|ID>` – View Roblox user profile",
-            "`/roblox avatar <username|ID>` – View full Roblox avatar",
-            "`/roblox icon <place_id|URL>` – Get game icon (supports ID or link)",
-            "`/roblox stocks` – Show group funds & Robux stocks (private)",
-            "`/roblox checkpayout <username> [group]` – Check payout eligibility",
-            "`/roblox check [cookie] [username+pass]` – View account details",
-            "`/roblox gamepass <ID|link>` – Get public Gamepass link",
-            "`/roblox devex <type> <amount>` – Convert Robux ↔ USD (DevEx)",
-            "`/roblox tax <amount>` – Show 30% Roblox transaction tax breakdown"
-        ],
-        "💱 Currency & Conversion": [
-            "`/payout <type> <amount>` – Convert Robux ↔ PHP (Payout rate)",
-            "`/gift <type> <amount>` – Convert Robux ↔ PHP (Gift rate)",
-            "`/nct <type> <amount>` – Convert Robux ↔ PHP (NCT rate)",
-            "`/ct <type> <amount>` – Convert Robux ↔ PHP (CT rate)",
-            "`/allrates <type> <amount>` – Compare all PHP/Robux rates",
-            "`/convertcurrency <amount> <from> <to>` – World currency converter",
-            "`/setrate [rates...]` – Set custom rates (admin)",
-            "`/resetrate [flags]` – Reset rates to default (admin)"
-        ],
-        "🛠️ Utility & Info": [
-            "`/userinfo [user]` – View Discord user info",
-            "`/avatar [user]` – Show Discord user’s avatar",
-            "`/banner [user]` – Show Discord user’s banner",
-            "`/weather <city>` – Get weather info",
-            "`/calculator <num1> <op> <num2>` – Basic math operations",
-            "`/mexc` – Show top crypto by volume on MEXC (Spot & Futures)",
-            "`/snipe` – Show last deleted message in channel",
-            "`/payment <method>` – Show Gcash/PayMaya/GoTyme info"
-        ],
-        "📢 Messaging & Announcements": [
-            "`/announcement` – Create a rich embed announcement (admin)",
-            "`/say <message>` – Make bot say something (no @everyone)",
-            "`/donate <user> <amount>` – Fun Robux donation message",
-            "`/poll <question> <time> <unit>` – Create a timed poll",
-            "`/remindme <minutes> <note>` – Set a reminder in this channel"
-        ],
-        "📱 Social Media": [
-            "`/tiktok <link> [spoiler]` – Download TikTok video",
-            "`/instagram <link> [spoiler]` – Convert to EmbedEZ link"
-        ],
-        "🛡️ Owner & Admin": [
-            "`/dm <user> <message>` – DM a user (owner only)",
-            "`/dmall <message>` – DM all server members (owner only)",
-            "`/createinvite` – Create 30-min invites for all servers (owner)",
-            "`/purge <amount>` – Delete messages (mod/owner)"
-        ],
-        "🔧 Bot & Server": [
-            "`/invite` – Get bot invite link",
-            "`/status` – Show bot stats (Servers, Members, Uptime, Commands ran)"
-        ]
-    }
+categories = {
+    "🤖 AI Assistant": [
+        "`/ask <prompt>` – Chat with Llama 3 AI",
+        "`/clearhistory` – Clear your AI conversation history"
+    ],
+    "🧱 Roblox Tools (`/roblox` group)": [
+        "`/roblox group` – Show 1cy Roblox group info",
+        "`/roblox community <name|ID>` – Search any public Roblox group",
+        "`/roblox profile <username|ID>` – View Roblox user profile",
+        "`/roblox avatar <username|ID>` – View full Roblox avatar",
+        "`/roblox icon <place_id|URL>` – Get game icon (supports ID or link)",
+        "`/roblox stocks` – Show group funds & Robux stocks (private)",
+        "`/roblox checkpayout <username> [group]` – Check payout eligibility",
+        "`/roblox check [cookie] [username+pass]` – View account details",
+        "`/roblox gamepass <ID|link>` – Get public Gamepass link",
+        "`/roblox devex <type> <amount>` – Convert Robux ↔ USD (DevEx)",
+        "`/roblox tax <amount>` – Show 30% Roblox transaction tax breakdown",
+        "`/roblox rank <username>` – Promote user to Rank 6 (owner only)"
+    ],
+    "💱 Currency & Conversion": [
+        "`/payout <type> <amount>` – Convert Robux ↔ PHP (Payout rate)",
+        "`/gift <type> <amount>` – Convert Robux ↔ PHP (Gift rate)",
+        "`/nct <type> <amount>` – Convert Robux ↔ PHP (NCT rate)",
+        "`/ct <type> <amount>` – Convert Robux ↔ PHP (CT rate)",
+        "`/allrates <type> <amount>` – Compare all PHP/Robux rates",
+        "`/convertcurrency <amount> <from> <to>` – World currency converter",
+        "`/setrate [rates...]` – Set custom rates (admin)",
+        "`/resetrate [flags]` – Reset rates to default (admin)",
+        "`/viewrates` – View all saved server rates (owner only)"
+    ],
+    "🛠️ Utility & Info": [
+        "`/userinfo [user]` – View Discord user info",
+        "`/avatar [user]` – Show Discord user’s avatar",
+        "`/banner [user]` – Show Discord user’s banner",
+        "`/weather <city>` – Get weather info",
+        "`/calculator <num1> <op> <num2>` – Basic math operations",
+        "`/mexc` – Show top crypto by volume on MEXC (Spot & Futures)",
+        "`/snipe` – Show last deleted message in channel",
+        "`/payment <method>` – Show Gcash/PayMaya/GoTyme info"
+    ],
+    "📢 Messaging & Announcements": [
+        "`/announcement` – Create a rich embed announcement (admin)",
+        "`/say <message>` – Make bot say something (no @everyone)",
+        "`/donate <user> <amount>` – Fun Robux donation message",
+        "`/poll <question> <time> <unit>` – Create a timed poll",
+        "`/remindme <minutes> <note>` – Set a reminder in this channel"
+    ],
+    "📱 Social Media": [
+        "`/tiktok <link> [spoiler]` – Download TikTok video",
+        "`/instagram <link> [spoiler]` – Convert to EmbedEZ link"
+    ],
+    "🛡️ Owner & Admin": [
+        "`/dm <user> <message>` – DM a user (owner only)",
+        "`/dmall <message>` – DM all server members (owner only)",
+        "`/purge <amount>` – Delete messages (mod/owner)",
+        "`/createinvite` – Create 30-min invites for all servers (owner)"
+    ],
+    "🔧 Bot & Server": [
+        "`/invite` – Get bot invite link",
+        "`/status` – Show bot stats (Servers, Members, Uptime, Commands ran)",
+        "`/listallcommands` – List all available commands (this command)"
+    ]
+}
 
     embeds = []
     for name, cmds in categories.items():
