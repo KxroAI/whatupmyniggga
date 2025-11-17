@@ -3070,6 +3070,122 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
             ephemeral=True
         )
 
+@roblox_group.command(
+    name="rank",
+    description="Promote a Roblox user to Rank 6 (〆 Contributor) in 1cy"
+)
+@app_commands.describe(username="Roblox username to promote")
+async def roblox_promote_rank(interaction: discord.Interaction, username: str):
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.", ephemeral=False
+        )
+        return
+
+    ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
+    if not ROBLOX_COOKIE:
+        await interaction.response.send_message(
+            "❌ `ROBLOX_COOKIE` is not set in environment variables.", ephemeral=False
+        )
+        return
+
+    GROUP_ID = 5838002
+    TARGET_RANK = 6
+    TARGET_ROLE_NAME = "〆 Contributor"
+
+    await interaction.response.defer(ephemeral=False)  # 👈 Now public
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Step 1: Resolve username → user ID
+            async with session.post(
+                "https://users.roblox.com/v1/usernames/users",
+                json={"usernames": [username], "excludeBannedUsers": True},
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("❌ Failed to resolve username.", ephemeral=False)
+                    return
+                data = await resp.json()
+                if not data.get("data"):
+                    await interaction.followup.send("❌ Roblox user not found.", ephemeral=False)
+                    return
+                user_id = data["data"][0]["id"]
+                display_name = data["data"][0]["displayName"]
+
+            # Step 2: Check current group role
+            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles") as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("❌ Could not fetch group roles.", ephemeral=False)
+                    return
+                roles_data = await resp.json()
+
+            current_role = None
+            for entry in roles_data.get("data", []):
+                if entry["group"]["id"] == GROUP_ID:
+                    current_role = entry["role"]
+                    break
+
+            # Step 3: Already Rank 6?
+            if current_role and current_role.get("rank") == TARGET_RANK and current_role.get("name") == TARGET_ROLE_NAME:
+                embed = discord.Embed(
+                    title="✅ Already 〆 Contributor",
+                    description=f"`{username}` (`{display_name}`) is already **Rank 6** in 1cy.",
+                    color=discord.Color.green()
+                )
+                embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
+                embed.set_footer(text="Neroniel")
+                embed.timestamp = datetime.now(PH_TIMEZONE)
+                await interaction.followup.send(embed=embed, ephemeral=False)
+                return
+
+            if not current_role:
+                await interaction.followup.send(
+                    f"❌ `{username}` is not in the 1cy group. They must join first.",
+                    ephemeral=False
+                )
+                return
+
+            # Step 4: Promote
+            update_url = f"https://groups.roblox.com/v1/groups/{GROUP_ID}/users/{user_id}"
+            headers = {
+                "Cookie": ROBLOX_COOKIE,
+                "Content-Type": "application/json"
+            }
+            payload = {"roleId": TARGET_RANK}
+
+            async with session.patch(update_url, headers=headers, json=payload) as resp:
+                if resp.status == 200:
+                    embed = discord.Embed(
+                        title="✅ Promoted to 〆 Contributor",
+                        description=f"`{username}` (`{display_name}`) has been set to **Rank 6** in 1cy.",
+                        color=discord.Color.green()
+                    )
+                    embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
+                    embed.set_footer(text="Neroniel")
+                    embed.timestamp = datetime.now(PH_TIMEZONE)
+                    await interaction.followup.send(embed=embed, ephemeral=False)
+                elif resp.status == 403:
+                    await interaction.followup.send(
+                        "❌ Permission denied. Your cookie may lack group management rights.",
+                        ephemeral=False
+                    )
+                elif resp.status == 400:
+                    await interaction.followup.send(
+                        "❌ Invalid request. The user might not be in the group.",
+                        ephemeral=False
+                    )
+                else:
+                    error_text = await resp.text()
+                    await interaction.followup.send(
+                        f"❌ Failed to update rank (HTTP {resp.status}): `{error_text}`",
+                        ephemeral=False
+                    )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=False)
+        print(f"[ERROR] /roblox rank promote: {e}")
+
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
 
