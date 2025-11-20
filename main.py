@@ -3384,14 +3384,18 @@ ytdl_format_options = {
     'logtostderr': False,
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'auto',
+    'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'extract_flat': 'in_playlist'
+    'extract_flat': 'in_playlist',
+    'age_limit': None,
+    'cookiefile': None,
+    'extractor_retries': 3,
+    'http_chunk_size': 10485760,
 }
 
 ffmpeg_options = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 10M',
+    'options': '-vn -bufsize 512k'
 }
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
@@ -3408,7 +3412,11 @@ class YTDLSource(discord.PCMVolumeTransformer):
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=True):
         loop = loop or asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        try:
+            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        except Exception as e:
+            print(f"[ERROR] Failed to extract info from {url}: {e}")
+            return None
 
         if 'entries' in data:
             if len(data['entries']) > 0:
@@ -3419,8 +3427,18 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if data is None:
             return None
 
-        filename = data['url'] if stream else ytdl.prepare_filename(data)
-        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+        # Get the actual stream URL
+        filename = data.get('url') if stream else ytdl.prepare_filename(data)
+        
+        if not filename:
+            print(f"[ERROR] No stream URL found in data: {data.get('webpage_url', url)}")
+            return None
+        
+        try:
+            return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+        except Exception as e:
+            print(f"[ERROR] Failed to create FFmpeg audio source: {e}")
+            return None
 
 class MusicQueue:
     def __init__(self):
@@ -3490,6 +3508,13 @@ async def play_next(guild, text_channel):
                     embed.timestamp = datetime.now(PH_TIMEZONE)
                     
                     await text_channel.send(embed=embed)
+                else:
+                    print("[ERROR] Voice client not connected")
+                    await text_channel.send("❌ Bot disconnected from voice channel.")
+            else:
+                print(f"[ERROR] Failed to create player for {next_song_data.get('title', 'Unknown')}")
+                await text_channel.send(f"❌ Failed to play: **{next_song_data.get('title', 'Unknown')}**. Skipping...")
+                await play_next(guild, text_channel)
         except Exception as e:
             print(f"[ERROR] Error playing next song: {e}")
             await text_channel.send(f"❌ Error playing song: {str(e)}")
@@ -3505,11 +3530,11 @@ async def play_next(guild, text_channel):
 @bot.tree.command(name="play", description="Play music from YouTube or Spotify")
 @app_commands.describe(query="YouTube URL, Spotify URL/playlist, or search query")
 async def play(interaction: discord.Interaction, query: str):
-    if not interaction.user.voice:
-        await interaction.response.send_message("❌ You need to be in a voice channel!", ephemeral=True)
-        return
-    
     await interaction.response.defer()
+    
+    if not interaction.user.voice:
+        await interaction.followup.send("❌ You need to be in a voice channel!", ephemeral=True)
+        return
     
     channel = interaction.user.voice.channel
     
