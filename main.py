@@ -3322,7 +3322,7 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
                 if resp.status == 200:
                     embed = discord.Embed(
                         title="✅ Promoted to 〆 Contributor",
-                        description=f"`{username}` (`{display_name}`) has been set to **〆 Contributor** in 1cy.",
+                        description=f"`{username}` ({display_name}) has been set to **〆 Contributor** in 1cy.",
                         color=discord.Color.green()
                     )
                     embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
