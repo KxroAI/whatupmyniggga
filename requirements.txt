@@ -11,3 +11,7 @@ instaloader==4.14.1
 langdetect==1.0.9
 pyktok==0.0.31
 psutil==6.0.0
+spotipy==2.25.0
+yt-dlp==2025.4.28
+ffmpeg-python==0.2.0
+async-timeout==4.0.3
