@@ -1,20 +1,30 @@
-# fly.toml
-app = "whatupmyniggga-gy9teq"
-primary_region = "sin"
+# fly.toml app configuration file
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 
-# Tell Fly to run your bot script, NOT flask
-[experimental]
-  entrypoint = ["python", "main.py"]
+app = "whatupmyniggga"  # Replace with your actual fly.io app name
+primary_region = "sin"  # Singapore region (closest to you based on logs)
 
-# HTTP service is only for keeping the bot alive via health check
+[build]
+
+[env]
+  PORT = "5000"
+
 [http_service]
-  internal_port = 5000     # ← Your Flask server binds to 5000
-  force_https = true
-  auto_stop_machines = "stop"
-  auto_start_machines = true
-  min_machines_running = 0
+  internal_port = 5000
+  force_https = false
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"
 
 [[vm]]
-  memory = "1gb"
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
