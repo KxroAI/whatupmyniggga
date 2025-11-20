@@ -1,15 +1,25 @@
-FROM python:3.12.12 AS builder
+# Use Python 3.13 slim image
+FROM python:3.13-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+# Install ffmpeg and clean up in one layer to reduce image size
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
+# Copy requirements first (for better caching)
+COPY requirements.txt .
 
-RUN python -m venv .venv
-COPY requirements.txt ./
-RUN .venv/bin/pip install -r requirements.txt
-FROM python:3.12.12-slim
-WORKDIR /app
-COPY --from=builder /app/.venv .venv/
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of your code
 COPY . .
-CMD ["/app/.venv/bin/flask", "run", "--host=0.0.0.0", "--port=8080"]
+
+# Expose port 5000 (used by your Flask keep-alive server)
+EXPOSE 5000
+
+# Run the bot
+CMD ["python", "main.py"]
