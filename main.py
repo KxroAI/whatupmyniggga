@@ -2953,8 +2953,9 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         if name.isdigit():
             group_id = int(name)
         else:
-            # Search by name
-            search_url = f"https://groups.roblox.com/v1/groups/search?keyword={name}&limit=10"
+            # Search by name — fetch up to 100 results for better match
+            search_url = f"https://groups.roblox.com/v1/groups/search?keyword={name}&limit=100"
+            best_match = None
             async with aiohttp.ClientSession() as session:
                 async with session.get(search_url) as resp:
                     if resp.status != 200:
@@ -2969,8 +2970,31 @@ async def roblox_community(interaction: discord.Interaction, name: str):
                             f"❌ No public group found with name: `{name}`",
                             ephemeral=True
                         )
-                    group_id = groups[0]['id']
 
+                # Normalize input
+                query_lower = name.strip().lower()
+
+                # Step 1: Look for EXACT name match (case-insensitive)
+                for group in groups:
+                    if group['name'].lower() == query_lower:
+                        best_match = group
+                        break
+
+                # Step 2: If no exact match, look for CONTAINS + highest member count
+                if best_match is None:
+                    candidates = [
+                        g for g in groups
+                        if query_lower in g['name'].lower()
+                    ]
+                    if candidates:
+                        best_match = max(candidates, key=lambda g: g.get('memberCount', 0))
+                    else:
+                        # Fallback: just take the first result (original behavior)
+                        best_match = groups[0]
+
+                group_id = best_match['id']
+
+        # Fetch full group info
         async with aiohttp.ClientSession() as session:
             async with session.get(f"https://groups.roblox.com/v1/groups/{group_id}") as response:
                 if response.status != 200:
@@ -3011,13 +3035,12 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         )
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
-
         if icon_url:
             embed.set_thumbnail(url=icon_url)
-
         embed.set_footer(text="Neroniel • /roblox community")
         embed.timestamp = discord.utils.utcnow()
         await interaction.followup.send(embed=embed)
+
     except Exception as e:
         await interaction.followup.send(
             f"❌ An error occurred: {str(e)}",
