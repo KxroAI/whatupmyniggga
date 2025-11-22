@@ -2360,7 +2360,7 @@ async def roblox_stocks(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
-        name="**⌖ __1cy__ & __MC__ & __QC__ Daily Sales**",
+        name="**⌖ __1cy__ & __Modded Corporations__ & __Quezon City__ Daily Sales**",
         value=f"{format_value('1cy_daily_sales')} | {format_value('mc_daily_sales')} | {format_value('qc_daily_sales')}",
         inline=False
     )
