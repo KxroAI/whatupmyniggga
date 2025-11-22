@@ -2212,14 +2212,17 @@ async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
+    GROUP_ID_QC = 255111896  # ← New group
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
+    ROBLOX_COOKIE_QC = os.getenv("ROBLOX_COOKIE3")  # ← New cookie
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
 
     missing_vars = []
     if not ROBLOX_COOKIE_1CY: missing_vars.append("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE_MC: missing_vars.append("ROBLOX_COOKIE2")
+    if not ROBLOX_COOKIE_QC: missing_vars.append("ROBLOX_COOKIE3")  # ← Check new cookie
     if not ROBLOX_STOCKS: missing_vars.append("ROBLOX_STOCKS")
     if not roblox_user_id: missing_vars.append("ROBLOX_STOCKS_ID")
     if missing_vars:
@@ -2230,19 +2233,25 @@ async def roblox_stocks(interaction: discord.Interaction):
     data = {
         '1cy_group_funds': 0,
         'mc_group_funds': 0,
+        'qc_group_funds': 0, 
         '1cy_pending': 0,
         'mc_pending': 0,
+        'qc_pending': 0,  
         '1cy_daily_sales': 0,
         'mc_daily_sales': 0,
+        'qc_daily_sales': 0,  
         'account_balance': 0
     }
     visible = {
         '1cy_group_funds': False,
         'mc_group_funds': False,
+        'qc_group_funds': False,  
         '1cy_pending': False,
         'mc_pending': False,
+        'qc_pending': False,  
         '1cy_daily_sales': False,
         'mc_daily_sales': False,
+        'qc_daily_sales': False,  
         'account_balance': False
     }
 
@@ -2268,6 +2277,17 @@ async def roblox_stocks(interaction: discord.Interaction):
                     visible['mc_group_funds'] = True
         except Exception as e:
             print(f"[ERROR] MC Group Funds: {e}")
+
+        # === QC Group Funds === 
+        try:
+            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/currency"
+            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_QC}) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    data['qc_group_funds'] = res.get('robux', 0)
+                    visible['qc_group_funds'] = True
+        except Exception as e:
+            print(f"[ERROR] QC Group Funds: {e}")
 
         # === 1cy Revenue ===
         try:
@@ -2295,6 +2315,19 @@ async def roblox_stocks(interaction: discord.Interaction):
         except Exception as e:
             print(f"[ERROR] MC Revenue: {e}")
 
+        # === QC Revenue === 
+        try:
+            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/revenue/summary/daily"
+            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_QC}) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    data['qc_pending'] = res.get('pendingRobux', 0)
+                    data['qc_daily_sales'] = res.get('itemSaleRobux', 0)
+                    visible['qc_pending'] = True
+                    visible['qc_daily_sales'] = True
+        except Exception as e:
+            print(f"[ERROR] QC Revenue: {e}")
+
         # === Account Balance ===
         try:
             url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
@@ -2306,9 +2339,7 @@ async def roblox_stocks(interaction: discord.Interaction):
         except Exception as e:
             print(f"[ERROR] Account Balance: {e}")
 
-
     robux_emoji = "<:robux:1438835687741853709>"
-
     def format_value(key):
         return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
 
@@ -2323,9 +2354,14 @@ async def roblox_stocks(interaction: discord.Interaction):
         value=f"{format_value('mc_group_funds')} | {format_value('mc_pending')}",
         inline=False
     )
+    embed.add_field( 
+        name="**⌖ __Quezon City__ Community Funds | Pending Robux**",
+        value=f"{format_value('qc_group_funds')} | {format_value('qc_pending')}",
+        inline=False
+    )
     embed.add_field(
-        name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**",
-        value=f"{format_value('1cy_daily_sales')} | {format_value('mc_daily_sales')}",
+        name="**⌖ __1cy__ & __MC__ & __QC__ Daily Sales**",
+        value=f"{format_value('1cy_daily_sales')} | {format_value('mc_daily_sales')} | {format_value('qc_daily_sales')}",
         inline=False
     )
     embed.add_field(
