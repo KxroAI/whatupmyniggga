@@ -2210,165 +2210,141 @@ async def roblox_group_info(interaction: discord.Interaction):
 @roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
+    # Group IDs
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
-    GROUP_ID_QC = 255111896  # ← New group
+    GROUP_ID_QC = 255111896      # Quezon City
+    GROUP_ID_SB = 35341321      # Sheboyngo
+
+    # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
-    ROBLOX_COOKIE_QC = os.getenv("ROBLOX_COOKIE3")  # ← New cookie
+    ROBLOX_COOKIE_QC = os.getenv("ROBLOX_COOKIE3")
+    ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")  # Sheboyngo uses MC cookie
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
 
-    missing_vars = []
-    if not ROBLOX_COOKIE_1CY: missing_vars.append("ROBLOX_COOKIE")
-    if not ROBLOX_COOKIE_MC: missing_vars.append("ROBLOX_COOKIE2")
-    if not ROBLOX_COOKIE_QC: missing_vars.append("ROBLOX_COOKIE3")  # ← Check new cookie
-    if not ROBLOX_STOCKS: missing_vars.append("ROBLOX_STOCKS")
-    if not roblox_user_id: missing_vars.append("ROBLOX_STOCKS_ID")
-    if missing_vars:
-        await interaction.followup.send(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+    # Validate environment variables
+    missing = []
+    if not ROBLOX_COOKIE_1CY: missing.append("ROBLOX_COOKIE")
+    if not ROBLOX_COOKIE_MC: missing.append("ROBLOX_COOKIE2")
+    if not ROBLOX_COOKIE_QC: missing.append("ROBLOX_COOKIE3")
+    if not ROBLOX_STOCKS: missing.append("ROBLOX_STOCKS")
+    if not roblox_user_id: missing.append("ROBLOX_STOCKS_ID")
+    if missing:
+        await interaction.followup.send(f"❌ Missing env vars: {', '.join(missing)}")
         return
 
-    # Initialize all values as HIDDEN
+    # Initialize data
     data = {
-        '1cy_group_funds': 0,
-        'mc_group_funds': 0,
-        'qc_group_funds': 0, 
-        '1cy_pending': 0,
-        'mc_pending': 0,
-        'qc_pending': 0,  
-        '1cy_daily_sales': 0,
-        'mc_daily_sales': 0,
-        'qc_daily_sales': 0,  
+        '1cy_funds': 0, '1cy_pending': 0, '1cy_daily': 0,
+        'mc_funds': 0, 'mc_pending': 0, 'mc_daily': 0,
+        'qc_funds': 0, 'qc_pending': 0, 'qc_daily': 0,
+        'sb_funds': 0, 'sb_pending': 0, 'sb_daily': 0,
         'account_balance': 0
     }
-    visible = {
-        '1cy_group_funds': False,
-        'mc_group_funds': False,
-        'qc_group_funds': False,  
-        '1cy_pending': False,
-        'mc_pending': False,
-        'qc_pending': False,  
-        '1cy_daily_sales': False,
-        'mc_daily_sales': False,
-        'qc_daily_sales': False,  
-        'account_balance': False
-    }
+    visible = {k: False for k in data}
 
     async with aiohttp.ClientSession() as session:
-        # === 1cy Group Funds ===
+        # --- 1cy ---
         try:
-            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/currency"
-            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_1CY}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['1cy_group_funds'] = res.get('robux', 0)
-                    visible['1cy_group_funds'] = True
-        except Exception as e:
-            print(f"[ERROR] 1cy Group Funds: {e}")
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/currency", headers={"Cookie": ROBLOX_COOKIE_1CY})
+            if r.status == 200:
+                res = await r.json()
+                data['1cy_funds'] = res.get('robux', 0)
+                visible['1cy_funds'] = True
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_1CY})
+            if r.status == 200:
+                res = await r.json()
+                data['1cy_pending'] = res.get('pendingRobux', 0)
+                data['1cy_daily'] = res.get('itemSaleRobux', 0)
+                visible['1cy_pending'] = True
+                visible['1cy_daily'] = True
+        except: pass
 
-        # === MC Group Funds ===
+        # --- Modded Corporations ---
         try:
-            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency"
-            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_MC}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['mc_group_funds'] = res.get('robux', 0)
-                    visible['mc_group_funds'] = True
-        except Exception as e:
-            print(f"[ERROR] MC Group Funds: {e}")
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency", headers={"Cookie": ROBLOX_COOKIE_MC})
+            if r.status == 200:
+                res = await r.json()
+                data['mc_funds'] = res.get('robux', 0)
+                visible['mc_funds'] = True
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_MC})
+            if r.status == 200:
+                res = await r.json()
+                data['mc_pending'] = res.get('pendingRobux', 0)
+                data['mc_daily'] = res.get('itemSaleRobux', 0)
+                visible['mc_pending'] = True
+                visible['mc_daily'] = True
+        except: pass
 
-        # === QC Group Funds === 
+        # --- Quezon City ---
         try:
-            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/currency"
-            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_QC}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['qc_group_funds'] = res.get('robux', 0)
-                    visible['qc_group_funds'] = True
-        except Exception as e:
-            print(f"[ERROR] QC Group Funds: {e}")
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/currency", headers={"Cookie": ROBLOX_COOKIE_QC})
+            if r.status == 200:
+                res = await r.json()
+                data['qc_funds'] = res.get('robux', 0)
+                visible['qc_funds'] = True
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_QC})
+            if r.status == 200:
+                res = await r.json()
+                data['qc_pending'] = res.get('pendingRobux', 0)
+                data['qc_daily'] = res.get('itemSaleRobux', 0)
+                visible['qc_pending'] = True
+                visible['qc_daily'] = True
+        except: pass
 
-        # === 1cy Revenue ===
+        # --- Sheboyngo ---
         try:
-            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily"
-            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_1CY}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['1cy_pending'] = res.get('pendingRobux', 0)
-                    data['1cy_daily_sales'] = res.get('itemSaleRobux', 0)
-                    visible['1cy_pending'] = True
-                    visible['1cy_daily_sales'] = True
-        except Exception as e:
-            print(f"[ERROR] 1cy Revenue: {e}")
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/currency", headers={"Cookie": ROBLOX_COOKIE_SB})
+            if r.status == 200:
+                res = await r.json()
+                data['sb_funds'] = res.get('robux', 0)
+                visible['sb_funds'] = True
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_SB})
+            if r.status == 200:
+                res = await r.json()
+                data['sb_pending'] = res.get('pendingRobux', 0)
+                data['sb_daily'] = res.get('itemSaleRobux', 0)
+                visible['sb_pending'] = True
+                visible['sb_daily'] = True
+        except: pass
 
-        # === MC Revenue ===
+        # --- Account Balance ---
         try:
-            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily"
-            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_MC}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['mc_pending'] = res.get('pendingRobux', 0)
-                    data['mc_daily_sales'] = res.get('itemSaleRobux', 0)
-                    visible['mc_pending'] = True
-                    visible['mc_daily_sales'] = True
-        except Exception as e:
-            print(f"[ERROR] MC Revenue: {e}")
-
-        # === QC Revenue === 
-        try:
-            url = f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/revenue/summary/daily"
-            async with session.get(url, headers={"Cookie": ROBLOX_COOKIE_QC}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['qc_pending'] = res.get('pendingRobux', 0)
-                    data['qc_daily_sales'] = res.get('itemSaleRobux', 0)
-                    visible['qc_pending'] = True
-                    visible['qc_daily_sales'] = True
-        except Exception as e:
-            print(f"[ERROR] QC Revenue: {e}")
-
-        # === Account Balance ===
-        try:
-            url = f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency"
-            async with session.get(url, headers={"Cookie": ROBLOX_STOCKS}) as resp:
-                if resp.status == 200:
-                    res = await resp.json()
-                    data['account_balance'] = res.get('robux', 0)
-                    visible['account_balance'] = True
-        except Exception as e:
-            print(f"[ERROR] Account Balance: {e}")
+            r = await session.get(f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency", headers={"Cookie": ROBLOX_STOCKS})
+            if r.status == 200:
+                res = await r.json()
+                data['account_balance'] = res.get('robux', 0)
+                visible['account_balance'] = True
+        except: pass
 
     robux_emoji = "<:robux:1438835687741853709>"
-    def format_value(key):
+    def fmt(key):
         return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
 
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
-    embed.add_field(
-        name="**⌖ __1cy__ Community Funds | Pending Robux**",
-        value=f"{format_value('1cy_group_funds')} | {format_value('1cy_pending')}",
-        inline=False
-    )
-    embed.add_field(
-        name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**",
-        value=f"{format_value('mc_group_funds')} | {format_value('mc_pending')}",
-        inline=False
-    )
-    embed.add_field( 
-        name="**⌖ __Quezon City__ Community Funds | Pending Robux**",
-        value=f"{format_value('qc_group_funds')} | {format_value('qc_pending')}",
-        inline=False
-    )
-    embed.add_field(
-        name="**⌖ __1cy__ & __Modded Corporations__ & __Quezon City__ Daily Sales**",
-        value=f"{format_value('1cy_daily_sales')} | {format_value('mc_daily_sales')} | {format_value('qc_daily_sales')}",
-        inline=False
-    )
-    embed.add_field(
-        name="**⌖ Account Balance**",
-        value=format_value('account_balance'),
-        inline=False
-    )
+
+    # Individual group funds + pending
+    embed.add_field(name="**⌖ __1cy__ Community Funds | Pending Robux**",
+                    value=f"{fmt('1cy_funds')} | {fmt('1cy_pending')}", inline=False)
+    embed.add_field(name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**",
+                    value=f"{fmt('mc_funds')} | {fmt('mc_pending')}", inline=False)
+    embed.add_field(name="**⌖ __Quezon City__ Community Funds | Pending Robux**",
+                    value=f"{fmt('qc_funds')} | {fmt('qc_pending')}", inline=False)
+    embed.add_field(name="**⌖ __Sheboyngo__ Community Funds | Pending Robux**",
+                    value=f"{fmt('sb_funds')} | {fmt('sb_pending')}", inline=False)
+
+    # Daily sales rows
+    embed.add_field(name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**",
+                    value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}", inline=False)
+    embed.add_field(name="**⌖ __Quezon City__ & __Sheboyngo__ Daily Sales**",
+                    value=f"{fmt('qc_daily')} | {fmt('sb_daily')}", inline=False)
+
+    # Account balance
+    embed.add_field(name="**⌖ Account Balance**",
+                    value=fmt('account_balance'), inline=False)
+
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
@@ -2376,23 +2352,44 @@ async def roblox_stocks(interaction: discord.Interaction):
 @app_commands.describe(username="Roblox username", group="Which group to check")
 @app_commands.choices(group=[
     app_commands.Choice(name="1cy", value="1cy"),
-    app_commands.Choice(name="Modded Corporations", value="mc")
+    app_commands.Choice(name="Modded Corporations", value="mc"),
+    app_commands.Choice(name="Quezon City", value="qc"),
+    app_commands.Choice(name="Sheboyngo", value="sb")
 ])
 async def roblox_checkpayout(interaction: discord.Interaction, username: str, group: app_commands.Choice[str] = None):
-    if group and group.value == "mc":
+    group_value = group.value if group else "1cy"
+    
+    if group_value == "mc":
         GROUP_ID = "1081179215"
         ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
         group_name = "Modded Corporations"
-    else:
+    elif group_value == "qc":
+        GROUP_ID = "255111896"
+        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE3")  # ← Now uses ROBLOX_COOKIE3
+        group_name = "Quezon City"
+    elif group_value == "sb":
+        GROUP_ID = "35341321"  # ← Sheboyngo group ID
+        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")  # ← Uses ROBLOX_COOKIE2 as requested
+        group_name = "Sheboyngo"
+    else:  # default to 1cy
         GROUP_ID = "5838002"
         ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
         group_name = "1cy"
+
+    # Validate cookie
     if not ROBLOX_COOKIE:
+        if group_value == "qc":
+            missing_var = "ROBLOX_COOKIE3"
+        elif group_value in ("mc", "sb"):
+            missing_var = "ROBLOX_COOKIE2"
+        else:
+            missing_var = "ROBLOX_COOKIE"
         await interaction.response.send_message(
-            f"❌ `ROBLOX_COOKIE{'2' if group and group.value == 'mc' else ''}` is not set in environment variables.",
+            f"❌ `{missing_var}` is not set in environment variables.",
             ephemeral=True
         )
         return
+
     await interaction.response.defer(ephemeral=False)
     embed = discord.Embed(color=0x00bfff)
     embed.title = group_name
