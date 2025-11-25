@@ -3163,8 +3163,7 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
     embed.add_field(
         name="⌖ Covered Tax",
         value=(
-            f"**Price:** {required_to_send} Robux
-"
+            f"**Price:** {required_to_send} Robux\n"
             f"**To Received:** {target_receive} Robux"
         ),
         inline=False
@@ -3183,8 +3182,7 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
     embed.add_field(
         name="⌖ Not Covered Tax",
         value=(
-            f"**Price:** {sent_not_covered} Robux
-"
+            f"**Price:** {sent_not_covered} Robux\n"
             f"**To Received:** {received_not_covered} Robux"
         ),
         inline=False
