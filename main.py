@@ -3149,30 +3149,26 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
             "❗ Robux amount must be greater than zero.", ephemeral=True
         )
         return
-
     # Covered Tax (you want to receive X, must send X / 0.7)
     target_receive = amount
     required_to_send = math.ceil(target_receive / 0.7)
-
     # Not Covered Tax (you send X, receive 70%)
     sent_not_covered = amount
     received_not_covered = math.floor(sent_not_covered * 0.7)
-
     embed = discord.Embed(
         title="Roblox Transaction Tax",
         color=discord.Color.from_rgb(0, 0, 0)
     )
-
     # ✅ Covered Tax
     embed.add_field(
         name="⌖ Covered Tax",
         value=(
-            f"**Price:** {required_to_send} Robux\n"
+            f"**Price:** {required_to_send} Robux
+"
             f"**To Received:** {target_receive} Robux"
         ),
         inline=False
     )
-
     embed.add_field(
         name="Note",
         value=(
@@ -3180,17 +3176,19 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
         ),
         inline=False
     )
+    
+    embed.add_field(name="", value="", inline=False)
 
     # ❌ Not Covered Tax
     embed.add_field(
         name="⌖ Not Covered Tax",
         value=(
-            f"**Price:** {sent_not_covered} Robux\n"
+            f"**Price:** {sent_not_covered} Robux
+"
             f"**To Received:** {received_not_covered} Robux"
         ),
         inline=False
     )
-
     embed.add_field(
         name="Note",
         value=(
@@ -3198,7 +3196,6 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
         ),
         inline=False
     )
-
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
