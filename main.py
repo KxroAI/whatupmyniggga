@@ -2213,38 +2213,30 @@ async def roblox_stocks(interaction: discord.Interaction):
     # Group IDs
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
-    GROUP_ID_QC = 255111896      # Quezon City
     GROUP_ID_SB = 35341321      # Sheboyngo
-
     # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
-    ROBLOX_COOKIE_QC = os.getenv("ROBLOX_COOKIE3")
     ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")  # Sheboyngo uses MC cookie
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
-
     # Validate environment variables
     missing = []
     if not ROBLOX_COOKIE_1CY: missing.append("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE_MC: missing.append("ROBLOX_COOKIE2")
-    if not ROBLOX_COOKIE_QC: missing.append("ROBLOX_COOKIE3")
     if not ROBLOX_STOCKS: missing.append("ROBLOX_STOCKS")
     if not roblox_user_id: missing.append("ROBLOX_STOCKS_ID")
     if missing:
         await interaction.followup.send(f"❌ Missing env vars: {', '.join(missing)}")
         return
-
     # Initialize data
     data = {
         '1cy_funds': 0, '1cy_pending': 0, '1cy_daily': 0,
         'mc_funds': 0, 'mc_pending': 0, 'mc_daily': 0,
-        'qc_funds': 0, 'qc_pending': 0, 'qc_daily': 0,
         'sb_funds': 0, 'sb_pending': 0, 'sb_daily': 0,
         'account_balance': 0
     }
     visible = {k: False for k in data}
-
     async with aiohttp.ClientSession() as session:
         # --- 1cy ---
         try:
@@ -2261,7 +2253,6 @@ async def roblox_stocks(interaction: discord.Interaction):
                 visible['1cy_pending'] = True
                 visible['1cy_daily'] = True
         except: pass
-
         # --- Modded Corporations ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency", headers={"Cookie": ROBLOX_COOKIE_MC})
@@ -2277,23 +2268,6 @@ async def roblox_stocks(interaction: discord.Interaction):
                 visible['mc_pending'] = True
                 visible['mc_daily'] = True
         except: pass
-
-        # --- Quezon City ---
-        try:
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/currency", headers={"Cookie": ROBLOX_COOKIE_QC})
-            if r.status == 200:
-                res = await r.json()
-                data['qc_funds'] = res.get('robux', 0)
-                visible['qc_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_QC}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_QC})
-            if r.status == 200:
-                res = await r.json()
-                data['qc_pending'] = res.get('pendingRobux', 0)
-                data['qc_daily'] = res.get('itemSaleRobux', 0)
-                visible['qc_pending'] = True
-                visible['qc_daily'] = True
-        except: pass
-
         # --- Sheboyngo ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/currency", headers={"Cookie": ROBLOX_COOKIE_SB})
@@ -2309,7 +2283,6 @@ async def roblox_stocks(interaction: discord.Interaction):
                 visible['sb_pending'] = True
                 visible['sb_daily'] = True
         except: pass
-
         # --- Account Balance ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency", headers={"Cookie": ROBLOX_STOCKS})
@@ -2318,33 +2291,25 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['account_balance'] = res.get('robux', 0)
                 visible['account_balance'] = True
         except: pass
-
     robux_emoji = "<:robux:1438835687741853709>"
     def fmt(key):
         return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
-
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
-
     # Individual group funds + pending
     embed.add_field(name="**⌖ __1cy__ Community Funds | Pending Robux**",
                     value=f"{fmt('1cy_funds')} | {fmt('1cy_pending')}", inline=False)
     embed.add_field(name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**",
                     value=f"{fmt('mc_funds')} | {fmt('mc_pending')}", inline=False)
-    embed.add_field(name="**⌖ __Quezon City__ Community Funds | Pending Robux**",
-                    value=f"{fmt('qc_funds')} | {fmt('qc_pending')}", inline=False)
     embed.add_field(name="**⌖ __Sheboyngo__ Community Funds | Pending Robux**",
                     value=f"{fmt('sb_funds')} | {fmt('sb_pending')}", inline=False)
-
     # Daily sales rows
     embed.add_field(name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**",
                     value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}", inline=False)
-    embed.add_field(name="**⌖ __Quezon City__ & __Sheboyngo__ Daily Sales**",
-                    value=f"{fmt('qc_daily')} | {fmt('sb_daily')}", inline=False)
-
+    embed.add_field(name="**⌖ __Sheboyngo__ Daily Sales**",
+                    value=fmt('sb_daily'), inline=False)
     # Account balance
     embed.add_field(name="**⌖ Account Balance**",
                     value=fmt('account_balance'), inline=False)
-
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
@@ -2353,23 +2318,17 @@ async def roblox_stocks(interaction: discord.Interaction):
 @app_commands.choices(group=[
     app_commands.Choice(name="1cy", value="1cy"),
     app_commands.Choice(name="Modded Corporations", value="mc"),
-    app_commands.Choice(name="Quezon City", value="qc"),
     app_commands.Choice(name="Sheboyngo", value="sb")
 ])
 async def roblox_checkpayout(interaction: discord.Interaction, username: str, group: app_commands.Choice[str] = None):
     group_value = group.value if group else "1cy"
-    
     if group_value == "mc":
         GROUP_ID = "1081179215"
         ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
         group_name = "Modded Corporations"
-    elif group_value == "qc":
-        GROUP_ID = "255111896"
-        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE3")  # ← Now uses ROBLOX_COOKIE3
-        group_name = "Quezon City"
     elif group_value == "sb":
-        GROUP_ID = "35341321"  # ← Sheboyngo group ID
-        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")  # ← Uses ROBLOX_COOKIE2 as requested
+        GROUP_ID = "35341321"
+        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
         group_name = "Sheboyngo"
     else:  # default to 1cy
         GROUP_ID = "5838002"
@@ -2378,9 +2337,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
 
     # Validate cookie
     if not ROBLOX_COOKIE:
-        if group_value == "qc":
-            missing_var = "ROBLOX_COOKIE3"
-        elif group_value in ("mc", "sb"):
+        if group_value in ("mc", "sb"):
             missing_var = "ROBLOX_COOKIE2"
         else:
             missing_var = "ROBLOX_COOKIE"
@@ -2477,7 +2434,8 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
                             else:
                                 is_eligible = eligibility_status if isinstance(eligibility_status, bool) else str(eligibility_status).lower() in ['true', 'eligible']
                                 status_text = "✅ Eligible" if is_eligible else "❌ Not Currently Eligible"
-                                embed.description = f"`{username}` ({display_name}) is **{status_text}**\n**Group Role:** {role_name}"
+                                embed.description = f"`{username}` ({display_name}) is **{status_text}**
+**Group Role:** {role_name}"
                                 embed.color = discord.Color.green() if is_eligible else discord.Color.red()
                         else:
                             embed.description = "❌ Invalid response format from Roblox API."
@@ -2489,7 +2447,8 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
                         embed.description = f"❌ Error processing response: {str(e)}"
                         embed.color = discord.Color.red()
                 else:
-                    embed.description = f"❌ API Error: Status {response.status}\nResponse: {text}"
+                    embed.description = f"❌ API Error: Status {response.status}
+Response: {text}"
                     embed.color = discord.Color.red()
     except Exception as e:
         embed.description = f"❌ An error occurred during payout check: `{str(e)}`"
@@ -2974,6 +2933,10 @@ async def roblox_devex(interaction: discord.Interaction, conversion_type: app_co
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
+def clean_for_match(text: str) -> str:
+    """Keep only alphanumeric and spaces, then lowercase."""
+    return re.sub(r'[^a-z0-9\s]', '', text.lower())
+
 @roblox_group.command(
     name="community",
     description="Search and display info for any Roblox group by name or ID"
@@ -2986,7 +2949,6 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         if name.isdigit():
             group_id = int(name)
         else:
-            # Search by name — fetch up to 100 results for better match
             search_url = f"https://groups.roblox.com/v1/groups/search?keyword={name}&limit=100"
             best_match = None
             async with aiohttp.ClientSession() as session:
@@ -3003,30 +2965,25 @@ async def roblox_community(interaction: discord.Interaction, name: str):
                             f"❌ No public group found with name: `{name}`",
                             ephemeral=True
                         )
-
-                # Normalize input
-                query_lower = name.strip().lower()
-
-                # Step 1: Look for EXACT name match (case-insensitive)
+                # Clean user input for robust matching
+                clean_query = clean_for_match(name)
+                # Step 1: Look for exact semantic match (ignoring punctuation/case)
                 for group in groups:
-                    if group['name'].lower() == query_lower:
+                    clean_group = clean_for_match(group['name'])
+                    if clean_group == clean_query:
                         best_match = group
                         break
-
-                # Step 2: If no exact match, look for CONTAINS + highest member count
+                # Step 2: If none, fallback to contains + highest members
                 if best_match is None:
                     candidates = [
                         g for g in groups
-                        if query_lower in g['name'].lower()
+                        if clean_query in clean_for_match(g['name'])
                     ]
                     if candidates:
                         best_match = max(candidates, key=lambda g: g.get('memberCount', 0))
                     else:
-                        # Fallback: just take the first result (original behavior)
-                        best_match = groups[0]
-
+                        best_match = groups[0]  # fallback
                 group_id = best_match['id']
-
         # Fetch full group info
         async with aiohttp.ClientSession() as session:
             async with session.get(f"https://groups.roblox.com/v1/groups/{group_id}") as response:
@@ -3036,8 +2993,7 @@ async def roblox_community(interaction: discord.Interaction, name: str):
                         ephemeral=True
                     )
                 group_data = await response.json()
-
-            # Fetch group icon
+            # Fetch icon
             icon_url = None
             try:
                 async with session.get(f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={group_id}&size=420x420&format=Png") as icon_resp:
@@ -3047,7 +3003,6 @@ async def roblox_community(interaction: discord.Interaction, name: str):
                             icon_url = icon_data['data'][0]['imageUrl']
             except Exception as e:
                 print(f"[WARNING] Failed to fetch community group icon: {e}")
-
         formatted_members = "{:,}".format(group_data['memberCount'])
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(
@@ -3070,10 +3025,9 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         embed.add_field(name="Members", value=formatted_members, inline=True)
         if icon_url:
             embed.set_thumbnail(url=icon_url)
-        embed.set_footer(text="Neroniel • /roblox community")
+        embed.set_footer(text="Neroniel)
         embed.timestamp = discord.utils.utcnow()
         await interaction.followup.send(embed=embed)
-
     except Exception as e:
         await interaction.followup.send(
             f"❌ An error occurred: {str(e)}",
