@@ -2446,8 +2446,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
                         embed.description = f"❌ Error processing response: {str(e)}"
                         embed.color = discord.Color.red()
                 else:
-                    embed.description = f"❌ API Error: Status {response.status}
-Response: {text}"
+                    embed.description = f"❌ API Error: Status {response.status} Response: {text}"
                     embed.color = discord.Color.red()
     except Exception as e:
         embed.description = f"❌ An error occurred during payout check: `{str(e)}`"
