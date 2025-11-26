@@ -2434,8 +2434,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
                             else:
                                 is_eligible = eligibility_status if isinstance(eligibility_status, bool) else str(eligibility_status).lower() in ['true', 'eligible']
                                 status_text = "✅ Eligible" if is_eligible else "❌ Not Currently Eligible"
-                                embed.description = f"`{username}` ({display_name}) is **{status_text}**
-**Group Role:** {role_name}"
+                                embed.description = f"""`{username}` ({display_name}) is **{status_text}** **Group Role:** {role_name}"""
                                 embed.color = discord.Color.green() if is_eligible else discord.Color.red()
                         else:
                             embed.description = "❌ Invalid response format from Roblox API."
