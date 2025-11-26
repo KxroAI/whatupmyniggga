@@ -3023,7 +3023,7 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         embed.add_field(name="Members", value=formatted_members, inline=True)
         if icon_url:
             embed.set_thumbnail(url=icon_url)
-        embed.set_footer(text="Neroniel)
+        embed.set_footer(text="Neroniel")
         embed.timestamp = discord.utils.utcnow()
         await interaction.followup.send(embed=embed)
     except Exception as e:
