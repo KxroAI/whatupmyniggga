@@ -2382,6 +2382,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
         return
 
     # Step 2: Check if user is in the group
+    in_group = False
     try:
         async with aiohttp.ClientSession() as session:
             membership_url = f'https://groups.roblox.com/v1/users/{user_id}/groups/roles'
@@ -2390,12 +2391,20 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
                     groups = await membership_resp.json()
                     in_group = any(group['group']['id'] == int(GROUP_ID) for group in groups['data'])
                 else:
-                    embed.description = f"`{username}` ({display_name}) is ❌ not a member of the Group."
+                    # API error, not a membership check failure
+                    embed.description = f"❌ Failed to check group membership (HTTP {membership_resp.status})."
                     embed.color = discord.Color.red()
                     await interaction.followup.send(embed=embed)
                     return
     except Exception as e:
         embed.description = f"❌ An error occurred during Group Membership check: `{str(e)}`"
+        embed.color = discord.Color.red()
+        await interaction.followup.send(embed=embed)
+        return
+
+    # ✅ EARLY EXIT IF NOT IN GROUP
+    if not in_group:
+        embed.description = f"`{username}` ({display_name}) is ❌ not a member of the **{group_name}** group."
         embed.color = discord.Color.red()
         await interaction.followup.send(embed=embed)
         return
@@ -3042,7 +3051,7 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
     try:
         user_id = None
         username = None
-
+        display_name = None
         async with aiohttp.ClientSession() as session:
             # Resolve username or ID
             if user.isdigit():
@@ -3052,8 +3061,8 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
                         return await interaction.followup.send("❌ User not found.", ephemeral=True)
                     user_data = await resp.json()
                     username = user_data['name']
+                    display_name = user_data['displayName']
             else:
-                # Resolve username to ID
                 resolve_url = "https://users.roblox.com/v1/usernames/users"
                 payload = {"usernames": [user]}
                 headers = {"Content-Type": "application/json"}
@@ -3065,28 +3074,54 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
                         return await interaction.followup.send("❌ User not found.", ephemeral=True)
                     user_id = data['data'][0]['id']
                     username = data['data'][0]['name']
-
-            # Fetch FULL-BODY avatar (not headshot)
+                    display_name = data['data'][0]['displayName']
+            # Fetch FULL-BODY avatar
             thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&scale=1"
             async with session.get(thumb_url) as resp:
                 if resp.status == 200:
                     thumb_data = await resp.json()
                     image_url = thumb_data['data'][0]['imageUrl']
                 else:
-                    # Fallback if API fails
                     image_url = f"https://www.roproxy.com/avatar-thumbnail/image?userId={user_id}&width=420&height=420&format=png"
-
-        # Build embed with ONLY the username as title
-        embed = discord.Embed(
-            title=username,  # ← Only the username, no extra text
-            url=f"https://www.roblox.com/users/{user_id}/profile",
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
-        embed.set_image(url=image_url)
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-        await interaction.followup.send(embed=embed)
-
+            # === Fetch Verified (public) ===
+            verified = False
+            try:
+                async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
+                    if resp.status == 200:
+                        user_info = await resp.json()
+                        verified = user_info.get('hasVerifiedBadge', False)
+            except:
+                pass
+            # === Fetch Premium (private, requires cookie) ===
+            premium = False
+            cookie = os.getenv("ROBLOX_COOKIE")
+            if cookie:
+                try:
+                    headers = {"Cookie": f".ROBLOSECURITY={cookie}"}
+                    async with session.get(
+                        f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
+                        headers=headers
+                    ) as resp:
+                        if resp.status == 200:
+                            premium = await resp.json()
+                except:
+                    pass
+            # === Build emoji string ===
+            emoji = ""
+            if verified:
+                emoji += "<:RobloxVerified:1400310297184702564>"
+            if premium:
+                emoji += "<:RobloxPremium:1438836163816198245>"
+            display_title = f"{username} {emoji}".strip()
+            embed = discord.Embed(
+                title=display_title,
+                url=f"https://www.roblox.com/users/{user_id}/profile",
+                color=discord.Color.from_rgb(0, 0, 0)
+            )
+            embed.set_image(url=image_url)
+            embed.set_footer(text="Neroniel")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+            await interaction.followup.send(embed=embed)
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: `{str(e)}`", ephemeral=True)
 
