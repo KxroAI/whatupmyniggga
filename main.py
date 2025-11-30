@@ -2214,10 +2214,12 @@ async def roblox_stocks(interaction: discord.Interaction):
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
     GROUP_ID_SB = 35341321      # Sheboyngo
+    GROUP_ID_BSM = 42939987     # Brazilian Spyder Market
     # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")  # Sheboyngo uses MC cookie
+    ROBLOX_COOKIE_BSM = os.getenv("ROBLOX_COOKIE2") # BSM uses MC cookie (ROBLOX_COOKIE2)
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
     # Validate environment variables
@@ -2234,6 +2236,7 @@ async def roblox_stocks(interaction: discord.Interaction):
         '1cy_funds': 0, '1cy_pending': 0, '1cy_daily': 0,
         'mc_funds': 0, 'mc_pending': 0, 'mc_daily': 0,
         'sb_funds': 0, 'sb_pending': 0, 'sb_daily': 0,
+        'bsm_funds': 0, 'bsm_pending': 0, 'bsm_daily': 0,
         'account_balance': 0
     }
     visible = {k: False for k in data}
@@ -2283,6 +2286,21 @@ async def roblox_stocks(interaction: discord.Interaction):
                 visible['sb_pending'] = True
                 visible['sb_daily'] = True
         except: pass
+        # --- Brazilian Spyder Market ---
+        try:
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/currency", headers={"Cookie": ROBLOX_COOKIE_BSM})
+            if r.status == 200:
+                res = await r.json()
+                data['bsm_funds'] = res.get('robux', 0)
+                visible['bsm_funds'] = True
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_BSM})
+            if r.status == 200:
+                res = await r.json()
+                data['bsm_pending'] = res.get('pendingRobux', 0)
+                data['bsm_daily'] = res.get('itemSaleRobux', 0)
+                visible['bsm_pending'] = True
+                visible['bsm_daily'] = True
+        except: pass
         # --- Account Balance ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency", headers={"Cookie": ROBLOX_STOCKS})
@@ -2302,13 +2320,15 @@ async def roblox_stocks(interaction: discord.Interaction):
                     value=f"{fmt('mc_funds')} | {fmt('mc_pending')}", inline=False)
     embed.add_field(name="**⌖ __Sheboyngo__ Community Funds | Pending Robux**",
                     value=f"{fmt('sb_funds')} | {fmt('sb_pending')}", inline=False)
+    embed.add_field(name="**⌖ __Brazilian Spyder Market__ Community Funds | Pending Robux**",
+                    value=f"{fmt('bsm_funds')} | {fmt('bsm_pending')}", inline=False)
     # Daily sales rows
     embed.add_field(name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**",
                     value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}", inline=False)
-    embed.add_field(name="**⌖ __Sheboyngo__ Daily Sales**",
-                    value=fmt('sb_daily'), inline=False)
+    embed.add_field(name="**⌖ __Sheboyngo__ & __Brazilian Spyder Market__ Community Daily Sales**",
+                    value=f"{fmt('sb_daily')} | {fmt('bsm_daily')}", inline=False)
     # Account balance
-    embed.add_field(name="**⌖ Account Balance**",
+    embed.add_field(name="**⌖ Neroniel Account Balance**",
                     value=fmt('account_balance'), inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
@@ -2318,7 +2338,8 @@ async def roblox_stocks(interaction: discord.Interaction):
 @app_commands.choices(group=[
     app_commands.Choice(name="1cy", value="1cy"),
     app_commands.Choice(name="Modded Corporations", value="mc"),
-    app_commands.Choice(name="Sheboyngo", value="sb")
+    app_commands.Choice(name="Sheboyngo", value="sb"),
+    app_commands.Choice(name="Brazilian Spyder Market", value="bsm")
 ])
 async def roblox_checkpayout(interaction: discord.Interaction, username: str, group: app_commands.Choice[str] = None):
     group_value = group.value if group else "1cy"
@@ -2330,14 +2351,17 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
         GROUP_ID = "35341321"
         ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
         group_name = "Sheboyngo"
+    elif group_value == "bsm":
+        GROUP_ID = "42939987"
+        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
+        group_name = "Brazilian Spyder Market"
     else:  # default to 1cy
         GROUP_ID = "5838002"
         ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
         group_name = "1cy"
-
     # Validate cookie
     if not ROBLOX_COOKIE:
-        if group_value in ("mc", "sb"):
+        if group_value in ("mc", "sb", "bsm"):
             missing_var = "ROBLOX_COOKIE2"
         else:
             missing_var = "ROBLOX_COOKIE"
@@ -2346,13 +2370,11 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
             ephemeral=True
         )
         return
-
     await interaction.response.defer(ephemeral=False)
     embed = discord.Embed(color=0x00bfff)
     embed.title = group_name
     embed.set_footer(text="/group | Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
     # Step 1: Resolve username to user_id and display_name
     try:
         async with aiohttp.ClientSession() as session:
@@ -2380,7 +2402,6 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
         embed.color = discord.Color.red()
         await interaction.followup.send(embed=embed)
         return
-
     # Step 2: Check if user is in the group
     in_group = False
     try:
@@ -2401,14 +2422,12 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
         embed.color = discord.Color.red()
         await interaction.followup.send(embed=embed)
         return
-
     # ✅ EARLY EXIT IF NOT IN GROUP
     if not in_group:
         embed.description = f"`{username}` ({display_name}) is ❌ not a member of the **{group_name}** group."
         embed.color = discord.Color.red()
         await interaction.followup.send(embed=embed)
         return
-
     # Step 3: Fetch the user's group role
     role_name = "Unknown"
     try:
@@ -2424,7 +2443,6 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
     except Exception as e:
         print(f"[ERROR] Failed to fetch group role: {e}")
         role_name = "Error fetching role"
-
     # Step 4: Check payout eligibility
     try:
         async with aiohttp.ClientSession() as session:
@@ -2460,7 +2478,6 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str, gr
     except Exception as e:
         embed.description = f"❌ An error occurred during payout check: `{str(e)}`"
         embed.color = discord.Color.red()
-
     await interaction.followup.send(embed=embed)
 
 CLOUD_API_KEY = os.getenv("CLOUD_API")
@@ -3192,36 +3209,26 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
 @app_commands.describe(id="Place ID or full Roblox Game URL")
 async def roblox_icon(interaction: discord.Interaction, id: str):
     place_id = None
-
-    # Try to parse as integer (direct Place ID)
+    # Parse Place ID from input
     if id.isdigit():
         place_id = int(id)
     else:
-        # Try to extract Place ID from URL
         match = re.search(r'roblox\.com/games/(\d+)', id)
         if match:
             place_id = int(match.group(1))
         else:
             await interaction.response.send_message(
-                "❌ Invalid input. Please provide a valid Place ID (e.g., `123456789`) or a Roblox Game URL (e.g., `https://www.roblox.com/games/123456789/...`).",
+                "❌ Invalid input. Please provide a valid Place ID (e.g., `123456789`) or a Roblox Game URL.",
                 ephemeral=True
             )
             return
 
     await interaction.response.defer()
+
     try:
         async with aiohttp.ClientSession() as session:
-            # Optional: fetch game name
-            game_name = "Unknown Game"
-            game_info_url = f"https://games.roblox.com/v1/games?universeIds=0&placeIds={place_id}"
-            async with session.get(game_info_url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get('data'):
-                        game_name = data['data'][0].get('name', game_name)
-
-            # ✅ Use your requested API endpoint
-            icon_url = f"https://thumbnails.roproxy.com/v1/places/gameicons?placeIds={place_id}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false"
+            # Fetch icon
+            icon_url = f"https://thumbnails.roblox.com/v1/places/gameicons?placeIds={place_id}&size=512x512&format=Png&isCircular=false"
             async with session.get(icon_url) as icon_resp:
                 if icon_resp.status != 200:
                     raise Exception("Failed to fetch icon")
@@ -3230,9 +3237,8 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
                     raise Exception("No icon available")
                 image = icon_data['data'][0]['imageUrl']
 
+        # Create embed with only the image
         embed = discord.Embed(
-            title=game_name,
-            url=f"https://www.roblox.com/games/{place_id}",
             color=discord.Color.from_rgb(0, 0, 0)
         )
         embed.set_image(url=image)
@@ -3245,6 +3251,7 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
             f"❌ Failed to fetch game icon: `{str(e)}`",
             ephemeral=True
         )
+
 
 @roblox_group.command(
     name="rank",
@@ -3387,6 +3394,167 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=False)
         print(f"[ERROR] /roblox rank: {e}")
+
+@roblox_group.command(
+    name="game",
+    description="Display detailed information about a Roblox game using Place ID or Game Link"
+)
+@app_commands.describe(id="The Roblox Place ID (e.g., 123456789) or Game Link")
+async def roblox_game(interaction: discord.Interaction, id: str):
+    await interaction.response.defer()
+
+    # ----------------------------------------------
+    # 1️⃣ Extract Place ID
+    # ----------------------------------------------
+    place_id = None
+    if id.isdigit():
+        place_id = int(id)
+    else:
+        match = re.search(r'roblox\.com/games/(\d+)', id)
+        if match:
+            place_id = int(match.group(1))
+
+    if not place_id or place_id <= 0:
+        return await interaction.followup.send(
+            "❌ Invalid input. Please provide a valid Place ID or Roblox Game URL.",
+            ephemeral=True
+        )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+
+            # ----------------------------------------------
+            # 2️⃣ Convert Place → Universe
+            # ----------------------------------------------
+            universe_url = f"https://apis.roblox.com/universes/v1/places/{place_id}/universe"
+            async with session.get(universe_url) as uni_resp:
+                if uni_resp.status != 200:
+                    raise Exception(f"HTTP {uni_resp.status}: Invalid or private Place ID")
+
+                uni_data = await uni_resp.json()
+                universe_id = uni_data.get("universeId")
+                if not universe_id:
+                    raise Exception("Unable to extract Universe ID.")
+
+            # ----------------------------------------------
+            # 3️⃣ Fetch game info
+            # ----------------------------------------------
+            game_url = f"https://games.roblox.com/v1/games?universeIds={universe_id}"
+            async with session.get(game_url) as resp:
+                if resp.status != 200:
+                    raise Exception(f"HTTP {resp.status}: Failed to fetch game info.")
+
+                data = await resp.json()
+                if not data.get("data"):
+                    raise Exception("Game not found or private.")
+
+            game = data["data"][0]
+            game_name = game.get("name", "Unknown Game")
+            description = game.get("description", "No description available.")
+            visits = game.get("visits", 0)
+            playing = game.get("playing", 0)
+            favorites = game.get("favoritedCount", 0)
+            max_players = game.get("maxPlayers", "N/A")
+            created_at = game.get("created")
+            updated_at = game.get("updated")
+
+            creator = game.get("creator", {})
+            creator_name = creator.get("name", "Unknown Creator")
+            creator_id = creator.get("id", 0)
+            creator_type = creator.get("type", "User")
+
+            # ----------------------------------------------
+            # Verified badge
+            # ----------------------------------------------
+            verified_emoji = ""
+            if creator.get("hasVerifiedBadge") or creator.get("isVerified"):
+                verified_emoji = "<:RobloxVerified:1400310297184702564>"
+
+            creator_display = f"{creator_name} {verified_emoji}" if verified_emoji else creator_name
+            if creator_type == "Group":
+                creator_link = f"[{creator_display}](https://www.roblox.com/groups/{creator_id})"
+            else:
+                creator_link = f"[{creator_display}](https://www.roblox.com/users/{creator_id}/profile)"
+
+            # ----------------------------------------------
+            # 3.5️⃣ Fetch game icon thumbnail
+            # ----------------------------------------------
+            thumbnail_url = None
+            thumbnail_api = f"https://thumbnails.roblox.com/v1/games/icons?universeIds={universe_id}&size=150x150&format=Png&isCircular=false"
+            async with session.get(thumbnail_api) as thumb_resp:
+                if thumb_resp.status == 200:
+                    thumb_data = await thumb_resp.json()
+                    if thumb_data.get("data"):
+                        thumbnail_url = thumb_data["data"][0].get("imageUrl")
+
+            # ----------------------------------------------
+            # 4️⃣ Fetch Likes / Dislikes
+            # ----------------------------------------------
+            votes_url = f"https://games.roblox.com/v1/games/votes?universeIds={universe_id}"
+            likes = dislikes = 0
+            async with session.get(votes_url) as votes_resp:
+                if votes_resp.status == 200:
+                    votes_json = await votes_resp.json()
+                    if votes_json.get("data"):
+                        vote_data = votes_json["data"][0]
+                        likes = vote_data.get("upVotes", 0)
+                        dislikes = vote_data.get("downVotes", 0)
+
+            # ----------------------------------------------
+            # 5️⃣ Convert Created / Updated to Discord Timestamps
+            # ----------------------------------------------
+            from dateutil.parser import isoparse
+            created_unix = int(isoparse(created_at).timestamp()) if created_at else 0
+            updated_unix = int(isoparse(updated_at).timestamp()) if updated_at else 0
+
+            # ----------------------------------------------
+            # 6️⃣ Build Links
+            # ----------------------------------------------
+            game_link = f"https://www.roblox.com/games/{place_id}"
+            game_link_md = f"[{game_name}]({game_link})"
+
+            # ----------------------------------------------
+            # 7️⃣ Build the Embed
+            # ----------------------------------------------
+            embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+
+            full_text = f"**{game_link_md}**\n\n{description}"
+            if len(full_text) > 1024:
+                full_text = full_text[:1000] + "... *(truncated)*"
+
+            embed.add_field(name="", value=full_text, inline=False)
+            embed.add_field(name="Creator", value=creator_link, inline=True)
+            embed.add_field(name="Playing", value=f"{playing:,}", inline=True)
+            embed.add_field(name="Visits", value=f"{visits:,}", inline=True)
+            embed.add_field(
+                name="Likes | Dislikes | Favorites",
+                value=f"{likes:,} | {dislikes:,} | {favorites:,}",
+                inline=True
+            )
+            embed.add_field(
+                name="Created | Updated",
+                value=f"<t:{created_unix}:f> | <t:{updated_unix}:f>",
+                inline=True
+            )
+            embed.add_field(name="Max Server Size", value=str(max_players), inline=True)
+
+            if thumbnail_url:
+                embed.set_thumbnail(url=thumbnail_url)
+
+            embed.set_footer(text="Neroniel • /roblox game")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+
+            # ----------------------------------------------
+            # 8️⃣ Send embed
+            # ----------------------------------------------
+            return await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        return await interaction.followup.send(
+            f"❌ Failed to fetch game info: `{str(e)}`",
+            ephemeral=True
+        )
+
 
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
