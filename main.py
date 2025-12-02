@@ -154,9 +154,9 @@ def get_current_rates(guild_id: str):
 
 DEFAULT_RATES = {
     "payout_rate": 330.0,
-    "gift_rate": 260.0,
-    "nct_rate": 245.0,
-    "ct_rate": 350.0
+    "gift_rate": 300.0,
+    "nct_rate": 280.0,
+    "ct_rate": 400.0
 }
 
 # Currency emoji constants
@@ -1808,7 +1808,7 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
                   description="Display a user's profile picture")
 @app_commands.describe(user="The user whose avatar you want to see")
 async def avatar(interaction: discord.Interaction,
-                 user: discord.Member = None):
+                 user: discord.User = None):
     if user is None:
         user = interaction.user
 
@@ -3179,7 +3179,7 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
         ),
         inline=False
     )
-    
+
     embed.add_field(name="", value="", inline=False)
 
     # ❌ Not Covered Tax
