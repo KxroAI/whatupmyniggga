@@ -2333,151 +2333,144 @@ async def roblox_stocks(interaction: discord.Interaction):
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
-@roblox_group.command(name="checkpayout", description="Check if a Roblox user is eligible for group payout")
-@app_commands.describe(username="Roblox username", group="Which group to check")
-@app_commands.choices(group=[
-    app_commands.Choice(name="1cy", value="1cy"),
-    app_commands.Choice(name="Modded Corporations", value="mc"),
-    app_commands.Choice(name="Sheboyngo", value="sb"),
-    app_commands.Choice(name="Brazilian Spyder Market", value="bsm")
-])
-async def roblox_checkpayout(interaction: discord.Interaction, username: str, group: app_commands.Choice[str] = None):
-    group_value = group.value if group else "1cy"
-    if group_value == "mc":
-        GROUP_ID = "1081179215"
-        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
-        group_name = "Modded Corporations"
-    elif group_value == "sb":
-        GROUP_ID = "35341321"
-        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
-        group_name = "Sheboyngo"
-    elif group_value == "bsm":
-        GROUP_ID = "42939987"
-        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE2")
-        group_name = "Brazilian Spyder Market"
-    else:  # default to 1cy
-        GROUP_ID = "5838002"
-        ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
-        group_name = "1cy"
-    # Validate cookie
-    if not ROBLOX_COOKIE:
-        if group_value in ("mc", "sb", "bsm"):
-            missing_var = "ROBLOX_COOKIE2"
-        else:
-            missing_var = "ROBLOX_COOKIE"
-        await interaction.response.send_message(
-            f"❌ `{missing_var}` is not set in environment variables.",
+@roblox_group.command(
+    name="checkpayout",
+    description="Check if a Roblox user is eligible for payout across all supported groups"
+)
+@app_commands.describe(username="Roblox username")
+async def roblox_checkpayout(interaction: discord.Interaction, username: str):
+    await interaction.response.defer(ephemeral=False)
+
+    # Group config
+    groups = {
+        "1cy": {
+            "id": "5838002",
+            "cookie_env": "ROBLOX_COOKIE",
+            "name": "1cy",
+            "url": "https://www.roblox.com/groups/5838002"
+        },
+        "mc": {
+            "id": "1081179215",
+            "cookie_env": "ROBLOX_COOKIE2",
+            "name": "Modded Corporations",
+            "url": "https://www.roblox.com/groups/1081179215"
+        },
+        "sb": {
+            "id": "35341321",
+            "cookie_env": "ROBLOX_COOKIE2",
+            "name": "Sheboyngo",
+            "url": "https://www.roblox.com/groups/35341321"
+        },
+        "bsm": {
+            "id": "42939987",
+            "cookie_env": "ROBLOX_COOKIE2",
+            "name": "Brazilian Spyder Market",
+            "url": "https://www.roblox.com/groups/42939987"
+        }
+    }
+
+    # Load cookies
+    cookies = {}
+    missing_cookies = []
+    for key, info in groups.items():
+        cookie = os.getenv(info["cookie_env"])
+        if not cookie:
+            missing_cookies.append(info["cookie_env"])
+        cookies[key] = cookie
+
+    if missing_cookies:
+        await interaction.followup.send(
+            f"❌ Missing required cookies in environment: `{', '.join(set(missing_cookies))}`",
             ephemeral=True
         )
         return
-    await interaction.response.defer(ephemeral=False)
-    embed = discord.Embed(color=0x00bfff)
-    embed.title = group_name
-    embed.set_footer(text="/group | Neroniel")
+
+    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+    embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    # Step 1: Resolve username to user_id and display_name
+
+    # Step 1: Resolve username → user_id + display_name
     try:
         async with aiohttp.ClientSession() as session:
             url = 'https://users.roblox.com/v1/usernames/users'
-            headers = {'Content-Type': 'application/json'}
-            data = {'usernames': [username], 'excludeBannedUsers': True}
-            async with session.post(url, headers=headers, json=data) as resp:
+            payload = {'usernames': [username], 'excludeBannedUsers': True}
+            async with session.post(url, json=payload, headers={'Content-Type': 'application/json'}) as resp:
+                if resp.status != 200 or not (await resp.json()).get('data'):
+                    embed.description = "❌ User not found."
+                    embed.color = discord.Color.red()
+                    await interaction.followup.send(embed=embed)
+                    return
+                user_info = (await resp.json())['data'][0]
+                user_id = user_info['id']
+                display_name = user_info['displayName']
+    except Exception as e:
+        embed.description = f"❌ Error resolving username: `{str(e)}`"
+        embed.color = discord.Color.red()
+        await interaction.followup.send(embed=embed)
+        return
+
+    # Step 2: Fetch group roles to check 1cy rank and group membership
+    user_groups = set()
+    onecy_role_name = None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'https://groups.roblox.com/v1/users/{user_id}/groups/roles') as resp:
                 if resp.status == 200:
-                    json_data = await resp.json()
-                    if json_data['data']:
-                        user_id = json_data['data'][0]['id']
-                        display_name = json_data['data'][0]['displayName']
-                    else:
-                        embed.description = "❌ User not found with that username."
-                        embed.color = discord.Color.red()
-                        await interaction.followup.send(embed=embed)
-                        return
-                else:
-                    embed.description = f"❌ Error resolving username. Status code: {resp.status}"
-                    embed.color = discord.Color.red()
-                    await interaction.followup.send(embed=embed)
-                    return
+                    roles_data = await resp.json()
+                    for entry in roles_data.get('data', []):
+                        gid = str(entry['group']['id'])
+                        for gkey, ginfo in groups.items():
+                            if gid == ginfo['id']:
+                                user_groups.add(gkey)
+                                if gkey == "1cy":
+                                    onecy_role_name = entry['role']['name']
     except Exception as e:
-        embed.description = f"❌ An error occurred during username lookup: `{str(e)}`"
-        embed.color = discord.Color.red()
-        await interaction.followup.send(embed=embed)
-        return
-    # Step 2: Check if user is in the group
-    in_group = False
-    try:
-        async with aiohttp.ClientSession() as session:
-            membership_url = f'https://groups.roblox.com/v1/users/{user_id}/groups/roles'
-            async with session.get(membership_url) as membership_resp:
-                if membership_resp.status == 200:
-                    groups = await membership_resp.json()
-                    in_group = any(group['group']['id'] == int(GROUP_ID) for group in groups['data'])
-                else:
-                    # API error, not a membership check failure
-                    embed.description = f"❌ Failed to check group membership (HTTP {membership_resp.status})."
-                    embed.color = discord.Color.red()
-                    await interaction.followup.send(embed=embed)
-                    return
-    except Exception as e:
-        embed.description = f"❌ An error occurred during Group Membership check: `{str(e)}`"
-        embed.color = discord.Color.red()
-        await interaction.followup.send(embed=embed)
-        return
-    # ✅ EARLY EXIT IF NOT IN GROUP
-    if not in_group:
-        embed.description = f"`{username}` ({display_name}) is ❌ not a member of the **{group_name}** group."
-        embed.color = discord.Color.red()
-        await interaction.followup.send(embed=embed)
-        return
-    # Step 3: Fetch the user's group role
-    role_name = "Unknown"
-    try:
-        async with aiohttp.ClientSession() as session:
-            roles_url = f'https://groups.roblox.com/v2/users/{user_id}/groups/roles'
-            async with session.get(roles_url) as roles_resp:
-                if roles_resp.status == 200:
-                    roles_data = await roles_resp.json()
-                    for group_entry in roles_data.get('data', []):
-                        if str(group_entry['group']['id']) == GROUP_ID:
-                            role_name = group_entry['role']['name']
-                            break
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch group role: {e}")
-        role_name = "Error fetching role"
-    # Step 4: Check payout eligibility
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f'https://economy.roblox.com/v1/groups/{GROUP_ID}/users-payout-eligibility?userIds={user_id}'
-            headers = {'Cookie': ROBLOX_COOKIE, 'Accept': 'application/json', 'Content-Type': 'application/json'}
-            async with session.get(url, headers=headers) as response:
-                text = await response.text()
-                if response.status == 200:
-                    try:
-                        data = json.loads(text)
-                        if "usersGroupPayoutEligibility" in data:
-                            eligibility_status = data["usersGroupPayoutEligibility"].get(str(user_id))
-                            if eligibility_status is None:
-                                embed.description = f"`{username}` ({display_name}) was not found in the Payout Eligibility list."
-                                embed.color = discord.Color.orange()
+        print(f"[ERROR] Failed to fetch group roles: {e}")
+
+    # Step 3: Check payout eligibility per group
+    status_lines = []
+    for key, info in groups.items():
+        group_id = info['id']
+        cookie = cookies[key]
+        group_display = info['name']
+        group_url = info['url']
+        if key not in user_groups:
+            status_text = "<:Unverified:1446796507931082906> Not In Group"
+        else:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f'https://economy.roblox.com/v1/groups/{group_id}/users-payout-eligibility?userIds={user_id}'
+                    headers = {'Cookie': cookie}
+                    async with session.get(url, headers=headers) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            eligibility = data.get("usersGroupPayoutEligibility", {}).get(str(user_id))
+                            is_eligible = eligibility if isinstance(eligibility, bool) else str(eligibility).lower() in ['true', 'eligible']
+                            if is_eligible:
+                                status_text = "<:RobloxVerified:1400310297184702564> Eligible"
                             else:
-                                is_eligible = eligibility_status if isinstance(eligibility_status, bool) else str(eligibility_status).lower() in ['true', 'eligible']
-                                status_text = "✅ Eligible" if is_eligible else "❌ Not Currently Eligible"
-                                embed.description = f"`{username}` ({display_name}) is **{status_text}**\n**Group Role:** {role_name}"
-                                embed.color = discord.Color.green() if is_eligible else discord.Color.red()
+                                status_text = "<:Unverified:1446796507931082906> Not Currently Eligible"
                         else:
-                            embed.description = "❌ Invalid response format from Roblox API."
-                            embed.color = discord.Color.red()
-                    except json.JSONDecodeError:
-                        embed.description = f"❌ Error parsing JSON response: {text}"
-                        embed.color = discord.Color.red()
-                    except Exception as e:
-                        embed.description = f"❌ Error processing response: {str(e)}"
-                        embed.color = discord.Color.red()
-                else:
-                    embed.description = f"❌ API Error: Status {response.status}\nResponse: {text}"
-                    embed.color = discord.Color.red()
-    except Exception as e:
-        embed.description = f"❌ An error occurred during payout check: `{str(e)}`"
-        embed.color = discord.Color.red()
+                            status_text = "⚠️ API Error"
+            except Exception as e:
+                status_text = "⚠️ Check Failed"
+        # Make group name clickable
+        clickable_group = f"[{group_display}]({group_url})"
+        status_lines.append(f"**⌖ {clickable_group}** — **{status_text}**")
+
+    # Build description with blank line after username
+    description_lines = [
+        f"**`{username}` ({display_name})**",
+        "",  # ← blank line
+        *status_lines
+    ]
+
+    # Only add Group Rank if user is in 1cy
+    if onecy_role_name:
+        description_lines.append(f"**Group Rank:** {onecy_role_name}")
+
+    embed.description = "\n".join(description_lines)
+
     await interaction.followup.send(embed=embed)
 
 CLOUD_API_KEY = os.getenv("CLOUD_API")
