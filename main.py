@@ -139,16 +139,16 @@ async def check_reminders():
 def get_current_rates(guild_id: str):
     # Check if MongoDB is disabled
     if rates_collection is None:
-        return {"payout": 330.0, "gift": 260.0, "nct": 245.0, "ct": 350.0}
+        return {"payout": 330.0, "gift": 300.0, "nct": 280.0, "ct": 400.0}
 
     guild_id = str(guild_id)
     result = rates_collection.find_one({"guild_id": guild_id})
 
     return {
         "payout": result.get("payout_rate", 330.0) if result else 330.0,
-        "gift": result.get("gift_rate", 260.0) if result else 260.0,
-        "nct": result.get("nct_rate", 245.0) if result else 245.0,
-        "ct": result.get("ct_rate", 350.0) if result else 350.0
+        "gift": result.get("gift_rate", 300.0) if result else 300.0,
+        "nct": result.get("nct_rate", 280.0) if result else 280.0,
+        "ct": result.get("ct_rate", 400.0) if result else 400.0
     }
 
 
@@ -1026,17 +1026,17 @@ async def viewrates(interaction: discord.Interaction):
         )
         embed.add_field(
             name="• Gift Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('gift_rate', 260.0))}",
+            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('gift_rate', 300.0))}",
             inline=False
         )
         embed.add_field(
             name="• NCT Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('nct_rate', 245.0))}",
+            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('nct_rate', 280.0))}",
             inline=False
         )
         embed.add_field(
             name="• CT Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('ct_rate', 350.0))}",
+            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('ct_rate', 400.0))}",
             inline=False
         )
         updated_at = doc.get("updated_at")
