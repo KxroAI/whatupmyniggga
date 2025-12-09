@@ -189,7 +189,7 @@ BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID") or "0")
 
 
 @bot.tree.command(name="dm",
-                  description="Send a direct message to a user (Owner only)")
+                  description="Send a direct message to a user")
 @app_commands.describe(user="The user you want to message",
                        message="The message to send")
 async def dm(interaction: discord.Interaction, user: discord.User,
@@ -214,7 +214,7 @@ async def dm(interaction: discord.Interaction, user: discord.User,
 @bot.tree.command(
     name="dmall",
     description=
-    "Send a direct message to all members in the server (Owner only)")
+    "Send a direct message to all members in the server")
 @app_commands.describe(message="The message you want to send to all members")
 async def dmall(interaction: discord.Interaction, message: str):
     if interaction.user.id != BOT_OWNER_ID:
@@ -986,7 +986,72 @@ async def resetrate(interaction: discord.Interaction,
         await interaction.followup.send(f"❌ Error resetting rates: {str(e)}",
                                         ephemeral=True)
 
-@bot.tree.command(name="viewrates", description="View all saved server rates (Owner only)")
+@bot.tree.command(
+    name="forceresetallrates",
+    description="Force-reset all server rates that are BELOW default values"
+)
+async def forceresetallrates(interaction: discord.Interaction):
+    # Owner-only check
+    if interaction.user.id != BOT_OWNER_ID:
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.", ephemeral=True
+        )
+        return
+
+    if rates_collection is None:
+        await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        all_docs = list(rates_collection.find())
+        if not all_docs:
+            await interaction.followup.send("📭 No server rate data found.", ephemeral=True)
+            return
+
+        updated_servers = []
+
+        for doc in all_docs:
+            guild_id = doc["guild_id"]
+            current = {
+                "payout_rate": doc.get("payout_rate", 330.0),
+                "gift_rate": doc.get("gift_rate", 300.0),
+                "nct_rate": doc.get("nct_rate", 280.0),
+                "ct_rate": doc.get("ct_rate", 400.0)
+            }
+
+            # Only update fields that are BELOW default
+            update_fields = {}
+            if current["payout_rate"] < DEFAULT_RATES["payout_rate"]:
+                update_fields["payout_rate"] = DEFAULT_RATES["payout_rate"]
+            if current["gift_rate"] < DEFAULT_RATES["gift_rate"]:
+                update_fields["gift_rate"] = DEFAULT_RATES["gift_rate"]
+            if current["nct_rate"] < DEFAULT_RATES["nct_rate"]:
+                update_fields["nct_rate"] = DEFAULT_RATES["nct_rate"]
+            if current["ct_rate"] < DEFAULT_RATES["ct_rate"]:
+                update_fields["ct_rate"] = DEFAULT_RATES["ct_rate"]
+
+            if update_fields:
+                update_fields["updated_at"] = datetime.now(PH_TIMEZONE)
+                rates_collection.update_one({"guild_id": guild_id}, {"$set": update_fields})
+                updated_servers.append(guild_id)
+
+        if updated_servers:
+            await interaction.followup.send(
+                f"✅ Updated rates for **{len(updated_servers)}** server(s) where values were below default.",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "✅ No servers had rates below the defaults — nothing was changed.",
+                ephemeral=True
+            )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error during force reset: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="viewrates", description="View all saved server rates")
 async def viewrates(interaction: discord.Interaction):
     # Owner-only check
     if interaction.user.id != BOT_OWNER_ID:
