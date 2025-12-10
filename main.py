@@ -2226,50 +2226,63 @@ async def mexc(interaction: discord.Interaction):
 # ===========================
 roblox_group = app_commands.Group(name="roblox", description="Roblox-related tools")
 
-@roblox_group.command(name="group", description="Display information about the 1cy Roblox group")
+@roblox_group.command(name="group", description="Display information about multiple Roblox groups")
 async def roblox_group_info(interaction: discord.Interaction):
-    GROUP_ID = int(os.getenv("GROUP_ID"))
-    try:
-        async with aiohttp.ClientSession() as session:
-            # Fetch group info
-            async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
-                if response.status != 200:
-                    raise Exception(f"API Error: {response.status}")
-                data = await response.json()
+    GROUP_IDS = [5838002, 1081179215, 35341321, 42939987]  # All group IDs
 
-            # Fetch group icon
-            icon_url = None
+    await interaction.response.defer()
+
+    async with aiohttp.ClientSession() as session:
+        for GROUP_ID in GROUP_IDS:
             try:
-                async with session.get(f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png") as icon_resp:
-                    if icon_resp.status == 200:
-                        icon_data = await icon_resp.json()
-                        if icon_data.get('data'):
-                            icon_url = icon_data['data'][0]['imageUrl']
+                # Fetch group info
+                async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
+                    if response.status != 200:
+                        continue  # Skip if API fails
+                    data = await response.json()
+
+                # Fetch group icon
+                icon_url = None
+                try:
+                    async with session.get(
+                        f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png"
+                    ) as icon_resp:
+                        if icon_resp.status == 200:
+                            icon_data = await icon_resp.json()
+                            if icon_data.get('data'):
+                                icon_url = icon_data['data'][0]['imageUrl']
+                except Exception as e:
+                    print(f"[WARNING] Failed to fetch group icon for {GROUP_ID}: {e}")
+
+                formatted_members = "{:,}".format(data['memberCount'])
+                embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+                embed.add_field(
+                    name="Group Name",
+                    value=f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})",
+                    inline=False
+                )
+                embed.add_field(
+                    name="Description",
+                    value=data.get('description', 'No description') or "No description",
+                    inline=False
+                )
+                embed.add_field(name="Group ID", value=str(data['id']), inline=True)
+                owner = data.get('owner')
+                owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
+                embed.add_field(name="Owner", value=owner_link, inline=True)
+                embed.add_field(name="Members", value=formatted_members, inline=True)
+                if icon_url:
+                    embed.set_thumbnail(url=icon_url)
+                embed.set_footer(text="Neroniel")
+                embed.timestamp = discord.utils.utcnow()
+
+                await interaction.followup.send(embed=embed)
+
             except Exception as e:
-                print(f"[WARNING] Failed to fetch group icon: {e}")
-
-        formatted_members = "{:,}".format(data['memberCount'])
-        embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-        embed.add_field(
-            name="Group Name",
-            value=f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})",
-            inline=False
-        )
-        embed.add_field(name="Description", value=f"{data.get('description', 'No description')}", inline=False)
-        embed.add_field(name="Group ID", value=str(data['id']), inline=True)
-        owner = data.get('owner')
-        owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
-        embed.add_field(name="Owner", value=owner_link, inline=True)
-        embed.add_field(name="Members", value=formatted_members, inline=True)
-
-        if icon_url:
-            embed.set_thumbnail(url=icon_url)
-
-        embed.set_footer(text="Neroniel")
-        embed.timestamp = discord.utils.utcnow()
-        await interaction.response.send_message(embed=embed)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Error fetching group info: {e}", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Error fetching group info for ID `{GROUP_ID}`: {e}",
+                    ephemeral=False
+                )
 
 
 @roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
@@ -2278,8 +2291,8 @@ async def roblox_stocks(interaction: discord.Interaction):
     # Group IDs
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
-    GROUP_ID_SB = 35341321      # Sheboyngo
-    GROUP_ID_BSM = 42939987     # Brazilian Spyder Market
+    GROUP_ID_SB = 35341321      
+    GROUP_ID_BSM = 42939987     
     # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
