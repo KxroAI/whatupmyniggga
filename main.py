@@ -465,21 +465,23 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # ========== Track messages for giveaways with message_requirement ==========
+    # ========== Track messages for giveaways with message_requirement (GUILD-WIDE, per giveaway ID) ==========
     if isinstance(message.channel, discord.TextChannel):
-        channel_id = str(message.channel.id)
+        guild_id = str(message.guild.id)
         user_id = str(message.author.id)
-
         if giveaways_collection is not None:
-            active_giveaway = giveaways_collection.find_one({
-                "channel_id": channel_id,
+            active_giveaways = giveaways_collection.find({
+                "guild_id": guild_id,
                 "ended": {"$ne": True},
                 "message_requirement": {"$ne": None}
             })
-            if active_giveaway:
-                giveaway_msg_id = int(active_giveaway["message_id"])
-                if message.id > giveaway_msg_id:  # Only count messages sent AFTER the giveaway message
-                    bot.giveaway_message_counts[channel_id][user_id] += 1
+            for giveaway in active_giveaways:
+                giveaway_id = str(giveaway["_id"])
+                giveaway_msg_id = int(giveaway["message_id"])
+                if message.id > giveaway_msg_id:
+                    if giveaway_id not in bot.giveaway_message_counts:
+                        bot.giveaway_message_counts[giveaway_id] = defaultdict(int)
+                    bot.giveaway_message_counts[giveaway_id][user_id] += 1
 
     # ========== AI Thread Handling ==========
     if isinstance(message.channel, discord.Thread) and message.channel.id in bot.ai_threads:
@@ -871,12 +873,12 @@ class PersistentGiveawayView(ui.View):
                 )
                 return
 
-        # Message requirement check
+        # Message requirement check (GUILD-WIDE, per giveaway)
         if self.message_requirement:
-            user_msg_count = bot.giveaway_message_counts.get(str(interaction.channel.id), {}).get(user_id_str, 0)
+            user_msg_count = bot.giveaway_message_counts.get(str(self.giveaway_id), {}).get(user_id_str, 0)
             if user_msg_count < self.message_requirement:
                 await interaction.response.send_message(
-                    f"❌ You must send at least **{self.message_requirement} message(s)** in this channel after the giveaway started to enter.",
+                    f"❌ You must send at least **{self.message_requirement} message(s)** in this server after the giveaway started to enter.",
                     ephemeral=True
                 )
                 return
@@ -888,7 +890,8 @@ class PersistentGiveawayView(ui.View):
             giveaways_collection.update_one({"_id": self.giveaway_id}, {"$set": {"entries": entries}})
             # Update footer
             embed = interaction.message.embeds[0]
-            embed.set_footer(text=f"Entries {len(entries)}")
+            embed.set_footer(text=f"Entries {len(entries)} | ID: {str(self.giveaway_id)}")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
             await interaction.message.edit(embed=embed)
         await interaction.response.send_message("✅ You've entered the giveaway!", ephemeral=True)
 
@@ -937,19 +940,19 @@ async def end_giveaway_now(giveaway_id):
         winner_text = f"{len(winners)} person{'s' if len(winners) > 1 else ''} won a prize ({winner_mentions})"
     else:
         winner_text = "No one won."
-    embed.add_field(name=":trophy: Winners", value=winner_text, inline=False)
+    embed.add_field(name=":trophy: Winner(s)", value=winner_text, inline=False)
     embed.add_field(name="Hosted by", value=host_mention, inline=False)
-    embed.set_footer(text=f"Entries {len(entries)}")
+    embed.set_footer(text=f"Entries {len(entries)} | ID: {str(giveaway_id)}")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
 
     # ✅ CRITICAL FIX: Actually edit the original message and remove button
     await message.edit(embed=embed, view=None)
     if entries:
         winner_mentions = ", ".join(f"<@{w}>" for w in winners)
-        await message.reply(content=f":trophy: **Winners**: {winner_mentions}")
-
+        await message.reply(content=f":trophy: **Winner(s)**: {winner_mentions}")
 
 # ===========================
-# Giveaway Command
+# Giveaway Command (FIXED)
 # ===========================
 @bot.tree.command(name="giveaway", description="Create a persistent giveaway")
 @app_commands.describe(
@@ -974,7 +977,7 @@ async def giveaway(
             "❌ You need **Manage Server** permission or be the bot owner to use this command.",
             ephemeral=True
         )
-        
+        return
     try:
         total_seconds = parse_duration(duration)
         if total_seconds <= 0 or winner_count <= 0:
@@ -987,14 +990,17 @@ async def giveaway(
         )
         return
 
-    end_time = datetime.now(PH_TIMEZONE) + timedelta(seconds=total_seconds)
-    end_unix = int(end_time.timestamp())
+    # ✅ Compute end time in PH (for user display)
+    end_time_ph = datetime.now(PH_TIMEZONE) + timedelta(seconds=total_seconds)
+    # ✅ Convert to UTC for reliable storage and comparisons
+    end_time_utc = end_time_ph.astimezone(pytz.UTC)
+    # ✅ Use PH time for embed timestamp (user-friendly)
+    end_unix = int(end_time_ph.timestamp())
 
     required_role_ids = []
     if required_roles:
         required_role_ids = [int(rid) for rid in re.findall(r'<@&(\d+)>', required_roles)]
-
-    # Build embed
+    # Build embed using PH time
     embed = discord.Embed(
         title=f"**:gift: {prize}**",
         color=discord.Color.gold()
@@ -1006,19 +1012,18 @@ async def giveaway(
     if message_requirement:
         embed.add_field(name="Message Requirement", value=f"{message_requirement} message(s) required", inline=False)
     embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
-    embed.set_footer(text="Entries 0")
-
+    embed.set_footer(text=f"Entries 0 | ID: {str(None)}")  # Will be replaced after DB insert
+    embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
     msg = await interaction.original_response()
-
-    # Save to DB
+    # Save to DB using UTC time
     giveaway_data = {
         "guild_id": str(interaction.guild.id),
         "channel_id": str(interaction.channel.id),
         "message_id": str(msg.id),
         "host_id": str(interaction.user.id),
         "prize": prize,
-        "end_time": end_time,
+        "end_time": end_time_utc,  # ✅ STORE IN UTC
         "winner_count": winner_count,
         "required_roles": required_role_ids,
         "message_requirement": message_requirement,  
@@ -1026,27 +1031,137 @@ async def giveaway(
         "ended": False,
         "created_at": datetime.now(PH_TIMEZONE)
     }
-
     if giveaways_collection is not None:
         result = giveaways_collection.insert_one(giveaway_data)
         giveaway_id = result.inserted_id
     else:
         return await interaction.followup.send("❌ Database error – giveaway not saved.", ephemeral=True)
-
-    # Attach persistent view
+    # Update footer with real ID
+    embed.set_footer(text=f"Entries 0 | ID: {str(giveaway_id)}")
+    await msg.edit(embed=embed)
+    # Attach persistent view (pass PH time for display consistency in button logic)
     view = PersistentGiveawayView(
         giveaway_id=giveaway_id,
         host_id=str(interaction.user.id),
         prize=prize,
-        end_time=end_time,
+        end_time=end_time_ph,  # ✅ Use PH time here to match embed display
         winner_count=winner_count,
         required_roles=required_role_ids,
         message_requirement=message_requirement 
     )
     await msg.edit(view=view)
-
-    # Schedule end
+    # Schedule end using total_seconds (no need to recompute)
     asyncio.create_task(end_giveaway_later(giveaway_id, total_seconds))
+
+
+# Giveaway End Command
+@bot.tree.command(name="giveawayend", description="End a giveaway immediately by its ID")
+@app_commands.describe(id="The full giveaway ID (from the footer)")
+async def giveawayend(interaction: discord.Interaction, id: str):
+    is_admin = interaction.user.guild_permissions.manage_guild
+    is_owner = interaction.user.id == BOT_OWNER_ID
+    if not (is_admin or is_owner):
+        await interaction.response.send_message(
+            "❌ You need **Manage Server** permission or be the bot owner to use this command.",
+            ephemeral=True
+        )
+        return
+
+    if giveaways_collection is None:
+        await interaction.response.send_message("❌ Database unavailable.", ephemeral=True)
+        return
+
+    from bson import ObjectId
+    try:
+        giveaway_id = ObjectId(id)
+    except Exception:
+        await interaction.response.send_message("❌ Invalid giveaway ID format.", ephemeral=True)
+        return
+
+    giveaway = giveaways_collection.find_one({"_id": giveaway_id})
+    if not giveaway:
+        await interaction.response.send_message("❌ No giveaway found with that ID.", ephemeral=True)
+        return
+
+    if giveaway.get("ended"):
+        await interaction.response.send_message("❌ This giveaway has already ended.", ephemeral=True)
+        return
+
+    if str(giveaway["guild_id"]) != str(interaction.guild.id):
+        await interaction.response.send_message("❌ This giveaway is not from this server.", ephemeral=True)
+        return
+
+    await end_giveaway_now(giveaway_id)
+    await interaction.response.send_message("✅ Giveaway ended early!", ephemeral=False)
+
+# Giveaway Reroll Command
+@bot.tree.command(name="giveawayreroll", description="Pick a new winner for an ended giveaway")
+@app_commands.describe(id="The full giveaway ID (from the footer)")
+async def giveawayreroll(interaction: discord.Interaction, id: str):
+    is_admin = interaction.user.guild_permissions.manage_guild
+    is_owner = interaction.user.id == BOT_OWNER_ID
+    if not (is_admin or is_owner):
+        await interaction.response.send_message(
+            "❌ You need **Manage Server** permission or be the bot owner to use this command.",
+            ephemeral=True
+        )
+        return
+
+    if giveaways_collection is None:
+        await interaction.response.send_message("❌ Database unavailable.", ephemeral=True)
+        return
+
+    from bson import ObjectId
+    try:
+        giveaway_id = ObjectId(id)
+    except Exception:
+        await interaction.response.send_message("❌ Invalid giveaway ID format.", ephemeral=True)
+        return
+
+    giveaway = giveaways_collection.find_one({"_id": giveaway_id})
+    if not giveaway:
+        await interaction.response.send_message("❌ No giveaway found with that ID.", ephemeral=True)
+        return
+
+    if not giveaway.get("ended"):
+        await interaction.response.send_message("❌ This giveaway hasn't ended yet. Use `/giveawayend` first.", ephemeral=True)
+        return
+
+    if str(giveaway["guild_id"]) != str(interaction.guild.id):
+        await interaction.response.send_message("❌ This giveaway is not from this server.", ephemeral=True)
+        return
+
+    entries = giveaway.get("entries", [])
+    winner_count = giveaway.get("winner_count", 1)
+    prize = giveaway.get("prize", "Unknown Prize")
+    host_id = giveaway.get("host_id")
+
+    if not entries:
+        await interaction.response.send_message("❌ This giveaway has no entries to reroll.", ephemeral=True)
+        return
+
+    # Pick new winner(s)
+    new_winners = random.sample(entries, min(len(entries), winner_count))
+    winner_mentions = ", ".join(f"<@{w}>" for w in new_winners)
+
+    # Send new winner announcement
+    guild = bot.get_guild(int(giveaway["guild_id"]))
+    channel = guild.get_channel(int(giveaway["channel_id"])) if guild else None
+    if not channel:
+        await interaction.response.send_message("❌ Could not find the giveaway channel.", ephemeral=True)
+        return
+
+    try:
+        original_message = await channel.fetch_message(int(giveaway["message_id"]))
+        await original_message.reply(
+            content=f":arrows_counterclockwise: **Giveaway Re-Rolled!**\n:trophy: **New Winner(s) for `{prize}`**: {winner_mentions}")
+        await interaction.response.send_message("✅ Giveaway re-rolled successfully!", ephemeral=True)
+    except discord.NotFound:
+        await interaction.response.send_message("❌ Original giveaway message not found.", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I don't have permission to send messages in the giveaway channel.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Failed to send re-roll reply: {e}", ephemeral=True)
 
 
 # ===========================
@@ -1975,72 +2090,73 @@ class CommandPaginator(ui.View):
 )
 async def listallcommands(interaction: discord.Interaction):
     categories = {
-    "🤖 AI Assistant": [
-        "`/ask <prompt>` – Chat with Llama 3 AI",
-        "`/clearhistory` – Clear your AI conversation history"
-    ],
-    "🧱 Roblox Tools (`/roblox` group)": [
-        "`/roblox group` – Show info for 4 specific Roblox groups",
-        "`/roblox community <name|ID>` – Search any public Roblox group",
-        "`/roblox profile <username|ID>` – View Roblox user profile",
-        "`/roblox avatar <username|ID>` – View full Roblox avatar",
-        "`/roblox icon <place_id|URL>` – Get game icon",
-        "`/roblox game <place_id|URL>` – Get full game info",
-        "`/roblox stocks` – Show group funds & Robux stocks (private)",
-        "`/roblox checkpayout <username>` – Check payout eligibility across groups",
-        "`/roblox login <cookie>` – View private account details using .ROBLOSECURITY",
-        "`/roblox gamepass <ID|link>` – Get public Gamepass link",
-        "`/roblox devex <type> <amount>` – Convert Robux ↔ USD (DevEx rate)",
-        "`/roblox tax <amount>` – Show 30% Roblox transaction tax breakdown",
-        "`/roblox rank <username>` – Promote user to Rank 6 (owner only)"
-    ],
-    "💱 Currency & Conversion": [
-        "`/payout <type> <amount>` – Convert Robux ↔ PHP (Payout rate)",
-        "`/gift <type> <amount>` – Convert Robux ↔ PHP (Gift rate)",
-        "`/nct <type> <amount>` – Convert Robux ↔ PHP (NCT rate)",
-        "`/ct <type> <amount>` – Convert Robux ↔ PHP (CT rate)",
-        "`/allrates <type> <amount>` – Compare all PHP/Robux rates",
-        "`/convertcurrency <amount> <from> <to>` – Convert world currencies",
-        "`/setrate [rates...]` – Set custom rates (admin only)",
-        "`/resetrate [flags]` – Reset specific rates to default (admin only)",
-        "`/forceresetallrates` – Force-reset all server rates below default (owner only)",
-        "`/viewrates` – View all saved server rates (owner only)"
-    ],
-    "🛠️ Utility & Info": [
-        "`/userinfo [user]` – View Discord user info",
-        "`/avatar [user]` – Show Discord user’s avatar",
-        "`/banner [user]` – Show Discord user’s banner",
-        "`/weather <city>` – Get current weather info",
-        "`/calculator <num1> <op> <num2>` – Perform basic math",
-        "`/mexc` – Show top cryptos by volume on MEXC",
-        "`/snipe` – Show last deleted message in channel",
-        "`/payment <method>` – Show Gcash/PayMaya/GoTyme info",
-        "`/status` – Show bot stats (uptime, servers, etc.)",
-        "`/invite` – Get bot invite link"
-        "`/giveaway <prize> <duration> <winners> [roles] [msg_req]` – Create a persistent giveaway"
-    ],
-    "📢 Messaging & Announcements": [
-        "`/announcement` – Create rich embed announcement (admin only)",
-        "`/say <message>` – Make bot say something (no @everyone/@here)",
-        "`/donate <user> <amount>` – Fun Robux donation message",
-        "`/poll <question> <time> <unit>` – Create a timed poll",
-        "`/remindme <minutes> <note>` – Set a reminder in this channel"
-    ],
-    "📱 Social Media": [
-        "`/tiktok <link> [spoiler]` – Download TikTok video",
-        "`/instagram <link> [spoiler]` – Convert to EmbedEZ link"
-    ],
-    "🛡️ Owner & Admin": [
-        "`/dm <user> <message>` – DM a user (owner only)",
-        "`/dmall <message>` – DM all server members (owner only)",
-        "`/purge <amount>` – Delete messages (mod/owner)",
-        "`/createinvite` – Create 30-min invites for all servers (owner only)"
-    ],
-    "🔧 Bot & Server": [
-        "`/listallcommands` – List all available commands (this command)"
-    ]
-}
-
+        "🤖 AI Assistant": [
+            "`/ask <prompt>` – Chat with Llama 3 AI",
+            "`/clearhistory` – Clear your AI conversation history"
+        ],
+        "🧱 Roblox Tools (`/roblox` group)": [
+            "`/roblox group` – Show info for 4 specific Roblox groups",
+            "`/roblox community <name|ID>` – Search any public Roblox group",
+            "`/roblox profile <username|ID>` – View Roblox user profile",
+            "`/roblox avatar <username|ID>` – View full Roblox avatar",
+            "`/roblox icon <place_id|URL>` – Get game icon",
+            "`/roblox game <place_id|URL>` – Get full game info",
+            "`/roblox stocks` – Show group funds & Robux stocks",
+            "`/roblox checkpayout <username>` – Check payout eligibility across groups",
+            "`/roblox login <cookie>` – View private account details using .ROBLOSECURITY",
+            "`/roblox gamepass <ID|link>` – Get public Gamepass link",
+            "`/roblox devex <type> <amount>` – Convert Robux ↔ USD (DevEx rate)",
+            "`/roblox tax <amount>` – Show 30% Roblox transaction tax breakdown",
+            "`/roblox rank <username>` – Promote user to Rank 6 (owner only)"
+        ],
+        "💱 Currency & Conversion": [
+            "`/payout <type> <amount>` – Convert Robux ↔ PHP (Payout rate)",
+            "`/gift <type> <amount>` – Convert Robux ↔ PHP (Gift rate)",
+            "`/nct <type> <amount>` – Convert Robux ↔ PHP (NCT rate)",
+            "`/ct <type> <amount>` – Convert Robux ↔ PHP (CT rate)",
+            "`/allrates <type> <amount>` – Compare all PHP/Robux rates",
+            "`/convertcurrency <amount> <from> <to>` – Convert world currencies",
+            "`/setrate [rates...]` – Set custom rates (admin only)",
+            "`/resetrate [flags]` – Reset specific rates to default (admin only)",
+            "`/forceresetallrates` – Force-reset all server rates below default (owner only)",
+            "`/viewrates` – View all saved server rates (owner only)"
+        ],
+        "🛠️ Utility & Info": [
+            "`/userinfo [user]` – View Discord user info",
+            "`/avatar [user]` – Show Discord user’s avatar",
+            "`/banner [user]` – Show Discord user’s banner",
+            "`/weather <city>` – Get current weather info",
+            "`/calculator <num1> <op> <num2>` – Perform basic math",
+            "`/mexc` – Show top cryptos by volume on MEXC",
+            "`/snipe` – Show last deleted message in channel",
+            "`/payment <method>` – Show Gcash/PayMaya/GoTyme info",
+            "`/status` – Show bot stats (uptime, servers, etc.)",
+            "`/invite` – Get bot invite link",
+            "`/giveaway <prize> <duration> <winners> [roles] [msg_req]` – Create a persistent giveaway",
+            "`/giveawayend <id>` – End a giveaway early",
+            "`/giveawayreroll <id>` – Re-roll giveaway winners"
+        ],
+        "📢 Messaging & Announcements": [
+            "`/announcement` – Create rich embed announcement (admin only)",
+            "`/say <message>` – Make bot say something (no @everyone/@here)",
+            "`/donate <user> <amount>` – Fun Robux donation message",
+            "`/poll <question> <time> <unit>` – Create a timed poll",
+            "`/remindme <minutes> <note>` – Set a reminder in this channel"
+        ],
+        "📱 Social Media": [
+            "`/tiktok <link> [spoiler]` – Download TikTok video",
+            "`/instagram <link> [spoiler]` – Convert to EmbedEZ link"
+        ],
+        "🛡️ Owner & Admin": [
+            "`/dm <user> <message>` – DM a user (owner only)",
+            "`/dmall <message>` – DM all server members (owner only)",
+            "`/purge <amount>` – Delete messages (mod/owner)",
+            "`/createinvite` – Create 30-min invites for all servers (owner only)"
+        ],
+        "🔧 Bot & Server": [
+            "`/listallcommands` – List all available commands (this command)"
+        ]
+    }
     embeds = []
     for name, cmds in categories.items():
         embed = discord.Embed(
@@ -2051,11 +2167,9 @@ async def listallcommands(interaction: discord.Interaction):
         embed.set_footer(text="Neroniel • Use buttons to navigate")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         embeds.append(embed)
-
     if not embeds:
         await interaction.response.send_message("❌ No commands found.", ephemeral=True)
         return
-
     view = CommandPaginator(embeds)
     await interaction.response.send_message(embed=embeds[0], view=view)
     view.message = await interaction.original_response()
@@ -3906,19 +4020,22 @@ async def on_ready():
         active_giveaways = giveaways_collection.find({"ended": {"$ne": True}})
         for gw in active_giveaways:
             # Ensure end_time is timezone-aware (MongoDB returns naive datetime)
-            end_time_naive = gw["end_time"]
-            if end_time_naive.tzinfo is None:
-                # Assume it was stored in PH_TIMEZONE (which it was)
-                end_time = PH_TIMEZONE.localize(end_time_naive)
+            end_time = gw["end_time"]
+            if end_time.tzinfo is None:
+                # MongoDB stores naive datetimes → we stored them as UTC, so assume UTC
+                end_time = pytz.UTC.localize(end_time)
             else:
-                end_time = end_time_naive  # already aware (shouldn't happen, but safe)
+                # Ensure it's in UTC (normalize just in case)
+                end_time = end_time.astimezone(pytz.UTC)
 
-            now = datetime.now(PH_TIMEZONE)
-            if end_time <= now:
+            # Now convert "now" to UTC for fair comparison
+            now_utc = datetime.now(pytz.UTC)
+
+            if end_time <= now_utc:
                 asyncio.create_task(end_giveaway_now(gw["_id"]))
             else:
-                time_left = (end_time - now).total_seconds()
-                asyncio.create_task(end_giveaway_later(gw["_id"], time_left))
+                delay = (end_time - now_utc).total_seconds()
+                asyncio.create_task(end_giveaway_later(gw["_id"], delay))
                 # Reattach view to message
                 guild = bot.get_guild(int(gw["guild_id"]))
                 if guild:
