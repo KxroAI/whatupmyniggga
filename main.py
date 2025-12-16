@@ -532,51 +532,56 @@ async def userinfo(interaction: discord.Interaction,
     if user is None:
         user = interaction.user
 
-    created_at = user.created_at.astimezone(PH_TIMEZONE).strftime(
-        "%B %d, %Y • %I:%M %p GMT+8")
+    # Unix timestamps for Discord-native formatting
+    created_unix = int(user.created_at.timestamp())
+    created_rel = f"<t:{created_unix}:R>"
 
+    # Construct top clickable line: [Display Name (@username)](link)
+    user_url = f"https://discordapp.com/users/{user.id}"
+    top_line = f"**[{user.display_name} (@{user.name})]({user_url})**\n"
+
+    # Build base description (always shown)
+    desc_lines = [
+        top_line,
+        f"{user.mention}",
+        f"{user.name}",
+        f"ID: {user.id}",
+        "",
+        "**Account Creation**",
+        f"<t:{created_unix}:f> ({created_rel})"
+    ]
+
+    # Only show server-specific info if user is in the server (i.e., is a Member)
     if isinstance(user, discord.Member):
-        joined_at = user.joined_at.astimezone(PH_TIMEZONE).strftime(
-            "%B %d, %Y • %I:%M %p GMT+8") if user.joined_at else "Unknown"
-        roles = [role.mention for role in user.roles if not role.is_default()]
-        roles_str = ", ".join(roles) if roles else "No Roles"
-        boost_since = user.premium_since.astimezone(
-            PH_TIMEZONE).strftime("%B %d, %Y • %I:%M %p GMT+8"
-                                  ) if user.premium_since else "Not Boosting"
-        is_bot = user.bot
-    else:
-        joined_at = "Not in Server"
-        roles_str = "N/A"
-        boost_since = "Not Boosting"
-        is_bot = user.bot
+        # Joined Server
+        if user.joined_at:
+            joined_unix = int(user.joined_at.timestamp())
+            joined_rel = f"<t:{joined_unix}:R>"
+            desc_lines.extend([
+                "",
+                "**Joined Server**",
+                f"<t:{joined_unix}:f> ({joined_rel})"
+            ])
 
-    embed = discord.Embed(color=discord.Color.green())
-    embed.add_field(name="Username", value=f"{user.mention}", inline=False)
-    embed.add_field(name="Display Name",
-                    value=f"`{user.display_name}`",
-                    inline=True)
-    embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
-    embed.add_field(name="Created Account",
-                    value=f"`{created_at}`",
-                    inline=False)
-    embed.add_field(name="Joined Server", value=f"`{joined_at}`", inline=False)
+        # Server Booster — ONLY if actually boosting
+        if user.premium_since:
+            boost_unix = int(user.premium_since.timestamp())
+            boost_rel = f"<t:{boost_unix}:R>"
+            desc_lines.extend([
+                "",
+                "**Server Booster**",
+                f"<t:{boost_unix}:f> ({boost_rel})"
+            ])
+        # ❌ Do NOT show "Not Boosting" — skip entirely if not boosting
 
-    if isinstance(user, discord.Member):
-        embed.add_field(name="Roles", value=roles_str, inline=False)
-
-    embed.add_field(name="Server Booster Since",
-                    value=f"`{boost_since}`",
-                    inline=False)
-
-    if is_bot:
-        embed.add_field(name="Bot Account", value="✅ Yes", inline=True)
-
+    # Build final embed
+    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+    embed.description = "\n".join(desc_lines)
     embed.set_thumbnail(url=user.display_avatar.url)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
 
     await interaction.response.send_message(embed=embed)
-
 
 # ===========================
 # Announcement Command
@@ -3165,7 +3170,6 @@ async def roblox_login(interaction: Interaction, cookie: str):
 @app_commands.describe(user="Roblox username or user ID")
 async def roblox_profile(interaction: discord.Interaction, user: str):
     await interaction.response.defer(ephemeral=False)
-    GROUP_ID = 5838002  # Your real group ID
     try:
         async with aiohttp.ClientSession() as session:
             user_id = None
@@ -3210,23 +3214,58 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
                         return await interaction.followup.send(
                             "❌ Failed to fetch user details.", ephemeral=True)
                     full_data = await resp.json()
-            # Presence
-            presence_url = "https://presence.roblox.com/v1/presence/users"
-            async with session.post(presence_url, json={"userIds":
-                                                        [user_id]}) as resp:
-                if resp.status == 200:
-                    presence_data = await resp.json()
-                    if presence_data.get("userPresences"):
-                        p = presence_data["userPresences"][0]
-                        is_online = p.get("userPresenceType", 0) != 0
-                        last_location = p.get("lastLocation", "Offline")
-                        status = last_location if is_online else "Offline"
-                        last_online_raw = p.get("lastOnline")
-                        if last_online_raw:
-                            last_dt = isoparse(last_online_raw)
-                            last_online = last_dt.astimezone(
-                                PH_TIMEZONE).strftime(
-                                    "%A, %d %B %Y • %I:%M %p")
+                    # Presence
+                    status = "Offline"
+                    last_online = "N/A"
+                    async with session.post("https://presence.roblox.com/v1/presence/users", json={"userIds": [user_id]}) as resp:
+                        if resp.status == 200:
+                            presence_data = await resp.json()
+                            if presence_data.get("userPresences"):
+                                p = presence_data["userPresences"][0]
+                                presence_type = p.get("userPresenceType", 0)
+                                last_location = p.get("lastLocation", "").strip()
+                                last_online_raw = p.get("lastOnline")
+                                place_id = p.get("placeId")
+
+                                if presence_type == 1:  # Online (not in game)
+                                    if last_location in ("Website", "Mobile App", "VR", "Console"):
+                                        status = f"Online ({last_location})"
+                                    else:
+                                        status = "Online"
+
+                                elif presence_type == 2:  # In Game
+                                    game_name = None
+                                    # Try to get real game name from placeId if available and public
+                                    if place_id:
+                                        try:
+                                            async with session.get(f"https://games.roblox.com/v1/places/{place_id}") as place_resp:
+                                                if place_resp.status == 200:
+                                                    place_data = await place_resp.json()
+                                                    fetched_name = place_data.get("name")
+                                                    if fetched_name and fetched_name.strip():
+                                                        game_name = fetched_name.strip()
+                                        except Exception:
+                                            pass  # Ignore errors (e.g., private game, rate limit)
+                                    # Fallback to lastLocation if API failed or name is empty
+                                    if not game_name:
+                                        game_name = last_location or "Unknown Game"
+                                    # Only show name if it's not a generic placeholder
+                                    if game_name not in ("", "Game", "Unknown", "Private Server", "Unknown Game"):
+                                        status = f"In Game: {game_name}"
+                                    else:
+                                        status = "In Game"
+
+                                elif presence_type == 3:  # In Studio
+                                    status = "In Studio"
+
+                                else:  # Offline
+                                    status = "Offline"
+
+                                if last_online_raw:
+                                    last_dt = isoparse(last_online_raw)
+                                    last_online = last_dt.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
+                        else:
+                            status = "Offline"
             # Thumbnail
             thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
             async with session.get(thumb_url) as resp:
@@ -3238,8 +3277,6 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
             # Creation date
             created_at = isoparse(full_data['created'])
             created_unix = int(created_at.timestamp())
-            created_str = created_at.astimezone(PH_TIMEZONE).strftime(
-                "%A, %d %B %Y • %I:%M %p")
             # Description
             description = full_data.get("description", "N/A") or "N/A"
             # Emojis
@@ -3269,29 +3306,17 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
                                                   0) if r2.status == 200 else 0
                 followings = (await r3.json()).get(
                     'count', 0) if r3.status == 200 else 0
-            # Group role check
-            role_name = None
-            async with session.get(
-                    f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
-            ) as resp:
-                if resp.status == 200:
-                    groups_data = await resp.json()
-                    for g in groups_data.get("data", []):
-                        if g["group"]["id"] == GROUP_ID:
-                            role_name = g["role"]["name"]
-                            break
-            # Embed (Status + Role on same block)
+            # Embed (NO group role, NO color)
             description_text = (
-                f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n"
+                f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n\n"
                 f"**@{user}** {emoji}\n"
-                f"**Account Created:** <t:{created_unix}:f>\n"
+                f"**Account Created:** <t:{created_unix}:f>\n\n"
                 f"```{description}```\n"
                 f"**Connections:** {friends}/{followers}/{followings}\n"
                 f"**Status:** {status}" +
                 (f" ({last_online})"
-                 if status == "Offline" and last_online != "N/A" else ""))
-            if role_name:
-                description_text += f"\n**Group Role:** {role_name}"
+                 if status == "Offline" and last_online != "N/A" else "")
+            )
             embed = discord.Embed(description=description_text,
                                   color=discord.Color.from_str("#000001"))
             embed.set_thumbnail(url=image_url)
