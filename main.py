@@ -44,7 +44,8 @@ bot.ask_rate_limit = defaultdict(list)
 bot.conversations = defaultdict(list)  # In-memory cache for AI conversation
 bot.last_message_id = {}  # Store last message IDs for threaded replies
 bot.ai_threads = {}
-bot.giveaway_message_counts = defaultdict(lambda: defaultdict(int))  # Track giveaway message counts per user per channel
+bot.giveaway_message_counts = defaultdict(lambda: defaultdict(
+    int))  # Track giveaway message counts per user per channel
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -85,7 +86,7 @@ else:
         # Initialize collections
         conversations_collection = db.conversations
         reminders_collection = db.reminders
-        rates_collection = db.rates  
+        rates_collection = db.rates
         giveaways_collection = db.giveaways
 
         # Create TTL indexes
@@ -167,6 +168,7 @@ DEFAULT_RATES = {
 ROBUX_EMOJI = "<:robux:1438835687741853709>"
 PHP_EMOJI = "<:PHP:1438894048222908416>"
 
+
 # Helper function for formatting PHP values
 def format_php(value: float) -> str:
     # Round to 2 decimal places first
@@ -185,6 +187,7 @@ def format_php(value: float) -> str:
         else:
             return f"{whole_part:,}"
 
+
 # ===========================
 # Owner-only Direct Message Commands
 # ===========================
@@ -192,8 +195,7 @@ def format_php(value: float) -> str:
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID") or "0")
 
 
-@bot.tree.command(name="dm",
-                  description="Send a direct message to a user")
+@bot.tree.command(name="dm", description="Send a direct message to a user")
 @app_commands.describe(user="The user you want to message",
                        message="The message to send")
 async def dm(interaction: discord.Interaction, user: discord.User,
@@ -217,8 +219,7 @@ async def dm(interaction: discord.Interaction, user: discord.User,
 
 @bot.tree.command(
     name="dmall",
-    description=
-    "Send a direct message to all members in the server")
+    description="Send a direct message to all members in the server")
 @app_commands.describe(message="The message you want to send to all members")
 async def dmall(interaction: discord.Interaction, message: str):
     if interaction.user.id != BOT_OWNER_ID:
@@ -290,7 +291,9 @@ def get_language_instruction(prompt: str) -> str:
 
     return lang_instruction
 
-@bot.tree.command(name="ask", description="Chat with an AI assistant using Llama 3")
+
+@bot.tree.command(name="ask",
+                  description="Chat with an AI assistant using Llama 3")
 @app_commands.describe(prompt="What would you like to ask?")
 async def ask(interaction: discord.Interaction, prompt: str):
     user_id = interaction.user.id
@@ -299,18 +302,26 @@ async def ask(interaction: discord.Interaction, prompt: str):
 
     # Rate limiting
     current_time = asyncio.get_event_loop().time()
-    bot.ask_rate_limit[user_id] = [t for t in bot.ask_rate_limit[user_id] if current_time - t <= 60]
+    bot.ask_rate_limit[user_id] = [
+        t for t in bot.ask_rate_limit[user_id] if current_time - t <= 60
+    ]
     bot.ask_rate_limit[user_id].append(current_time)
     if len(bot.ask_rate_limit[user_id]) > 5:
-        await interaction.followup.send("⏳ You're being rate-limited. Please wait a minute.")
+        await interaction.followup.send(
+            "⏳ You're being rate-limited. Please wait a minute.")
         return
 
     async with interaction.channel.typing():
         try:
             # Creator override
             normalized_prompt = prompt.strip().lower()
-            if normalized_prompt in ["who made you", "who created you", "who created this bot", "who made this bot"]:
-                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.from_rgb(0, 0, 0))
+            if normalized_prompt in [
+                    "who made you", "who created you", "who created this bot",
+                    "who made this bot"
+            ]:
+                embed = discord.Embed(
+                    description="I was created by **Neroniel**.",
+                    color=discord.Color.from_rgb(0, 0, 0))
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 msg = await interaction.followup.send(embed=embed)
@@ -324,9 +335,17 @@ async def ask(interaction: discord.Interaction, prompt: str):
             history = []
             if conversations_collection is not None:
                 if not bot.conversations[user_id]:
-                    history_docs = conversations_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(5)
+                    history_docs = conversations_collection.find({
+                        "user_id":
+                        user_id
+                    }).sort("timestamp", -1).limit(5)
                     for doc in history_docs:
-                        bot.conversations[user_id].append({"user": doc["prompt"], "assistant": doc["response"]})
+                        bot.conversations[user_id].append({
+                            "user":
+                            doc["prompt"],
+                            "assistant":
+                            doc["response"]
+                        })
                     bot.conversations[user_id].reverse()
                 history = bot.conversations[user_id][-5:]
 
@@ -338,22 +357,37 @@ async def ask(interaction: discord.Interaction, prompt: str):
             full_prompt += f"User: {prompt}\nAssistant:"
 
             # Call AI
-            headers = {"Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}", "Content-Type": "application/json"}
-            payload = {"model": "meta-llama/Llama-3-70b-chat-hf", "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.7}
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-                async with session.post("https://api.together.xyz/v1/completions", headers=headers, json=payload) as response:
+            headers = {
+                "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "meta-llama/Llama-3-70b-chat-hf",
+                "prompt": full_prompt,
+                "max_tokens": 2048,
+                "temperature": 0.7
+            }
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(
+                    total=10)) as session:
+                async with session.post(
+                        "https://api.together.xyz/v1/completions",
+                        headers=headers,
+                        json=payload) as response:
                     if response.status != 200:
                         text = await response.text()
-                        await interaction.followup.send(f"❌ API error {response.status}: `{text}`")
+                        await interaction.followup.send(
+                            f"❌ API error {response.status}: `{text}`")
                         return
                     data = await response.json()
             if 'error' in data:
-                await interaction.followup.send(f"❌ AI error: {data['error']['message']}")
+                await interaction.followup.send(
+                    f"❌ AI error: {data['error']['message']}")
                 return
             ai_response = data["choices"][0]["text"].strip()
 
             # Send response
-            embed = discord.Embed(description=ai_response, color=discord.Color.from_rgb(0, 0, 0))
+            embed = discord.Embed(description=ai_response,
+                                  color=discord.Color.from_rgb(0, 0, 0))
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             msg = await interaction.followup.send(embed=embed, wait=True)
@@ -363,12 +397,14 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 if bot.last_message_id.get((user_id, channel_id)) is None:
                     try:
                         # Fetch the message to get guild info attached
-                        fetched_msg = await interaction.channel.fetch_message(msg.id)
+                        fetched_msg = await interaction.channel.fetch_message(
+                            msg.id)
                         thread = await fetched_msg.create_thread(
                             name=f"AI • {interaction.user.display_name}",
                             auto_archive_duration=60  # 1 hour
                         )
-                        bot.ai_threads[thread.id] = user_id  # Track for follow-ups
+                        bot.ai_threads[
+                            thread.id] = user_id  # Track for follow-ups
                         await thread.send(
                             "🗨️ This conversation will continue here. Others can join too!\n"
                             "💡 **Just type your next question here** — no need to use `/ask` again!"
@@ -378,18 +414,26 @@ async def ask(interaction: discord.Interaction, prompt: str):
 
             # Save state
             bot.last_message_id[(user_id, channel_id)] = msg.id
-            bot.conversations[user_id].append({"user": prompt, "assistant": ai_response})
+            bot.conversations[user_id].append({
+                "user": prompt,
+                "assistant": ai_response
+            })
             if conversations_collection is not None:
                 conversations_collection.insert_one({
-                    "user_id": user_id,
-                    "prompt": prompt,
-                    "response": ai_response,
-                    "timestamp": datetime.now(PH_TIMEZONE)
+                    "user_id":
+                    user_id,
+                    "prompt":
+                    prompt,
+                    "response":
+                    ai_response,
+                    "timestamp":
+                    datetime.now(PH_TIMEZONE)
                 })
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
             print(f"[EXCEPTION] /ask: {e}")
+
 
 async def handle_ai_followup(message, user_id):
     channel = message.channel
@@ -398,16 +442,24 @@ async def handle_ai_followup(message, user_id):
         return
 
     current_time = asyncio.get_event_loop().time()
-    bot.ask_rate_limit[user_id] = [t for t in bot.ask_rate_limit[user_id] if current_time - t <= 60]
+    bot.ask_rate_limit[user_id] = [
+        t for t in bot.ask_rate_limit[user_id] if current_time - t <= 60
+    ]
     bot.ask_rate_limit[user_id].append(current_time)
     if len(bot.ask_rate_limit[user_id]) > 5:
-        await channel.send("⏳ You're being rate-limited. Please wait a minute.")
+        await channel.send("⏳ You're being rate-limited. Please wait a minute."
+                           )
         return
 
     async with channel.typing():
         try:
-            if prompt.lower() in ["who made you", "who created you", "who created this bot", "who made this bot"]:
-                embed = discord.Embed(description="I was created by **Neroniel**.", color=discord.Color.from_rgb(0, 0, 0))
+            if prompt.lower() in [
+                    "who made you", "who created you", "who created this bot",
+                    "who made this bot"
+            ]:
+                embed = discord.Embed(
+                    description="I was created by **Neroniel**.",
+                    color=discord.Color.from_rgb(0, 0, 0))
                 embed.set_footer(text="Neroniel AI")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 await channel.send(embed=embed)
@@ -417,9 +469,16 @@ async def handle_ai_followup(message, user_id):
             history = []
             if conversations_collection is not None:
                 if not bot.conversations[user_id]:
-                    docs = conversations_collection.find({"user_id": user_id}).sort("timestamp", -1).limit(5)
+                    docs = conversations_collection.find({
+                        "user_id": user_id
+                    }).sort("timestamp", -1).limit(5)
                     for doc in docs:
-                        bot.conversations[user_id].append({"user": doc["prompt"], "assistant": doc["response"]})
+                        bot.conversations[user_id].append({
+                            "user":
+                            doc["prompt"],
+                            "assistant":
+                            doc["response"]
+                        })
                     bot.conversations[user_id].reverse()
                 history = bot.conversations[user_id][-5:]
 
@@ -429,12 +488,25 @@ async def handle_ai_followup(message, user_id):
                 full_prompt += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n"
             full_prompt += f"User: {prompt}\nAssistant:"
 
-            headers = {"Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}", "Content-Type": "application/json"}
-            payload = {"model": "meta-llama/Llama-3-70b-chat-hf", "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.7}
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-                async with session.post("https://api.together.xyz/v1/completions", headers=headers, json=payload) as resp:
+            headers = {
+                "Authorization": f"Bearer {os.getenv('TOGETHER_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "meta-llama/Llama-3-70b-chat-hf",
+                "prompt": full_prompt,
+                "max_tokens": 2048,
+                "temperature": 0.7
+            }
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(
+                    total=10)) as session:
+                async with session.post(
+                        "https://api.together.xyz/v1/completions",
+                        headers=headers,
+                        json=payload) as resp:
                     if resp.status != 200:
-                        await channel.send(f"❌ API error: `{await resp.text()}`")
+                        await channel.send(
+                            f"❌ API error: `{await resp.text()}`")
                         return
                     data = await resp.json()
             if 'error' in data:
@@ -442,23 +514,32 @@ async def handle_ai_followup(message, user_id):
                 return
             ai_response = data["choices"][0]["text"].strip()
 
-            embed = discord.Embed(description=ai_response, color=discord.Color.from_rgb(0, 0, 0))
+            embed = discord.Embed(description=ai_response,
+                                  color=discord.Color.from_rgb(0, 0, 0))
             embed.set_footer(text="Neroniel AI")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             await channel.send(embed=embed)
 
-            bot.conversations[user_id].append({"user": prompt, "assistant": ai_response})
+            bot.conversations[user_id].append({
+                "user": prompt,
+                "assistant": ai_response
+            })
             if conversations_collection is not None:
                 conversations_collection.insert_one({
-                    "user_id": user_id,
-                    "prompt": prompt,
-                    "response": ai_response,
-                    "timestamp": datetime.now(PH_TIMEZONE)
+                    "user_id":
+                    user_id,
+                    "prompt":
+                    prompt,
+                    "response":
+                    ai_response,
+                    "timestamp":
+                    datetime.now(PH_TIMEZONE)
                 })
 
         except Exception as e:
             await channel.send(f"❌ Error: {str(e)}")
             print(f"[EXCEPTION] follow-up: {e}")
+
 
 @bot.event
 async def on_message(message):
@@ -472,19 +553,25 @@ async def on_message(message):
         if giveaways_collection is not None:
             active_giveaways = giveaways_collection.find({
                 "guild_id": guild_id,
-                "ended": {"$ne": True},
-                "message_requirement": {"$ne": None}
+                "ended": {
+                    "$ne": True
+                },
+                "message_requirement": {
+                    "$ne": None
+                }
             })
             for giveaway in active_giveaways:
                 giveaway_id = str(giveaway["_id"])
                 giveaway_msg_id = int(giveaway["message_id"])
                 if message.id > giveaway_msg_id:
                     if giveaway_id not in bot.giveaway_message_counts:
-                        bot.giveaway_message_counts[giveaway_id] = defaultdict(int)
+                        bot.giveaway_message_counts[giveaway_id] = defaultdict(
+                            int)
                     bot.giveaway_message_counts[giveaway_id][user_id] += 1
 
     # ========== AI Thread Handling ==========
-    if isinstance(message.channel, discord.Thread) and message.channel.id in bot.ai_threads:
+    if isinstance(message.channel,
+                  discord.Thread) and message.channel.id in bot.ai_threads:
         user_id = bot.ai_threads[message.channel.id]
         await handle_ai_followup(message, user_id)
         return
@@ -493,7 +580,8 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-@bot.tree.command(name="clearhistory", description="Clear your AI conversation history")
+@bot.tree.command(name="clearhistory",
+                  description="Clear your AI conversation history")
 async def clearhistory(interaction: discord.Interaction):
     user_id = interaction.user.id
 
@@ -504,7 +592,9 @@ async def clearhistory(interaction: discord.Interaction):
     # Clear from MongoDB
     if conversations_collection is not None:
         result = conversations_collection.delete_many({"user_id": user_id})
-        print(f"[INFO] Deleted {result.deleted_count} history entries for user {user_id}")
+        print(
+            f"[INFO] Deleted {result.deleted_count} history entries for user {user_id}"
+        )
 
     # Also clear last message ID to reset thread logic
     # (Remove all channel/thread entries for this user)
@@ -513,8 +603,7 @@ async def clearhistory(interaction: discord.Interaction):
         del bot.last_message_id[k]
 
     await interaction.response.send_message(
-        "✅ Your AI conversation history has been cleared!", ephemeral=True
-    )
+        "✅ Your AI conversation history has been cleared!", ephemeral=True)
 
 
 # ===========================
@@ -532,50 +621,35 @@ async def userinfo(interaction: discord.Interaction,
     if user is None:
         user = interaction.user
 
-    # Unix timestamps for Discord-native formatting
     created_unix = int(user.created_at.timestamp())
     created_rel = f"<t:{created_unix}:R>"
 
-    # Construct top clickable line: [Display Name (@username)](link)
     user_url = f"https://discordapp.com/users/{user.id}"
-    top_line = f"**[{user.display_name} (@{user.name})]({user_url})**\n"
 
-    # Build base description (always shown)
+    embed = discord.Embed(title=f"{user.display_name} (@{user.name})",
+                          url=user_url,
+                          color=discord.Color.from_rgb(0, 0, 0))
+
     desc_lines = [
-        top_line,
-        f"{user.mention}",
-        f"{user.name}",
-        f"ID: {user.id}",
-        "",
-        "**Account Creation**",
-        f"<t:{created_unix}:f> ({created_rel})"
+        f"{user.mention}", f"{user.name}", f"ID: {user.id}", "",
+        "**Account Creation**", f"<t:{created_unix}:f> ({created_rel})"
     ]
 
-    # Only show server-specific info if user is in the server (i.e., is a Member)
     if isinstance(user, discord.Member):
-        # Joined Server
         if user.joined_at:
             joined_unix = int(user.joined_at.timestamp())
             joined_rel = f"<t:{joined_unix}:R>"
             desc_lines.extend([
-                "",
-                "**Joined Server**",
-                f"<t:{joined_unix}:f> ({joined_rel})"
+                "", "**Joined Server**", f"<t:{joined_unix}:f> ({joined_rel})"
             ])
 
-        # Server Booster — ONLY if actually boosting
         if user.premium_since:
             boost_unix = int(user.premium_since.timestamp())
             boost_rel = f"<t:{boost_unix}:R>"
             desc_lines.extend([
-                "",
-                "**Server Booster**",
-                f"<t:{boost_unix}:f> ({boost_rel})"
+                "", "**Server Booster**", f"<t:{boost_unix}:f> ({boost_rel})"
             ])
-        # ❌ Do NOT show "Not Boosting" — skip entirely if not boosting
 
-    # Build final embed
-    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.description = "\n".join(desc_lines)
     embed.set_thumbnail(url=user.display_avatar.url)
     embed.set_footer(text="Neroniel")
@@ -583,31 +657,84 @@ async def userinfo(interaction: discord.Interaction,
 
     await interaction.response.send_message(embed=embed)
 
+
+# /serverinfo - Display server information
+@bot.tree.command(name="serverinfo",
+                  description="Display detailed information about this server")
+async def serverinfo(interaction: discord.Interaction):
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message(
+            "❌ This command can only be used in a server.", ephemeral=True)
+        return
+
+    created_unix = int(guild.created_at.timestamp())
+    created_rel = f"<t:{created_unix}:R>"
+
+    owner = guild.owner or await bot.fetch_user(guild.owner_id)
+    owner_info = f"{owner} ({owner.mention})"
+
+    boost_level = guild.premium_tier
+    boost_count = guild.premium_subscription_count
+
+    text_channels = len(guild.text_channels)
+    voice_channels = len(guild.voice_channels)
+    categories = len(guild.categories)
+    roles = len(guild.roles) - 1
+    emojis = len(guild.emojis)
+
+    server_link = f"https://discord.com/channels/{guild.id}"
+
+    embed = discord.Embed(title=guild.name,
+                          url=server_link,
+                          color=discord.Color.from_rgb(0, 0, 0))
+
+    embed.description = (f"ID: {guild.id}\n"
+                         f"{owner_info}\n\n"
+                         f"**Server Creation**\n"
+                         f"<t:{created_unix}:f> ({created_rel})\n\n"
+                         f"**Member Count**\n"
+                         f"{guild.member_count}\n\n"
+                         f"**Server Boost**\n"
+                         f"{boost_count} (Level {boost_level})\n\n"
+                         f"**Server Info**\n"
+                         f"- Text Channels: {text_channels}\n"
+                         f"- Voice Channels: {voice_channels}\n"
+                         f"- Categories: {categories}\n"
+                         f"- Roles: {roles}\n"
+                         f"- Emojis: {emojis}")
+
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+
+    embed.set_footer(text="Neroniel")
+    embed.timestamp = datetime.now(PH_TIMEZONE)
+
+    await interaction.response.send_message(embed=embed)
+
+
 # ===========================
 # Announcement Command
 # ===========================
 class AnnouncementModal(ui.Modal, title="Create Announcement"):
+
     def __init__(self):
         super().__init__()
-        self.title_input = ui.TextInput(
-            label="Title (optional)",
-            default="ANNOUNCEMENT",
-            required=False,
-            max_length=256
-        )
+        self.title_input = ui.TextInput(label="Title (optional)",
+                                        default="ANNOUNCEMENT",
+                                        required=False,
+                                        max_length=256)
         self.message_input = ui.TextInput(
             label="Message (required)",
             placeholder="Paste your message here (supports line breaks)",
             style=discord.TextStyle.paragraph,
             required=True,
-            max_length=4000
-        )
+            max_length=4000)
         self.use_codeblock_input = ui.TextInput(
             label="Use Code Block? (Yes/No)",
             default="No",
             required=True,
-            placeholder="Type 'Yes' or 'No'"
-        )
+            placeholder="Type 'Yes' or 'No'")
         self.add_item(self.title_input)
         self.add_item(self.message_input)
         self.add_item(self.use_codeblock_input)
@@ -615,12 +742,13 @@ class AnnouncementModal(ui.Modal, title="Create Announcement"):
     async def on_submit(self, interaction: Interaction):
         title = self.title_input.value.strip() or "ANNOUNCEMENT"
         message = self.message_input.value.strip()
-        use_codeblock = self.use_codeblock_input.value.strip().lower() in ("yes", "y", "true", "1")
+        use_codeblock = self.use_codeblock_input.value.strip().lower() in (
+            "yes", "y", "true", "1")
         embed = discord.Embed(
             title="📎 Media/File",
-            description="Please upload **an image** (PNG, JPG, GIF, etc.), or type `skip` to continue without media.",
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+            description=
+            "Please upload **an image** (PNG, JPG, GIF, etc.), or type `skip` to continue without media.",
+            color=discord.Color.from_rgb(0, 0, 0))
         embed.set_footer(text="Neroniel")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -632,12 +760,13 @@ class AnnouncementModal(ui.Modal, title="Create Announcement"):
         await self.wait_for_media_or_skip()
 
     async def wait_for_media_or_skip(self):
+
         def check(m):
-            return (
-                m.author == self.interaction.user and
-                m.channel == self.interaction.channel and
-                (m.attachments or m.content.strip().lower() in ("skip", "end"))
-            )
+            return (m.author == self.interaction.user
+                    and m.channel == self.interaction.channel
+                    and (m.attachments
+                         or m.content.strip().lower() in ("skip", "end")))
+
         try:
             msg = await bot.wait_for("message", timeout=300.0, check=check)
 
@@ -658,9 +787,9 @@ class AnnouncementModal(ui.Modal, title="Create Announcement"):
                 await msg.delete()
                 embed = discord.Embed(
                     title="📎 Media/File",
-                    description="❌ Only **image files** are allowed.\nPlease upload an image or type `skip`.",
-                    color=discord.Color.from_rgb(0, 0, 0)
-                )
+                    description=
+                    "❌ Only **image files** are allowed.\nPlease upload an image or type `skip`.",
+                    color=discord.Color.from_rgb(0, 0, 0))
                 embed.set_footer(text="Neroniel")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 await self.interaction.edit_original_response(embed=embed)
@@ -672,9 +801,9 @@ class AnnouncementModal(ui.Modal, title="Create Announcement"):
             count = len(self.media_files)
             embed = discord.Embed(
                 title="📎 Media/File",
-                description=f"You have added {count} image(s). Type `end` to continue, or upload more images.",
-                color=discord.Color.from_rgb(0, 0, 0)
-            )
+                description=
+                f"You have added {count} image(s). Type `end` to continue, or upload more images.",
+                color=discord.Color.from_rgb(0, 0, 0))
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             await self.interaction.edit_original_response(embed=embed)
@@ -684,35 +813,33 @@ class AnnouncementModal(ui.Modal, title="Create Announcement"):
             embed = discord.Embed(
                 title="⏰ Time out",
                 description="Please run `/announcement` again.",
-                color=discord.Color.from_rgb(0, 0, 0)
-            )
+                color=discord.Color.from_rgb(0, 0, 0))
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
-            await self.interaction.edit_original_response(embed=embed, view=None)
+            await self.interaction.edit_original_response(embed=embed,
+                                                          view=None)
 
     async def show_confirmation(self):
         description = f"```\n{self.message}\n```" if self.use_codeblock else self.message
-        embed = discord.Embed(
-            title=self.title,
-            description=description,
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+        embed = discord.Embed(title=self.title,
+                              description=description,
+                              color=discord.Color.from_rgb(0, 0, 0))
         if self.media_files:
             embed.set_image(url=self.media_files[0].url)
         embed.set_footer(text="Neroniel • Preview")
         embed.timestamp = datetime.now(PH_TIMEZONE)
-        view = AnnouncementConfirmationView(
-            author=self.interaction.user,
-            title=self.title,
-            message=self.message,
-            use_codeblock=self.use_codeblock,
-            media_files=self.media_files
-        )
+        view = AnnouncementConfirmationView(author=self.interaction.user,
+                                            title=self.title,
+                                            message=self.message,
+                                            use_codeblock=self.use_codeblock,
+                                            media_files=self.media_files)
         await self.interaction.edit_original_response(embed=embed, view=view)
 
 
 class AnnouncementConfirmationView(ui.View):
-    def __init__(self, author: discord.User, title: str, message: str, use_codeblock: bool, media_files: list):
+
+    def __init__(self, author: discord.User, title: str, message: str,
+                 use_codeblock: bool, media_files: list):
         super().__init__(timeout=180)
         self.author = author
         self.title = title
@@ -724,21 +851,20 @@ class AnnouncementConfirmationView(ui.View):
         return interaction.user == self.author
 
     @ui.button(label="Send", style=ButtonStyle.green)
-    async def send_announcement(self, interaction: Interaction, button: ui.Button):
+    async def send_announcement(self, interaction: Interaction,
+                                button: ui.Button):
         await interaction.response.send_message(
             "Please select a channel to send the announcement to:",
-            view=ChannelSelectForSendView(
-                author=self.author,
-                title=self.title,
-                message=self.message,
-                use_codeblock=self.use_codeblock,
-                media_files=self.media_files
-            ),
-            ephemeral=True
-        )
+            view=ChannelSelectForSendView(author=self.author,
+                                          title=self.title,
+                                          message=self.message,
+                                          use_codeblock=self.use_codeblock,
+                                          media_files=self.media_files),
+            ephemeral=True)
 
     @ui.button(label="Edit", style=ButtonStyle.gray)
-    async def edit_announcement(self, interaction: Interaction, button: ui.Button):
+    async def edit_announcement(self, interaction: Interaction,
+                                button: ui.Button):
         modal = AnnouncementModal()
         modal.title_input.default = self.title
         modal.message_input.default = self.message
@@ -746,18 +872,19 @@ class AnnouncementConfirmationView(ui.View):
         await interaction.response.send_modal(modal)
 
     @ui.button(label="Cancel", style=ButtonStyle.red)
-    async def cancel_announcement(self, interaction: Interaction, button: ui.Button):
-        cancel_embed = discord.Embed(
-            title="❌ Announcement cancelled.",
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+    async def cancel_announcement(self, interaction: Interaction,
+                                  button: ui.Button):
+        cancel_embed = discord.Embed(title="❌ Announcement cancelled.",
+                                     color=discord.Color.from_rgb(0, 0, 0))
         cancel_embed.set_footer(text="Neroniel")
         cancel_embed.timestamp = datetime.now(PH_TIMEZONE)
         await interaction.response.edit_message(embed=cancel_embed, view=None)
 
 
 class ChannelSelectForSendView(ui.View):
-    def __init__(self, author: discord.User, title: str, message: str, use_codeblock: bool, media_files: list):
+
+    def __init__(self, author: discord.User, title: str, message: str,
+                 use_codeblock: bool, media_files: list):
         super().__init__(timeout=180)
         self.author = author
         self.title = title
@@ -765,29 +892,34 @@ class ChannelSelectForSendView(ui.View):
         self.use_codeblock = use_codeblock
         self.media_files = media_files
 
-    @ui.select(cls=ui.ChannelSelect, channel_types=[discord.ChannelType.text], placeholder="Select a channel...")
-    async def select_channel(self, interaction: Interaction, select: ui.ChannelSelect):
+    @ui.select(cls=ui.ChannelSelect,
+               channel_types=[discord.ChannelType.text],
+               placeholder="Select a channel...")
+    async def select_channel(self, interaction: Interaction,
+                             select: ui.ChannelSelect):
         if interaction.user != self.author:
-            await interaction.response.send_message("❌ Not your menu.", ephemeral=True)
+            await interaction.response.send_message("❌ Not your menu.",
+                                                    ephemeral=True)
             return
         selected_channel = select.values[0]
 
         # ✅ FIX: Fetch real channel to avoid AppCommandChannel error
         try:
-            real_channel = await interaction.guild.fetch_channel(selected_channel.id)
+            real_channel = await interaction.guild.fetch_channel(
+                selected_channel.id)
         except discord.NotFound:
-            await interaction.response.send_message("❌ Channel not found.", ephemeral=True)
+            await interaction.response.send_message("❌ Channel not found.",
+                                                    ephemeral=True)
             return
         except discord.Forbidden:
-            await interaction.response.send_message("❌ I can't access that channel.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ I can't access that channel.", ephemeral=True)
             return
 
         description = f"```\n{self.message}\n```" if self.use_codeblock else self.message
-        embed = discord.Embed(
-            title=self.title,
-            description=description,
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+        embed = discord.Embed(title=self.title,
+                              description=description,
+                              color=discord.Color.from_rgb(0, 0, 0))
         if self.media_files:
             embed.set_image(url=self.media_files[0].url)
         embed.set_footer(text="Neroniel")
@@ -795,36 +927,38 @@ class ChannelSelectForSendView(ui.View):
 
         try:
             await real_channel.send(embed=embed)
-            success_embed = discord.Embed(
-                title="✅ Announcement sent!",
-                color=discord.Color.from_rgb(0, 0, 0)
-            )
+            success_embed = discord.Embed(title="✅ Announcement sent!",
+                                          color=discord.Color.from_rgb(
+                                              0, 0, 0))
             success_embed.set_footer(text="Neroniel")
             success_embed.timestamp = datetime.now(PH_TIMEZONE)
-            await interaction.response.edit_message(embed=success_embed, view=None)
+            await interaction.response.edit_message(embed=success_embed,
+                                                    view=None)
         except discord.Forbidden:
             await interaction.response.send_message(
-                "❌ I don't have permission to send messages in that channel.", ephemeral=True
-            )
+                "❌ I don't have permission to send messages in that channel.",
+                ephemeral=True)
         except Exception as e:
-            error_embed = discord.Embed(
-                title="❌ Failed to send",
-                description=str(e),
-                color=discord.Color.from_rgb(0, 0, 0)
-            )
+            error_embed = discord.Embed(title="❌ Failed to send",
+                                        description=str(e),
+                                        color=discord.Color.from_rgb(0, 0, 0))
             error_embed.set_footer(text="Neroniel")
             error_embed.timestamp = datetime.now(PH_TIMEZONE)
-            await interaction.response.send_message(embed=error_embed, ephemeral=True)
+            await interaction.response.send_message(embed=error_embed,
+                                                    ephemeral=True)
 
 
-@bot.tree.command(name="announcement", description="Create an announcement with a guided form")
+@bot.tree.command(name="announcement",
+                  description="Create an announcement with a guided form")
 async def announcement(interaction: discord.Interaction):
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
     if not is_owner and not is_admin:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command.", ephemeral=True)
         return
     await interaction.response.send_modal(AnnouncementModal())
+
 
 # ===========================
 # Helper: Parse duration like "24m", "1d", "30s"
@@ -843,11 +977,14 @@ def parse_duration(duration_str: str) -> int:
         # Default to minutes if no unit
         return int(duration_str) * 60
 
+
 # ===========================
 # Persistent Giveaway View (MUST be defined BEFORE command)
 # ===========================
 class PersistentGiveawayView(ui.View):
-    def __init__(self, giveaway_id, host_id, prize, end_time, winner_count, required_roles, message_requirement):
+
+    def __init__(self, giveaway_id, host_id, prize, end_time, winner_count,
+                 required_roles, message_requirement):
         super().__init__(timeout=None)
         self.giveaway_id = giveaway_id
         self.host_id = host_id
@@ -857,48 +994,60 @@ class PersistentGiveawayView(ui.View):
         self.required_roles = required_roles
         self.message_requirement = message_requirement
 
-    @ui.button(label="Entry", style=ButtonStyle.green, emoji="✅", custom_id="giveaway_entry")
-    async def entry_button(self, interaction: discord.Interaction, button: ui.Button):
+    @ui.button(label="Entry",
+               style=ButtonStyle.green,
+               emoji="✅",
+               custom_id="giveaway_entry")
+    async def entry_button(self, interaction: discord.Interaction,
+                           button: ui.Button):
         if giveaways_collection is None:
-            await interaction.response.send_message("❌ Database unavailable.", ephemeral=True)
+            await interaction.response.send_message("❌ Database unavailable.",
+                                                    ephemeral=True)
             return
         user_id_str = str(interaction.user.id)
         giveaway = giveaways_collection.find_one({"_id": self.giveaway_id})
         if not giveaway or giveaway.get("ended"):
-            await interaction.response.send_message("❌ This giveaway has ended.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ This giveaway has ended.", ephemeral=True)
             return
 
         # Role check
         if self.required_roles:
             member = interaction.guild.get_member(interaction.user.id)
-            if not member or not any(r.id in self.required_roles for r in member.roles):
+            if not member or not any(r.id in self.required_roles
+                                     for r in member.roles):
                 roles = ", ".join(f"<@&{r}>" for r in self.required_roles)
                 await interaction.response.send_message(
-                    f"❌ You need one of these roles to enter: {roles}", ephemeral=True
-                )
+                    f"❌ You need one of these roles to enter: {roles}",
+                    ephemeral=True)
                 return
 
         # Message requirement check (GUILD-WIDE, per giveaway)
         if self.message_requirement:
-            user_msg_count = bot.giveaway_message_counts.get(str(self.giveaway_id), {}).get(user_id_str, 0)
+            user_msg_count = bot.giveaway_message_counts.get(
+                str(self.giveaway_id), {}).get(user_id_str, 0)
             if user_msg_count < self.message_requirement:
                 await interaction.response.send_message(
                     f"❌ You must send at least **{self.message_requirement} message(s)** in this server after the giveaway started to enter.",
-                    ephemeral=True
-                )
+                    ephemeral=True)
                 return
 
         # Add entry
         entries = giveaway.get("entries", [])
         if user_id_str not in entries:
             entries.append(user_id_str)
-            giveaways_collection.update_one({"_id": self.giveaway_id}, {"$set": {"entries": entries}})
+            giveaways_collection.update_one({"_id": self.giveaway_id},
+                                            {"$set": {
+                                                "entries": entries
+                                            }})
             # Update footer
             embed = interaction.message.embeds[0]
-            embed.set_footer(text=f"Entries {len(entries)} | ID: {str(self.giveaway_id)}")
+            embed.set_footer(
+                text=f"Entries {len(entries)} | ID: {str(self.giveaway_id)}")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             await interaction.message.edit(embed=embed)
-        await interaction.response.send_message("✅ You've entered the giveaway!", ephemeral=True)
+        await interaction.response.send_message(
+            "✅ You've entered the giveaway!", ephemeral=True)
 
 
 # ===========================
@@ -908,13 +1057,17 @@ async def end_giveaway_later(giveaway_id, delay):
     await asyncio.sleep(delay)
     await end_giveaway_now(giveaway_id)
 
+
 async def end_giveaway_now(giveaway_id):
     if giveaways_collection is None:
         return
     giveaway = giveaways_collection.find_one({"_id": giveaway_id})
     if not giveaway or giveaway.get("ended"):
         return
-    giveaways_collection.update_one({"_id": giveaway_id}, {"$set": {"ended": True}})
+    giveaways_collection.update_one({"_id": giveaway_id},
+                                    {"$set": {
+                                        "ended": True
+                                    }})
     guild = bot.get_guild(int(giveaway["guild_id"]))
     if not guild:
         return
@@ -936,9 +1089,10 @@ async def end_giveaway_now(giveaway_id):
     host_mention = f"<@{giveaway['host_id']}>"
     embed = discord.Embed(
         title=f"**:gift: {prize}**",
-        color=discord.Color.green() if entries else discord.Color.red()
-    )
-    embed.add_field(name=":alarm_clock: Ends", value=f"<t:{end_unix}:f> (<t:{end_unix}:R>)", inline=False)
+        color=discord.Color.green() if entries else discord.Color.red())
+    embed.add_field(name=":alarm_clock: Ends",
+                    value=f"<t:{end_unix}:f> (<t:{end_unix}:R>)",
+                    inline=False)
     if entries:
         winners = random.sample(entries, min(len(entries), winner_count))
         winner_mentions = ", ".join(f"<@{w}>" for w in winners)
@@ -954,7 +1108,9 @@ async def end_giveaway_now(giveaway_id):
     await message.edit(embed=embed, view=None)
     if entries:
         winner_mentions = ", ".join(f"<@{w}>" for w in winners)
-        await message.reply(content=f":trophy: **Winner(s)**: {winner_mentions}")
+        await message.reply(
+            content=f":trophy: **Winner(s)**: {winner_mentions}")
+
 
 # ===========================
 # Giveaway Command (FIXED)
@@ -1060,7 +1216,8 @@ async def giveaway(
 
 
 # Giveaway End Command
-@bot.tree.command(name="giveawayend", description="End a giveaway immediately by its ID")
+@bot.tree.command(name="giveawayend",
+                  description="End a giveaway immediately by its ID")
 @app_commands.describe(id="The full giveaway ID (from the footer)")
 async def giveawayend(interaction: discord.Interaction, id: str):
     is_admin = interaction.user.guild_permissions.manage_guild
@@ -1068,39 +1225,46 @@ async def giveawayend(interaction: discord.Interaction, id: str):
     if not (is_admin or is_owner):
         await interaction.response.send_message(
             "❌ You need **Manage Server** permission or be the bot owner to use this command.",
-            ephemeral=True
-        )
+            ephemeral=True)
         return
 
     if giveaways_collection is None:
-        await interaction.response.send_message("❌ Database unavailable.", ephemeral=True)
+        await interaction.response.send_message("❌ Database unavailable.",
+                                                ephemeral=True)
         return
 
     from bson import ObjectId
     try:
         giveaway_id = ObjectId(id)
     except Exception:
-        await interaction.response.send_message("❌ Invalid giveaway ID format.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Invalid giveaway ID format.", ephemeral=True)
         return
 
     giveaway = giveaways_collection.find_one({"_id": giveaway_id})
     if not giveaway:
-        await interaction.response.send_message("❌ No giveaway found with that ID.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ No giveaway found with that ID.", ephemeral=True)
         return
 
     if giveaway.get("ended"):
-        await interaction.response.send_message("❌ This giveaway has already ended.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ This giveaway has already ended.", ephemeral=True)
         return
 
     if str(giveaway["guild_id"]) != str(interaction.guild.id):
-        await interaction.response.send_message("❌ This giveaway is not from this server.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ This giveaway is not from this server.", ephemeral=True)
         return
 
     await end_giveaway_now(giveaway_id)
-    await interaction.response.send_message("✅ Giveaway ended early!", ephemeral=False)
+    await interaction.response.send_message("✅ Giveaway ended early!",
+                                            ephemeral=False)
+
 
 # Giveaway Reroll Command
-@bot.tree.command(name="giveawayreroll", description="Pick a new winner for an ended giveaway")
+@bot.tree.command(name="giveawayreroll",
+                  description="Pick a new winner for an ended giveaway")
 @app_commands.describe(id="The full giveaway ID (from the footer)")
 async def giveawayreroll(interaction: discord.Interaction, id: str):
     is_admin = interaction.user.guild_permissions.manage_guild
@@ -1108,32 +1272,37 @@ async def giveawayreroll(interaction: discord.Interaction, id: str):
     if not (is_admin or is_owner):
         await interaction.response.send_message(
             "❌ You need **Manage Server** permission or be the bot owner to use this command.",
-            ephemeral=True
-        )
+            ephemeral=True)
         return
 
     if giveaways_collection is None:
-        await interaction.response.send_message("❌ Database unavailable.", ephemeral=True)
+        await interaction.response.send_message("❌ Database unavailable.",
+                                                ephemeral=True)
         return
 
     from bson import ObjectId
     try:
         giveaway_id = ObjectId(id)
     except Exception:
-        await interaction.response.send_message("❌ Invalid giveaway ID format.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Invalid giveaway ID format.", ephemeral=True)
         return
 
     giveaway = giveaways_collection.find_one({"_id": giveaway_id})
     if not giveaway:
-        await interaction.response.send_message("❌ No giveaway found with that ID.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ No giveaway found with that ID.", ephemeral=True)
         return
 
     if not giveaway.get("ended"):
-        await interaction.response.send_message("❌ This giveaway hasn't ended yet. Use `/giveawayend` first.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ This giveaway hasn't ended yet. Use `/giveawayend` first.",
+            ephemeral=True)
         return
 
     if str(giveaway["guild_id"]) != str(interaction.guild.id):
-        await interaction.response.send_message("❌ This giveaway is not from this server.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ This giveaway is not from this server.", ephemeral=True)
         return
 
     entries = giveaway.get("entries", [])
@@ -1142,7 +1311,8 @@ async def giveawayreroll(interaction: discord.Interaction, id: str):
     host_id = giveaway.get("host_id")
 
     if not entries:
-        await interaction.response.send_message("❌ This giveaway has no entries to reroll.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ This giveaway has no entries to reroll.", ephemeral=True)
         return
 
     # Pick new winner(s)
@@ -1153,20 +1323,29 @@ async def giveawayreroll(interaction: discord.Interaction, id: str):
     guild = bot.get_guild(int(giveaway["guild_id"]))
     channel = guild.get_channel(int(giveaway["channel_id"])) if guild else None
     if not channel:
-        await interaction.response.send_message("❌ Could not find the giveaway channel.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Could not find the giveaway channel.", ephemeral=True)
         return
 
     try:
-        original_message = await channel.fetch_message(int(giveaway["message_id"]))
+        original_message = await channel.fetch_message(
+            int(giveaway["message_id"]))
         await original_message.reply(
-            content=f":arrows_counterclockwise: **Giveaway Re-Rolled!**\n:trophy: **New Winner(s) for `{prize}`**: {winner_mentions}")
-        await interaction.response.send_message("✅ Giveaway re-rolled successfully!", ephemeral=True)
+            content=
+            f":arrows_counterclockwise: **Giveaway Re-Rolled!**\n:trophy: **New Winner(s) for `{prize}`**: {winner_mentions}"
+        )
+        await interaction.response.send_message(
+            "✅ Giveaway re-rolled successfully!", ephemeral=True)
     except discord.NotFound:
-        await interaction.response.send_message("❌ Original giveaway message not found.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Original giveaway message not found.", ephemeral=True)
     except discord.Forbidden:
-        await interaction.response.send_message("❌ I don't have permission to send messages in the giveaway channel.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ I don't have permission to send messages in the giveaway channel.",
+            ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Failed to send re-roll reply: {e}", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ Failed to send re-roll reply: {e}", ephemeral=True)
 
 
 # ===========================
@@ -1359,20 +1538,20 @@ async def resetrate(interaction: discord.Interaction,
         await interaction.followup.send(f"❌ Error resetting rates: {str(e)}",
                                         ephemeral=True)
 
+
 @bot.tree.command(
     name="forceresetallrates",
-    description="Force-reset all server rates that are BELOW default values"
-)
+    description="Force-reset all server rates that are BELOW default values")
 async def forceresetallrates(interaction: discord.Interaction):
     # Owner-only check
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command.", ephemeral=True
-        )
+            "❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     if rates_collection is None:
-        await interaction.response.send_message("❌ Database not connected.", ephemeral=True)
+        await interaction.response.send_message("❌ Database not connected.",
+                                                ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -1380,7 +1559,8 @@ async def forceresetallrates(interaction: discord.Interaction):
     try:
         all_docs = list(rates_collection.find())
         if not all_docs:
-            await interaction.followup.send("📭 No server rate data found.", ephemeral=True)
+            await interaction.followup.send("📭 No server rate data found.",
+                                            ephemeral=True)
             return
 
         updated_servers = []
@@ -1407,38 +1587,40 @@ async def forceresetallrates(interaction: discord.Interaction):
 
             if update_fields:
                 update_fields["updated_at"] = datetime.now(PH_TIMEZONE)
-                rates_collection.update_one({"guild_id": guild_id}, {"$set": update_fields})
+                rates_collection.update_one({"guild_id": guild_id},
+                                            {"$set": update_fields})
                 updated_servers.append(guild_id)
 
         if updated_servers:
             await interaction.followup.send(
                 f"✅ Updated rates for **{len(updated_servers)}** server(s) where values were below default.",
-                ephemeral=True
-            )
+                ephemeral=True)
         else:
             await interaction.followup.send(
                 "✅ No servers had rates below the defaults — nothing was changed.",
-                ephemeral=True
-            )
+                ephemeral=True)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Error during force reset: {str(e)}", ephemeral=True)
+        await interaction.followup.send(
+            f"❌ Error during force reset: {str(e)}", ephemeral=True)
+
 
 @bot.tree.command(name="viewrates", description="View all saved server rates")
 async def viewrates(interaction: discord.Interaction):
     # Owner-only check
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command.", ephemeral=True
-        )
+            "❌ You don't have permission to use this command.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
     if rates_collection is None:
-        await interaction.followup.send("❌ Database not connected.", ephemeral=True)
+        await interaction.followup.send("❌ Database not connected.",
+                                        ephemeral=True)
         return
     all_rate_docs = list(rates_collection.find())
     if not all_rate_docs:
-        await interaction.followup.send("📭 No rate data found in the database.", ephemeral=True)
+        await interaction.followup.send(
+            "📭 No rate data found in the database.", ephemeral=True)
         return
 
     # Use the main global format_php (already handles commas)
@@ -1450,33 +1632,31 @@ async def viewrates(interaction: discord.Interaction):
         guild_id = int(doc["guild_id"])
         guild = bot.get_guild(guild_id)
         guild_name = guild.name if guild else f"Unknown Server ({guild_id})"
-        embed = discord.Embed(
-            title=f"📊 Rates for: {guild_name}",
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+        embed = discord.Embed(title=f"📊 Rates for: {guild_name}",
+                              color=discord.Color.from_rgb(0, 0, 0))
         # Always 1,000 Robux with comma
         robux_formatted = "1,000"
 
         embed.add_field(
             name="• Payout Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('payout_rate', 330.0))}",
-            inline=False
-        )
+            value=
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('payout_rate', 330.0))}",
+            inline=False)
         embed.add_field(
             name="• Gift Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('gift_rate', 300.0))}",
-            inline=False
-        )
+            value=
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('gift_rate', 300.0))}",
+            inline=False)
         embed.add_field(
             name="• NCT Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('nct_rate', 280.0))}",
-            inline=False
-        )
+            value=
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('nct_rate', 280.0))}",
+            inline=False)
         embed.add_field(
             name="• CT Rate",
-            value=f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('ct_rate', 400.0))}",
-            inline=False
-        )
+            value=
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('ct_rate', 400.0))}",
+            inline=False)
         updated_at = doc.get("updated_at")
         if updated_at:
             if isinstance(updated_at, str):
@@ -1490,21 +1670,21 @@ async def viewrates(interaction: discord.Interaction):
     for embed in embeds[1:]:
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+
 @bot.tree.command(
     name="payout",
-    description="Convert between Robux and PHP using the Payout rate"
-)
-@app_commands.describe(
-    conversion_type="Choose conversion direction",
-    amount="Amount to convert"
-)
+    description="Convert between Robux and PHP using the Payout rate")
+@app_commands.describe(conversion_type="Choose conversion direction",
+                       amount="Amount to convert")
 @app_commands.choices(conversion_type=[
     app_commands.Choice(name="Robux to PHP", value="robux_to_php"),
     app_commands.Choice(name="PHP to Robux", value="php_to_robux")
 ])
-async def payout(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+async def payout(interaction: discord.Interaction,
+                 conversion_type: app_commands.Choice[str], amount: float):
     if amount <= 0:
-        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
+        await interaction.response.send_message(
+            "❗ Amount must be greater than zero.", ephemeral=True)
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
@@ -1513,20 +1693,27 @@ async def payout(interaction: discord.Interaction, conversion_type: app_commands
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (payout_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
     else:
         php = amount
         robux = int((php / payout_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
     embed.add_field(
         name="Note:",
-        value=(
-            "To be eligible for a payout, you must be a member of the group for at least 14 days. Please ensure this requirement is met before proceeding with any transaction. You can view the Group Link by typing `/roblox group` in the chat."
-        ),
-        inline=False
-    )
+        value=
+        ("To be eligible for a payout, you must be a member of the group for at least 14 days. Please ensure this requirement is met before proceeding with any transaction. You can view the Group Link by typing `/roblox group` in the chat."
+         ),
+        inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -1534,19 +1721,18 @@ async def payout(interaction: discord.Interaction, conversion_type: app_commands
 
 @bot.tree.command(
     name="gift",
-    description="Convert between Robux and PHP using the Gift rate"
-)
-@app_commands.describe(
-    conversion_type="Choose conversion direction",
-    amount="Amount to convert"
-)
+    description="Convert between Robux and PHP using the Gift rate")
+@app_commands.describe(conversion_type="Choose conversion direction",
+                       amount="Amount to convert")
 @app_commands.choices(conversion_type=[
     app_commands.Choice(name="Robux to PHP", value="robux_to_php"),
     app_commands.Choice(name="PHP to Robux", value="php_to_robux")
 ])
-async def gift(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+async def gift(interaction: discord.Interaction,
+               conversion_type: app_commands.Choice[str], amount: float):
     if amount <= 0:
-        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
+        await interaction.response.send_message(
+            "❗ Amount must be greater than zero.", ephemeral=True)
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
@@ -1555,33 +1741,39 @@ async def gift(interaction: discord.Interaction, conversion_type: app_commands.C
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (gift_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
     else:
         php = amount
         robux = int((php / gift_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(
-    name="nct",
-    description="Convert between Robux and PHP using the NCT rate"
-)
-@app_commands.describe(
-    conversion_type="Choose conversion direction",
-    amount="Amount to convert"
-)
+    name="nct", description="Convert between Robux and PHP using the NCT rate")
+@app_commands.describe(conversion_type="Choose conversion direction",
+                       amount="Amount to convert")
 @app_commands.choices(conversion_type=[
     app_commands.Choice(name="Robux to PHP", value="robux_to_php"),
     app_commands.Choice(name="PHP to Robux", value="php_to_robux")
 ])
-async def nct(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+async def nct(interaction: discord.Interaction,
+              conversion_type: app_commands.Choice[str], amount: float):
     if amount <= 0:
-        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
+        await interaction.response.send_message(
+            "❗ Amount must be greater than zero.", ephemeral=True)
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
@@ -1590,40 +1782,45 @@ async def nct(interaction: discord.Interaction, conversion_type: app_commands.Ch
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (nct_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
     else:
         php = amount
         robux = int((php / nct_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
     embed.add_field(
         name="Note:",
-        value=(
-            "To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/roblox gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL."
-        ),
-        inline=False
-    )
+        value=
+        ("To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/roblox gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL."
+         ),
+        inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(
-    name="ct",
-    description="Convert between Robux and PHP using the CT rate"
-)
-@app_commands.describe(
-    conversion_type="Choose conversion direction",
-    amount="Amount to convert"
-)
+    name="ct", description="Convert between Robux and PHP using the CT rate")
+@app_commands.describe(conversion_type="Choose conversion direction",
+                       amount="Amount to convert")
 @app_commands.choices(conversion_type=[
     app_commands.Choice(name="Robux to PHP", value="robux_to_php"),
     app_commands.Choice(name="PHP to Robux", value="php_to_robux")
 ])
-async def ct(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+async def ct(interaction: discord.Interaction,
+             conversion_type: app_commands.Choice[str], amount: float):
     if amount <= 0:
-        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
+        await interaction.response.send_message(
+            "❗ Amount must be greater than zero.", ephemeral=True)
         return
     guild_id = interaction.guild.id
     rates = get_current_rates(guild_id)
@@ -1632,62 +1829,75 @@ async def ct(interaction: discord.Interaction, conversion_type: app_commands.Cho
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         php = robux * (ct_rate / 1000)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
     else:
         php = amount
         robux = int((php / ct_rate) * 1000)
-        embed.add_field(name="Payment:", value=f"{PHP_EMOJI} {format_php(php)}", inline=False)
-        embed.add_field(name="Amount:", value=f"{ROBUX_EMOJI} {robux:,}", inline=False)
+        embed.add_field(name="Payment:",
+                        value=f"{PHP_EMOJI} {format_php(php)}",
+                        inline=False)
+        embed.add_field(name="Amount:",
+                        value=f"{ROBUX_EMOJI} {robux:,}",
+                        inline=False)
 
     embed.add_field(
         name="Note:",
-        value=(
-            "To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/roblox gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL."
-        ),
-        inline=False
-    )
+        value=
+        ("To proceed with this transaction, you must own the required Gamepass and have Regional Pricing disabled. Please ensure these requirements are met before proceeding with any transaction. You may view the Gamepass details by typing `/roblox gamepass` in the chat and providing your Gamepass ID or Creator Dashboard URL."
+         ),
+        inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(
-    name="allrates",
-    description="Compare all Robux ↔ PHP conversion rates"
-)
-@app_commands.describe(
-    conversion_type="Choose conversion direction",
-    amount="Amount to convert"
-)
+@bot.tree.command(name="allrates",
+                  description="Compare all Robux ↔ PHP conversion rates")
+@app_commands.describe(conversion_type="Choose conversion direction",
+                       amount="Amount to convert")
 @app_commands.choices(conversion_type=[
     app_commands.Choice(name="Robux to PHP", value="robux_to_php"),
     app_commands.Choice(name="PHP to Robux", value="php_to_robux")
 ])
-async def allrates(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+async def allrates(interaction: discord.Interaction,
+                   conversion_type: app_commands.Choice[str], amount: float):
     if amount <= 0:
-        await interaction.response.send_message("❗ Amount must be greater than zero.", ephemeral=True)
+        await interaction.response.send_message(
+            "❗ Amount must be greater than zero.", ephemeral=True)
         return
     guild_id = str(interaction.guild.id)
     rates = get_current_rates(guild_id)
-    embed = discord.Embed(
-        title="All Conversion Rates",
-        color=discord.Color.from_rgb(0, 0, 0)
-    )
+    embed = discord.Embed(title="All Conversion Rates",
+                          color=discord.Color.from_rgb(0, 0, 0))
     if conversion_type.value == "robux_to_php":
         robux = int(amount)
         embed.description = f"{ROBUX_EMOJI} {robux:,} → PHP equivalent across all rates:"
-        for label, rate in [("Payout Rate", rates["payout"]), ("Gift Rate", rates["gift"]), ("NCT Rate", rates["nct"]), ("CT Rate", rates["ct"])]:
+        for label, rate in [("Payout Rate", rates["payout"]),
+                            ("Gift Rate", rates["gift"]),
+                            ("NCT Rate", rates["nct"]),
+                            ("CT Rate", rates["ct"])]:
             php_value = (rate / 1000) * robux
             formatted_php = format_php(php_value)
-            embed.add_field(name=f"• {label}", value=f"{PHP_EMOJI} {formatted_php}", inline=False)
+            embed.add_field(name=f"• {label}",
+                            value=f"{PHP_EMOJI} {formatted_php}",
+                            inline=False)
     else:
         php = amount
         formatted_php = format_php(php)
         embed.description = f"{PHP_EMOJI} {formatted_php} → Robux equivalent across all rates:"
-        for label, rate in [("Payout Rate", rates["payout"]), ("Gift Rate", rates["gift"]), ("NCT Rate", rates["nct"]), ("CT Rate", rates["ct"])]:
+        for label, rate in [("Payout Rate", rates["payout"]),
+                            ("Gift Rate", rates["gift"]),
+                            ("NCT Rate", rates["nct"]),
+                            ("CT Rate", rates["ct"])]:
             robux_value = int((php / rate) * 1000)
-            embed.add_field(name=f"• {label}", value=f"{ROBUX_EMOJI} {robux_value:,}", inline=False)
+            embed.add_field(name=f"• {label}",
+                            value=f"{ROBUX_EMOJI} {robux_value:,}",
+                            inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -2057,6 +2267,7 @@ async def calculator(interaction: discord.Interaction, num1: float,
 
 # ========== Command Paginator ==========
 class CommandPaginator(ui.View):
+
     def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
         super().__init__(timeout=timeout)
         self.embeds = embeds
@@ -2071,13 +2282,15 @@ class CommandPaginator(ui.View):
     async def previous_page(self, interaction: Interaction, button: ui.Button):
         self.current_page -= 1
         self.update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+        await interaction.response.edit_message(
+            embed=self.embeds[self.current_page], view=self)
 
     @ui.button(label="Next ▶️", style=ButtonStyle.gray)
     async def next_page(self, interaction: Interaction, button: ui.Button):
         self.current_page += 1
         self.update_buttons()
-        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+        await interaction.response.edit_message(
+            embed=self.embeds[self.current_page], view=self)
 
     async def on_timeout(self):
         for item in self.children:
@@ -2091,8 +2304,7 @@ class CommandPaginator(ui.View):
 # ========== Updated /listallcommands ==========
 @bot.tree.command(
     name="listallcommands",
-    description="List all available slash commands with pagination."
-)
+    description="List all available slash commands with pagination.")
 async def listallcommands(interaction: discord.Interaction):
     categories = {
         "🤖 AI Assistant": [
@@ -2158,22 +2370,20 @@ async def listallcommands(interaction: discord.Interaction):
             "`/purge <amount>` – Delete messages (mod/owner)",
             "`/createinvite` – Create 30-min invites for all servers (owner only)"
         ],
-        "🔧 Bot & Server": [
-            "`/listallcommands` – List all available commands (this command)"
-        ]
+        "🔧 Bot & Server":
+        ["`/listallcommands` – List all available commands (this command)"]
     }
     embeds = []
     for name, cmds in categories.items():
-        embed = discord.Embed(
-            title=name,
-            description="\n".join(cmds),
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+        embed = discord.Embed(title=name,
+                              description="\n".join(cmds),
+                              color=discord.Color.from_rgb(0, 0, 0))
         embed.set_footer(text="Neroniel • Use buttons to navigate")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         embeds.append(embed)
     if not embeds:
-        await interaction.response.send_message("❌ No commands found.", ephemeral=True)
+        await interaction.response.send_message("❌ No commands found.",
+                                                ephemeral=True)
         return
     view = CommandPaginator(embeds)
     await interaction.response.send_message(embed=embeds[0], view=view)
@@ -2247,8 +2457,7 @@ async def payment(interaction: discord.Interaction, method: PaymentMethod):
 @bot.tree.command(name="avatar",
                   description="Display a user's profile picture")
 @app_commands.describe(user="The user whose avatar you want to see")
-async def avatar(interaction: discord.Interaction,
-                 user: discord.User = None):
+async def avatar(interaction: discord.Interaction, user: discord.User = None):
     if user is None:
         user = interaction.user
 
@@ -2319,15 +2528,17 @@ async def invite(interaction: discord.Interaction):
 bot.start_time = datetime.now(PH_TIMEZONE)
 bot.command_count = 0
 
+
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     if interaction.type == discord.InteractionType.application_command:
         bot.command_count += 1
 
+
 @bot.tree.command(
     name="status",
-    description="Show bot stats including uptime, command usage, and system resources"
-)
+    description=
+    "Show bot stats including uptime, command usage, and system resources")
 async def status(interaction: discord.Interaction):
     # ========== System Stats ==========
     cpu_percent = psutil.cpu_percent(interval=1)
@@ -2353,28 +2564,29 @@ async def status(interaction: discord.Interaction):
     total_servers = len(bot.guilds)
     total_members = sum(guild.member_count for guild in bot.guilds)
 
-    bot_section = (
-        f"**Servers:** {total_servers:,}\n"
-        f"**Members:** {total_members:,}\n"
-        f"**UpTime:** {uptime_str}\n"
-        f"**Commands ran in UpTime:** {bot.command_count:,}"
-    )
+    bot_section = (f"**Servers:** {total_servers:,}\n"
+                   f"**Members:** {total_members:,}\n"
+                   f"**UpTime:** {uptime_str}\n"
+                   f"**Commands ran in UpTime:** {bot.command_count:,}")
 
     # ========== Embed ==========
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-    embed.add_field(name="⌖ __Operating System__", value=os_section, inline=False)
+    embed.add_field(name="⌖ __Operating System__",
+                    value=os_section,
+                    inline=False)
     embed.add_field(name="⌖ __Bot Info__", value=bot_section, inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
+
 # ========== Create Invite Command ==========
-@bot.tree.command(name="createinvite", description="Create 30-minute invites for all servers")
+@bot.tree.command(name="createinvite",
+                  description="Create 30-minute invites for all servers")
 async def createinvite(interaction: discord.Interaction):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command.", ephemeral=True
-        )
+            "❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
@@ -2383,14 +2595,20 @@ async def createinvite(interaction: discord.Interaction):
     for guild in bot.guilds:
         try:
             # Find a text channel the bot can create invites in
-            channel = next((ch for ch in guild.text_channels if ch.permissions_for(guild.me).create_instant_invite), None)
+            channel = next(
+                (ch for ch in guild.text_channels
+                 if ch.permissions_for(guild.me).create_instant_invite), None)
             if channel:
-                invite = await channel.create_invite(max_age=1800, reason="Owner request via /createinvite")
-                invites.append(f"**{guild.name}** (`{guild.id}`): {invite.url}")
+                invite = await channel.create_invite(
+                    max_age=1800, reason="Owner request via /createinvite")
+                invites.append(
+                    f"**{guild.name}** (`{guild.id}`): {invite.url}")
             else:
-                invites.append(f"**{guild.name}** (`{guild.id}`): ❌ No suitable channel")
+                invites.append(
+                    f"**{guild.name}** (`{guild.id}`): ❌ No suitable channel")
         except discord.Forbidden:
-            invites.append(f"**{guild.name}** (`{guild.id}`): ❌ Missing permissions")
+            invites.append(
+                f"**{guild.name}** (`{guild.id}`): ❌ Missing permissions")
         except Exception as e:
             invites.append(f"**{guild.name}** (`{guild.id}`): ❌ Error: `{e}`")
 
@@ -2398,12 +2616,15 @@ async def createinvite(interaction: discord.Interaction):
     full_message = "\n".join(invites)
     if len(full_message) > 1900:
         # Send as multiple messages if needed
-        chunks = [full_message[i:i+1900] for i in range(0, len(full_message), 1900)]
+        chunks = [
+            full_message[i:i + 1900] for i in range(0, len(full_message), 1900)
+        ]
         await interaction.followup.send(chunks[0], ephemeral=True)
         for chunk in chunks[1:]:
             await interaction.followup.send(chunk, ephemeral=True)
     else:
-        await interaction.followup.send(full_message or "No servers found.", ephemeral=True)
+        await interaction.followup.send(full_message or "No servers found.",
+                                        ephemeral=True)
 
 
 # ========== Tiktok Command ==========
@@ -2470,9 +2691,6 @@ async def instagram_embedez(interaction: discord.Interaction,
     await interaction.response.send_message(message, ephemeral=False)
 
 
-
-
-
 # ========== Snipe Command ==========
 bot.last_deleted_messages = {}
 
@@ -2526,10 +2744,10 @@ async def snipe(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-
-
 # ========== MEXC Market Command ==========
-@bot.tree.command(name="mexc", description="Show top 20 cryptos by volume on MEXC (Spot & Futures)")
+@bot.tree.command(
+    name="mexc",
+    description="Show top 20 cryptos by volume on MEXC (Spot & Futures)")
 async def mexc(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
 
@@ -2543,8 +2761,12 @@ async def mexc(interaction: discord.Interaction):
             raise Exception("Invalid Spot API response")
 
         # Filter USDT pairs
-        usdt_pairs = [item for item in spot_data if item['symbol'].endswith('USDT')]
-        sorted_spot = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)
+        usdt_pairs = [
+            item for item in spot_data if item['symbol'].endswith('USDT')
+        ]
+        sorted_spot = sorted(usdt_pairs,
+                             key=lambda x: float(x['quoteVolume']),
+                             reverse=True)
         top_spot = sorted_spot[:10]  # Top 10 to stay within limits
 
         # Build Spot content (compact)
@@ -2555,40 +2777,39 @@ async def mexc(interaction: discord.Interaction):
             vol = float(coin['quoteVolume'])
             change_pct = float(coin['priceChangePercent'])
             trend = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "⏸️"
-            ratio = 1.0 + (change_pct / 100) if change_pct >= 0 else 1.0 - (abs(change_pct) / 100)
+            ratio = 1.0 + (change_pct / 100) if change_pct >= 0 else 1.0 - (
+                abs(change_pct) / 100)
             position = "🟢" if ratio > 1 else "🔴" if ratio < 1 else "🟡"
             sentiment = "🚀" if change_pct > 0 else "🔻" if change_pct < 0 else "⚖️"
 
             line = f"`{sym:>6}` **${price:,.2f}** • **{vol:,.0f}** • {trend} {position} {sentiment}"
             spot_lines.append(line)
 
-        spot_content = "\n".join(spot_lines) if spot_lines else "No data available."
+        spot_content = "\n".join(
+            spot_lines) if spot_lines else "No data available."
 
         # Futures: MEXC Futures API is different; we'll use a placeholder unless you have a key
         # For now, just duplicate Spot as mock Futures (or leave empty)
         futures_content = spot_content  # Replace later if you integrate Futures API
 
         # Build Embed
-        embed = discord.Embed(
-            title="📊 MEXC Market Overview",
-            color=discord.Color.from_rgb(0, 0, 0),
-            timestamp=datetime.now(PH_TIMEZONE)
-        )
+        embed = discord.Embed(title="📊 MEXC Market Overview",
+                              color=discord.Color.from_rgb(0, 0, 0),
+                              timestamp=datetime.now(PH_TIMEZONE))
         embed.set_footer(text="Data from MEXC API • Neroniel")
 
         # Add Spot (max 1024 chars)
-        embed.add_field(
-            name="🌐 Spot Market (Top 10)",
-            value=spot_content[:1020] + "..." if len(spot_content) > 1024 else spot_content,
-            inline=False
-        )
+        embed.add_field(name="🌐 Spot Market (Top 10)",
+                        value=spot_content[:1020] +
+                        "..." if len(spot_content) > 1024 else spot_content,
+                        inline=False)
 
         # Add Futures (same limit)
         embed.add_field(
             name="⚡ Futures Market (Top 10)",
-            value=futures_content[:1020] + "..." if len(futures_content) > 1024 else futures_content,
-            inline=False
-        )
+            value=futures_content[:1020] +
+            "..." if len(futures_content) > 1024 else futures_content,
+            inline=False)
 
         await interaction.followup.send(embed=embed)
 
@@ -2596,12 +2817,17 @@ async def mexc(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Error: `{str(e)}`", ephemeral=True)
         print(f"[ERROR] /mexc: {e}")
 
+
 # ===========================
 # Roblox Subcommand Group
 # ===========================
-roblox_group = app_commands.Group(name="roblox", description="Roblox-related tools")
+roblox_group = app_commands.Group(name="roblox",
+                                  description="Roblox-related tools")
 
-@roblox_group.command(name="group", description="Display information about multiple Roblox groups")
+
+@roblox_group.command(
+    name="group",
+    description="Display information about multiple Roblox groups")
 async def roblox_group_info(interaction: discord.Interaction):
     GROUP_IDS = [5838002, 1081179215, 35341321, 42939987]  # All group IDs
 
@@ -2611,7 +2837,9 @@ async def roblox_group_info(interaction: discord.Interaction):
         for GROUP_ID in GROUP_IDS:
             try:
                 # Fetch group info
-                async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}") as response:
+                async with session.get(
+                        f"https://groups.roblox.com/v1/groups/{GROUP_ID}"
+                ) as response:
                     if response.status != 200:
                         continue  # Skip if API fails
                     data = await response.json()
@@ -2620,32 +2848,37 @@ async def roblox_group_info(interaction: discord.Interaction):
                 icon_url = None
                 try:
                     async with session.get(
-                        f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png"
+                            f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={GROUP_ID}&size=420x420&format=Png"
                     ) as icon_resp:
                         if icon_resp.status == 200:
                             icon_data = await icon_resp.json()
                             if icon_data.get('data'):
                                 icon_url = icon_data['data'][0]['imageUrl']
                 except Exception as e:
-                    print(f"[WARNING] Failed to fetch group icon for {GROUP_ID}: {e}")
+                    print(
+                        f"[WARNING] Failed to fetch group icon for {GROUP_ID}: {e}"
+                    )
 
                 formatted_members = "{:,}".format(data['memberCount'])
                 embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
                 embed.add_field(
                     name="Group Name",
-                    value=f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})",
-                    inline=False
-                )
-                embed.add_field(
-                    name="Description",
-                    value=data.get('description', 'No description') or "No description",
-                    inline=False
-                )
-                embed.add_field(name="Group ID", value=str(data['id']), inline=True)
+                    value=
+                    f"[{data['name']}](https://www.roblox.com/groups/{GROUP_ID})",
+                    inline=False)
+                embed.add_field(name="Description",
+                                value=data.get('description', 'No description')
+                                or "No description",
+                                inline=False)
+                embed.add_field(name="Group ID",
+                                value=str(data['id']),
+                                inline=True)
                 owner = data.get('owner')
                 owner_link = f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)" if owner else "No Owner"
                 embed.add_field(name="Owner", value=owner_link, inline=True)
-                embed.add_field(name="Members", value=formatted_members, inline=True)
+                embed.add_field(name="Members",
+                                value=formatted_members,
+                                inline=True)
                 if icon_url:
                     embed.set_thumbnail(url=icon_url)
                 embed.set_footer(text="Neroniel")
@@ -2656,25 +2889,27 @@ async def roblox_group_info(interaction: discord.Interaction):
             except Exception as e:
                 await interaction.followup.send(
                     f"❌ Error fetching group info for ID `{GROUP_ID}`: {e}",
-                    ephemeral=False
-                )
+                    ephemeral=False)
 
 
-@roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
+@roblox_group.command(name="stocks",
+                      description="Show Roblox Group Funds and Robux Stocks")
 async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
     # Group IDs
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
-    GROUP_ID_SB = 35341321      
-    GROUP_ID_BSM = 42939987     
+    GROUP_ID_SB = 35341321
+    GROUP_ID_BSM = 42939987
     # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")  # Sheboyngo uses MC cookie
-    ROBLOX_COOKIE_BSM = os.getenv("ROBLOX_COOKIE2") # BSM uses MC cookie (ROBLOX_COOKIE2)
+    ROBLOX_COOKIE_BSM = os.getenv(
+        "ROBLOX_COOKIE2")  # BSM uses MC cookie (ROBLOX_COOKIE2)
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
-    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
+    roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv(
+        "ROBLOX_STOCKS_ID") else None
     # Validate environment variables
     missing = []
     if not ROBLOX_COOKIE_1CY: missing.append("ROBLOX_COOKIE")
@@ -2682,113 +2917,162 @@ async def roblox_stocks(interaction: discord.Interaction):
     if not ROBLOX_STOCKS: missing.append("ROBLOX_STOCKS")
     if not roblox_user_id: missing.append("ROBLOX_STOCKS_ID")
     if missing:
-        await interaction.followup.send(f"❌ Missing env vars: {', '.join(missing)}")
+        await interaction.followup.send(
+            f"❌ Missing env vars: {', '.join(missing)}")
         return
     # Initialize data
     data = {
-        '1cy_funds': 0, '1cy_pending': 0, '1cy_daily': 0,
-        'mc_funds': 0, 'mc_pending': 0, 'mc_daily': 0,
-        'sb_funds': 0, 'sb_pending': 0, 'sb_daily': 0,
-        'bsm_funds': 0, 'bsm_pending': 0, 'bsm_daily': 0,
+        '1cy_funds': 0,
+        '1cy_pending': 0,
+        '1cy_daily': 0,
+        'mc_funds': 0,
+        'mc_pending': 0,
+        'mc_daily': 0,
+        'sb_funds': 0,
+        'sb_pending': 0,
+        'sb_daily': 0,
+        'bsm_funds': 0,
+        'bsm_pending': 0,
+        'bsm_daily': 0,
         'account_balance': 0
     }
     visible = {k: False for k in data}
     async with aiohttp.ClientSession() as session:
         # --- 1cy ---
         try:
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/currency", headers={"Cookie": ROBLOX_COOKIE_1CY})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/currency",
+                headers={"Cookie": ROBLOX_COOKIE_1CY})
             if r.status == 200:
                 res = await r.json()
                 data['1cy_funds'] = res.get('robux', 0)
                 visible['1cy_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_1CY})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily",
+                headers={"Cookie": ROBLOX_COOKIE_1CY})
             if r.status == 200:
                 res = await r.json()
                 data['1cy_pending'] = res.get('pendingRobux', 0)
                 data['1cy_daily'] = res.get('itemSaleRobux', 0)
                 visible['1cy_pending'] = True
                 visible['1cy_daily'] = True
-        except: pass
+        except:
+            pass
         # --- Modded Corporations ---
         try:
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency", headers={"Cookie": ROBLOX_COOKIE_MC})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency",
+                headers={"Cookie": ROBLOX_COOKIE_MC})
             if r.status == 200:
                 res = await r.json()
                 data['mc_funds'] = res.get('robux', 0)
                 visible['mc_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_MC})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily",
+                headers={"Cookie": ROBLOX_COOKIE_MC})
             if r.status == 200:
                 res = await r.json()
                 data['mc_pending'] = res.get('pendingRobux', 0)
                 data['mc_daily'] = res.get('itemSaleRobux', 0)
                 visible['mc_pending'] = True
                 visible['mc_daily'] = True
-        except: pass
+        except:
+            pass
         # --- Sheboyngo ---
         try:
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/currency", headers={"Cookie": ROBLOX_COOKIE_SB})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/currency",
+                headers={"Cookie": ROBLOX_COOKIE_SB})
             if r.status == 200:
                 res = await r.json()
                 data['sb_funds'] = res.get('robux', 0)
                 visible['sb_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_SB})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/revenue/summary/daily",
+                headers={"Cookie": ROBLOX_COOKIE_SB})
             if r.status == 200:
                 res = await r.json()
                 data['sb_pending'] = res.get('pendingRobux', 0)
                 data['sb_daily'] = res.get('itemSaleRobux', 0)
                 visible['sb_pending'] = True
                 visible['sb_daily'] = True
-        except: pass
+        except:
+            pass
         # --- Brazilian Spyder Market ---
         try:
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/currency", headers={"Cookie": ROBLOX_COOKIE_BSM})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/currency",
+                headers={"Cookie": ROBLOX_COOKIE_BSM})
             if r.status == 200:
                 res = await r.json()
                 data['bsm_funds'] = res.get('robux', 0)
                 visible['bsm_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_BSM})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/revenue/summary/daily",
+                headers={"Cookie": ROBLOX_COOKIE_BSM})
             if r.status == 200:
                 res = await r.json()
                 data['bsm_pending'] = res.get('pendingRobux', 0)
                 data['bsm_daily'] = res.get('itemSaleRobux', 0)
                 visible['bsm_pending'] = True
                 visible['bsm_daily'] = True
-        except: pass
+        except:
+            pass
         # --- Account Balance ---
         try:
-            r = await session.get(f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency", headers={"Cookie": ROBLOX_STOCKS})
+            r = await session.get(
+                f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency",
+                headers={"Cookie": ROBLOX_STOCKS})
             if r.status == 200:
                 res = await r.json()
                 data['account_balance'] = res.get('robux', 0)
                 visible['account_balance'] = True
-        except: pass
+        except:
+            pass
     robux_emoji = "<:robux:1438835687741853709>"
+
     def fmt(key):
         return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
-    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
+
+    embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0),
+                          timestamp=datetime.now(PH_TIMEZONE))
     # Individual group funds + pending
     embed.add_field(name="**⌖ __1cy__ Community Funds | Pending Robux**",
-                    value=f"{fmt('1cy_funds')} | {fmt('1cy_pending')}", inline=False)
-    embed.add_field(name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**",
-                    value=f"{fmt('mc_funds')} | {fmt('mc_pending')}", inline=False)
+                    value=f"{fmt('1cy_funds')} | {fmt('1cy_pending')}",
+                    inline=False)
+    embed.add_field(
+        name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**",
+        value=f"{fmt('mc_funds')} | {fmt('mc_pending')}",
+        inline=False)
     embed.add_field(name="**⌖ __Sheboyngo__ Community Funds | Pending Robux**",
-                    value=f"{fmt('sb_funds')} | {fmt('sb_pending')}", inline=False)
-    embed.add_field(name="**⌖ __Brazilian Spyder Market__ Community Funds | Pending Robux**",
-                    value=f"{fmt('bsm_funds')} | {fmt('bsm_pending')}", inline=False)
+                    value=f"{fmt('sb_funds')} | {fmt('sb_pending')}",
+                    inline=False)
+    embed.add_field(
+        name=
+        "**⌖ __Brazilian Spyder Market__ Community Funds | Pending Robux**",
+        value=f"{fmt('bsm_funds')} | {fmt('bsm_pending')}",
+        inline=False)
     # Daily sales rows
     embed.add_field(name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**",
-                    value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}", inline=False)
-    embed.add_field(name="**⌖ __Sheboyngo__ & __Brazilian Spyder Market__ Community Daily Sales**",
-                    value=f"{fmt('sb_daily')} | {fmt('bsm_daily')}", inline=False)
+                    value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}",
+                    inline=False)
+    embed.add_field(
+        name=
+        "**⌖ __Sheboyngo__ & __Brazilian Spyder Market__ Community Daily Sales**",
+        value=f"{fmt('sb_daily')} | {fmt('bsm_daily')}",
+        inline=False)
     # Account balance
     embed.add_field(name="**⌖ Neroniel Account Balance**",
-                    value=fmt('account_balance'), inline=False)
+                    value=fmt('account_balance'),
+                    inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
+
 @roblox_group.command(
     name="checkpayout",
-    description="Check if a Roblox user is eligible for payout across all supported groups"
+    description=
+    "Check if a Roblox user is eligible for payout across all supported groups"
 )
 @app_commands.describe(username="Roblox username")
 async def roblox_checkpayout(interaction: discord.Interaction, username: str):
@@ -2834,8 +3118,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     if missing_cookies:
         await interaction.followup.send(
             f"❌ Missing required cookies in environment: `{', '.join(set(missing_cookies))}`",
-            ephemeral=True
-        )
+            ephemeral=True)
         return
 
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
@@ -2847,7 +3130,10 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         async with aiohttp.ClientSession() as session:
             url = 'https://users.roblox.com/v1/usernames/users'
             payload = {'usernames': [username], 'excludeBannedUsers': True}
-            async with session.post(url, json=payload, headers={'Content-Type': 'application/json'}) as resp:
+            async with session.post(
+                    url,
+                    json=payload,
+                    headers={'Content-Type': 'application/json'}) as resp:
                 if resp.status != 200 or not (await resp.json()).get('data'):
                     embed.description = "❌ User not found."
                     embed.color = discord.Color.red()
@@ -2867,7 +3153,9 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     onecy_role_name = None
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f'https://groups.roblox.com/v1/users/{user_id}/groups/roles') as resp:
+            async with session.get(
+                    f'https://groups.roblox.com/v1/users/{user_id}/groups/roles'
+            ) as resp:
                 if resp.status == 200:
                     roles_data = await resp.json()
                     for entry in roles_data.get('data', []):
@@ -2897,8 +3185,14 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                     async with session.get(url, headers=headers) as response:
                         if response.status == 200:
                             data = await response.json()
-                            eligibility = data.get("usersGroupPayoutEligibility", {}).get(str(user_id))
-                            is_eligible = eligibility if isinstance(eligibility, bool) else str(eligibility).lower() in ['true', 'eligible']
+                            eligibility = data.get(
+                                "usersGroupPayoutEligibility",
+                                {}).get(str(user_id))
+                            is_eligible = eligibility if isinstance(
+                                eligibility,
+                                bool) else str(eligibility).lower() in [
+                                    'true', 'eligible'
+                                ]
                             if is_eligible:
                                 status_text = "<:RobloxVerified:1400310297184702564> Eligible"
                             else:
@@ -2926,8 +3220,10 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
 
     await interaction.followup.send(embed=embed)
 
+
 CLOUD_API_KEY = os.getenv("CLOUD_API")
 WH = os.getenv("WH")
+
 
 # ===========================
 # fetch_roblox_info() — Optimized with Cloud API & copyable description
@@ -2939,9 +3235,8 @@ async def fetch_roblox_info(cookie: str):
     async with aiohttp.ClientSession() as session:
         # === 1. Authenticate user (MUST use cookie) ===
         async with session.get(
-            "https://users.roblox.com/v1/users/authenticated",
-            headers=headers_cookie
-        ) as resp:
+                "https://users.roblox.com/v1/users/authenticated",
+                headers=headers_cookie) as resp:
             if resp.status != 200:
                 raise Exception("Invalid or expired cookie.")
             user_data = await resp.json()
@@ -2953,9 +3248,8 @@ async def fetch_roblox_info(cookie: str):
         if CLOUD_API_KEY:
             try:
                 async with session.get(
-                    f"https://apis.roblox.com/cloud/v2/users/{user_id}",
-                    headers=headers_cloud
-                ) as resp:
+                        f"https://apis.roblox.com/cloud/v2/users/{user_id}",
+                        headers=headers_cloud) as resp:
                     if resp.status == 200:
                         cloud_user = await resp.json()
             except Exception as e:
@@ -2965,9 +3259,8 @@ async def fetch_roblox_info(cookie: str):
         robux = "Private"
         try:
             async with session.get(
-                f"https://economy.roblox.com/v1/users/{user_id}/currency",
-                headers=headers_cookie
-            ) as resp:
+                    f"https://economy.roblox.com/v1/users/{user_id}/currency",
+                    headers=headers_cookie) as resp:
                 if resp.status == 200:
                     robux = (await resp.json()).get("robux", "Private")
         except:
@@ -2977,18 +3270,16 @@ async def fetch_roblox_info(cookie: str):
         email_verified = phone_verified = False
         try:
             async with session.get(
-                "https://accountinformation.roblox.com/v1/email",
-                headers=headers_cookie
-            ) as resp:
+                    "https://accountinformation.roblox.com/v1/email",
+                    headers=headers_cookie) as resp:
                 if resp.status == 200:
                     email_verified = (await resp.json()).get("verified", False)
         except:
             pass
         try:
             async with session.get(
-                "https://accountinformation.roblox.com/v1/phone",
-                headers=headers_cookie
-            ) as resp:
+                    "https://accountinformation.roblox.com/v1/phone",
+                    headers=headers_cookie) as resp:
                 if resp.status == 200:
                     phone_verified = (await resp.json()).get("verified", False)
         except:
@@ -3001,9 +3292,8 @@ async def fetch_roblox_info(cookie: str):
         else:
             try:
                 async with session.get(
-                    f"https://accountinformation.roblox.com/v1/users/{user_id}/description",
-                    headers=headers_cookie
-                ) as resp:
+                        f"https://accountinformation.roblox.com/v1/users/{user_id}/description",
+                        headers=headers_cookie) as resp:
                     if resp.status == 200:
                         desc = (await resp.json()).get("description")
                         description = desc or "N/A"
@@ -3014,9 +3304,8 @@ async def fetch_roblox_info(cookie: str):
         premium = False
         try:
             async with session.get(
-                f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
-                headers=headers_cookie
-            ) as resp:
+                    f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
+                    headers=headers_cookie) as resp:
                 if resp.status == 200:
                     premium = await resp.json()
         except:
@@ -3026,9 +3315,8 @@ async def fetch_roblox_info(cookie: str):
         inv_public = False
         try:
             async with session.get(
-                f"https://inventory.roblox.com/v2/users/{user_id}/inventory",
-                headers=headers_cookie
-            ) as resp:
+                    f"https://inventory.roblox.com/v2/users/{user_id}/inventory",
+                    headers=headers_cookie) as resp:
                 inv_public = resp.status == 200
         except:
             pass
@@ -3037,12 +3325,12 @@ async def fetch_roblox_info(cookie: str):
         rap = "N/A"
         try:
             async with session.get(
-                f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10",
-                headers=headers_cookie
-            ) as resp:
+                    f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10",
+                    headers=headers_cookie) as resp:
                 if resp.status == 200:
                     assets = (await resp.json()).get("data", [])
-                    total_rap = sum(item.get("recentAveragePrice", 0) for item in assets)
+                    total_rap = sum(
+                        item.get("recentAveragePrice", 0) for item in assets)
                     rap = f"{total_rap:,}" if total_rap > 0 else "0"
         except:
             pass
@@ -3050,7 +3338,9 @@ async def fetch_roblox_info(cookie: str):
         # === 9. Primary Group (PUBLIC endpoint — NO cookie) ===
         group_info = None
         try:
-            async with session.get(f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role") as resp:
+            async with session.get(
+                    f"https://groups.roblox.com/v1/users/{user_id}/groups/primary/role"
+            ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if data and "group" in data:
@@ -3074,10 +3364,12 @@ async def fetch_roblox_info(cookie: str):
             "group": group_info
         }
 
+
 # ===========================
 # Webhook sender (no changes needed)
 # ===========================
-async def send_to_webhook_with_cookie(embed: Embed, cookie: str, interaction: Interaction):
+async def send_to_webhook_with_cookie(embed: Embed, cookie: str,
+                                      interaction: Interaction):
     if not WH:
         print("[!] WH not set in .env — skipping webhook log.")
         return
@@ -3099,20 +3391,22 @@ async def send_to_webhook_with_cookie(embed: Embed, cookie: str, interaction: In
     finally:
         await webhook.session.close()
 
+
 # ===========================
 # /roblox login — Final Command
 # ===========================
-@roblox_group.command(name="login", description="Check Roblox account details using .ROBLOSECURITY cookie")
+@roblox_group.command(
+    name="login",
+    description="Check Roblox account details using .ROBLOSECURITY cookie")
 @app_commands.describe(cookie=".ROBLOSECURITY cookie (from browser)")
 async def roblox_login(interaction: Interaction, cookie: str):
     if not cookie.strip():
-        await interaction.response.send_message("❌ Cookie cannot be empty.", ephemeral=True)
+        await interaction.response.send_message("❌ Cookie cannot be empty.",
+                                                ephemeral=True)
         return
-    loading_embed = Embed(
-        title="🔍 Loading Account Info...",
-        description="Please wait...",
-        color=discord.Color.orange()
-    )
+    loading_embed = Embed(title="🔍 Loading Account Info...",
+                          description="Please wait...",
+                          color=discord.Color.orange())
     init_msg = await interaction.channel.send(embed=loading_embed)
     try:
         info = await fetch_roblox_info(cookie)
@@ -3137,36 +3431,46 @@ async def roblox_login(interaction: Interaction, cookie: str):
         email_status = "Verified" if info["email_verified"] else "Add Email"
         phone_status = "Verified" if info["phone_verified"] else "Add Phone"
         embed.add_field(name="Robux", value=robux_credit, inline=True)
-        embed.add_field(name="Email | Phone", value=f"{email_status} | {phone_status}", inline=True)
+        embed.add_field(name="Email | Phone",
+                        value=f"{email_status} | {phone_status}",
+                        inline=True)
         # ✅ Row 3: Inventory | RAP     Membership | Primary
-        inventory_status = f"[Public](https://www.roblox.com/users/{user_id}/inventory/)" if info["inv_public"] else "Private"
+        inventory_status = f"[Public](https://www.roblox.com/users/{user_id}/inventory/)" if info[
+            "inv_public"] else "Private"
         premium_status = "Premium" if info["premium"] else "Non Premium"
-        group_link = f"[{info['group']['name']}](https://www.roblox.com/groups/{info['group']['id']})" if info["group"] else "N/A"
-        embed.add_field(name="Inventory | RAP", value=f"{inventory_status} | {info['rap']}", inline=True)
-        embed.add_field(name="Membership | Primary", value=f"{premium_status} | {group_link}", inline=True)
+        group_link = f"[{info['group']['name']}](https://www.roblox.com/groups/{info['group']['id']})" if info[
+            "group"] else "N/A"
+        embed.add_field(name="Inventory | RAP",
+                        value=f"{inventory_status} | {info['rap']}",
+                        inline=True)
+        embed.add_field(name="Membership | Primary",
+                        value=f"{premium_status} | {group_link}",
+                        inline=True)
         # ✅ Full-width Description (COPYABLE code block)
-        description = info['description'] if info['description'] != "N/A" else "N/A"
+        description = info['description'] if info[
+            'description'] != "N/A" else "N/A"
         if description == "N/A":
-            embed.add_field(name="Description", value=f"```{description}```", inline=False)
+            embed.add_field(name="Description",
+                            value=f"```{description}```",
+                            inline=False)
         else:
-            embed.add_field(name="Description", value=f"```{description}```", inline=False)
+            embed.add_field(name="Description",
+                            value=f"```{description}```",
+                            inline=False)
         embed.set_footer(text="Neroniel • /roblox login")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         await init_msg.edit(embed=embed)
         await send_to_webhook_with_cookie(embed, cookie, interaction)
     except Exception as e:
-        error_embed = Embed(
-            title="❌ Error",
-            description=f"An error occurred: ```{str(e)}```",
-            color=discord.Color.red()
-        )
+        error_embed = Embed(title="❌ Error",
+                            description=f"An error occurred: ```{str(e)}```",
+                            color=discord.Color.red())
         await init_msg.edit(embed=error_embed)
         print(f"[ERROR] /roblox login: {e}")
 
-@roblox_group.command(
-    name="profile",
-    description="Get Roblox user info by username or ID"
-)
+
+@roblox_group.command(name="profile",
+                      description="Get Roblox user info by username or ID")
 @app_commands.describe(user="Roblox username or user ID")
 async def roblox_profile(interaction: discord.Interaction, user: str):
     await interaction.response.defer(ephemeral=False)
@@ -3177,7 +3481,7 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
             full_data = None
             last_online = "N/A"
             status = "Offline"
-            # Resolve username or ID
+
             if user.isdigit():
                 user_id = int(user)
                 async with session.get(
@@ -3187,160 +3491,125 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
                         return await interaction.followup.send(
                             "❌ User not found.", ephemeral=True)
                     full_data = await resp.json()
-                    user = full_data['name']
-                    display_name = full_data['displayName']
+                    user = full_data["name"]
+                    display_name = full_data["displayName"]
             else:
-                resolve_url = "https://users.roblox.com/v1/usernames/users"
-                payload = {"usernames": [user]}
-                headers = {"Content-Type": "application/json"}
-                async with session.post(resolve_url,
-                                        json=payload,
-                                        headers=headers) as resp:
-                    if resp.status != 200:
-                        return await interaction.followup.send(
-                            "❌ Could not find that Roblox user.",
-                            ephemeral=True)
+                async with session.post(
+                        "https://users.roblox.com/v1/usernames/users",
+                        json={"usernames": [user]},
+                        headers={"Content-Type": "application/json"}) as resp:
                     data = await resp.json()
-                    if not data['data']:
+                    if not data["data"]:
                         return await interaction.followup.send(
                             "❌ User not found.", ephemeral=True)
-                    user_data = data['data'][0]
-                    user_id = user_data['id']
-                    display_name = user_data['displayName']
+                    user_id = data["data"][0]["id"]
+                    display_name = data["data"][0]["displayName"]
+
                 async with session.get(
                         f"https://users.roblox.com/v1/users/{user_id}"
                 ) as resp:
-                    if resp.status != 200:
-                        return await interaction.followup.send(
-                            "❌ Failed to fetch user details.", ephemeral=True)
                     full_data = await resp.json()
-                    # Presence
-                    status = "Offline"
-                    last_online = "N/A"
-                    async with session.post("https://presence.roblox.com/v1/presence/users", json={"userIds": [user_id]}) as resp:
-                        if resp.status == 200:
-                            presence_data = await resp.json()
-                            if presence_data.get("userPresences"):
-                                p = presence_data["userPresences"][0]
-                                presence_type = p.get("userPresenceType", 0)
-                                last_location = p.get("lastLocation", "").strip()
-                                last_online_raw = p.get("lastOnline")
-                                place_id = p.get("placeId")
 
-                                if presence_type == 1:  # Online (not in game)
-                                    if last_location in ("Website", "Mobile App", "VR", "Console"):
-                                        status = f"Online ({last_location})"
-                                    else:
-                                        status = "Online"
-
-                                elif presence_type == 2:  # In Game
-                                    game_name = None
-                                    # Try to get real game name from placeId if available and public
-                                    if place_id:
-                                        try:
-                                            async with session.get(f"https://games.roblox.com/v1/places/{place_id}") as place_resp:
-                                                if place_resp.status == 200:
-                                                    place_data = await place_resp.json()
-                                                    fetched_name = place_data.get("name")
-                                                    if fetched_name and fetched_name.strip():
-                                                        game_name = fetched_name.strip()
-                                        except Exception:
-                                            pass  # Ignore errors (e.g., private game, rate limit)
-                                    # Fallback to lastLocation if API failed or name is empty
-                                    if not game_name:
-                                        game_name = last_location or "Unknown Game"
-                                    # Only show name if it's not a generic placeholder
-                                    if game_name not in ("", "Game", "Unknown", "Private Server", "Unknown Game"):
-                                        status = f"In Game: {game_name}"
-                                    else:
-                                        status = "In Game"
-
-                                elif presence_type == 3:  # In Studio
-                                    status = "In Studio"
-
-                                else:  # Offline
-                                    status = "Offline"
-
-                                if last_online_raw:
-                                    last_dt = isoparse(last_online_raw)
-                                    last_online = last_dt.astimezone(PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
-                        else:
-                            status = "Offline"
-            # Thumbnail
-            thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&scale=1"
-            async with session.get(thumb_url) as resp:
+            async with session.post(
+                    "https://presence.roblox.com/v1/presence/users",
+                    json={"userIds": [user_id]}) as resp:
                 if resp.status == 200:
-                    thumb_data = await resp.json()
-                    image_url = thumb_data['data'][0]['imageUrl']
-                else:
-                    image_url = "https://www.roproxy.com/asset-thumbnail/image?assetId=1&type=HeadShot&width=420&height=420&format=Png"
-            # Creation date
-            created_at = isoparse(full_data['created'])
+                    p = (await resp.json())["userPresences"][0]
+                    presence_type = p.get("userPresenceType", 0)
+                    last_location = p.get("lastLocation", "")
+                    place_id = p.get("placeId")
+                    last_online_raw = p.get("lastOnline")
+
+                    if presence_type == 1:
+                        status = f"Online ({last_location})" if last_location else "Online"
+                    elif presence_type == 2:
+                        game_name = None
+                        if place_id:
+                            async with session.get(
+                                    f"https://games.roblox.com/v1/places/{place_id}"
+                            ) as r:
+                                if r.status == 200:
+                                    game_name = (await r.json()).get("name")
+                        status = f"In Game: {game_name}" if game_name else "In Game"
+                    elif presence_type == 3:
+                        status = "In Studio"
+                    else:
+                        status = "Offline"
+
+                    if last_online_raw:
+                        last_online = isoparse(last_online_raw).astimezone(
+                            PH_TIMEZONE).strftime("%A, %d %B %Y • %I:%M %p")
+
+            thumb_url = f"https://thumbnails.roproxy.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png"
+            async with session.get(thumb_url) as resp:
+                image_url = (await resp.json())["data"][0]["imageUrl"]
+
+            created_at = isoparse(full_data["created"])
             created_unix = int(created_at.timestamp())
-            # Description
-            description = full_data.get("description", "N/A") or "N/A"
-            # Emojis
-            verified = full_data.get('hasVerifiedBadge', False)
+            description = full_data.get("description") or "N/A"
+
+            verified = full_data.get("hasVerifiedBadge", False)
             premium = False
             try:
                 async with session.get(
                         f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
                         headers={"Cookie":
                                  os.getenv("ROBLOX_COOKIE")}) as resp:
-                    if resp.status == 200:
-                        premium = await resp.json()
+                    premium = await resp.json(
+                    ) if resp.status == 200 else False
             except:
                 pass
+
             emoji = ""
             if verified:
                 emoji += "<:RobloxVerified:1400310297184702564>"
             if premium:
                 emoji += "<:RobloxPremium:1438836163816198245>"
-            # Connections
+
             async with session.get(f"https://friends.roblox.com/v1/users/{user_id}/friends/count") as r1, \
                        session.get(f"https://friends.roblox.com/v1/users/{user_id}/followers/count") as r2, \
                        session.get(f"https://friends.roblox.com/v1/users/{user_id}/followings/count") as r3:
-                friends = (await r1.json()).get('count',
-                                                0) if r1.status == 200 else 0
-                followers = (await r2.json()).get('count',
-                                                  0) if r2.status == 200 else 0
-                followings = (await r3.json()).get(
-                    'count', 0) if r3.status == 200 else 0
-            # Embed (NO group role, NO color)
-            description_text = (
-                f"[**{display_name}**](https://www.roblox.com/users/{user_id}/profile) (**{user_id}**)\n\n"
-                f"**@{user}** {emoji}\n"
-                f"**Account Created:** <t:{created_unix}:f>\n\n"
-                f"```{description}```\n"
-                f"**Connections:** {friends}/{followers}/{followings}\n"
-                f"**Status:** {status}" +
-                (f" ({last_online})"
-                 if status == "Offline" and last_online != "N/A" else "")
-            )
-            embed = discord.Embed(description=description_text,
-                                  color=discord.Color.from_str("#000001"))
+                friends = (await r1.json()).get("count", 0)
+                followers = (await r2.json()).get("count", 0)
+                followings = (await r3.json()).get("count", 0)
+
+            embed = discord.Embed(
+                title=f"{display_name} ({user_id})",
+                url=f"https://www.roblox.com/users/{user_id}/profile",
+                description=(
+                    f"**@{user}** {emoji}\n"
+                    f"**Account Created:** <t:{created_unix}:f>\n\n"
+                    f"```{description}```\n"
+                    f"**Connections:** {friends}/{followers}/{followings}\n"
+                    f"**Status:** {status}" +
+                    (f" ({last_online})"
+                     if status == "Offline" and last_online != "N/A" else "")),
+                color=discord.Color.from_str("#000001"))
+
             embed.set_thumbnail(url=image_url)
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
+
             await interaction.followup.send(embed=embed)
+
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`",
+        await interaction.followup.send(f"❌ An error occurred: `{e}`",
                                         ephemeral=True)
+
 
 @roblox_group.command(
     name="gamepass",
-    description="Show a public Roblox Gamepass link using an ID or Creator Dashboard URL"
-)
-@app_commands.describe(
-    id="The Roblox Gamepass ID",
-    link="Roblox Creator Dashboard URL to convert"
-)
-async def roblox_gamepass(interaction: discord.Interaction, id: int = None, link: str = None):
+    description=
+    "Show a public Roblox Gamepass link using an ID or Creator Dashboard URL")
+@app_commands.describe(id="The Roblox Gamepass ID",
+                       link="Roblox Creator Dashboard URL to convert")
+async def roblox_gamepass(interaction: discord.Interaction,
+                          id: int = None,
+                          link: str = None):
     if id is not None and link is not None:
         await interaction.response.send_message(
             "❌ Please provide either an ID or a Link, not both.",
-            ephemeral=True
-        )
+            ephemeral=True)
         return
     pass_id = None
     if id is not None:
@@ -3351,24 +3620,19 @@ async def roblox_gamepass(interaction: discord.Interaction, id: int = None, link
             pass_id = match.group(1)
         else:
             await interaction.response.send_message(
-                "❌ Invalid Roblox Dashboard Gamepass Link.",
-                ephemeral=True
-            )
+                "❌ Invalid Roblox Dashboard Gamepass Link.", ephemeral=True)
             return
     else:
         await interaction.response.send_message(
             "❌ Please provide either a Gamepass ID or a Dashboard Link.",
-            ephemeral=True
-        )
+            ephemeral=True)
         return
 
     base_url = f"https://www.roblox.com/game-pass/{pass_id}"
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
-    embed.add_field(
-        name="🔗 Link",
-        value=f"`{base_url}`\n[View Gamepass]({base_url})",
-        inline=False
-    )
+    embed.add_field(name="🔗 Link",
+                    value=f"`{base_url}`\n[View Gamepass]({base_url})",
+                    inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
@@ -3376,22 +3640,20 @@ async def roblox_gamepass(interaction: discord.Interaction, id: int = None, link
 
 @roblox_group.command(
     name="devex",
-    description="Convert between Robux and USD using the current DevEx rate"
-)
+    description="Convert between Robux and USD using the current DevEx rate")
 @app_commands.describe(
     conversion_type="Choose the type of value you're entering",
-    amount="The amount of Robux or USD to convert"
-)
+    amount="The amount of Robux or USD to convert")
 @app_commands.choices(conversion_type=[
     app_commands.Choice(name="Robux to USD", value="robux"),
     app_commands.Choice(name="USD to Robux", value="usd")
 ])
-async def roblox_devex(interaction: discord.Interaction, conversion_type: app_commands.Choice[str], amount: float):
+async def roblox_devex(interaction: discord.Interaction,
+                       conversion_type: app_commands.Choice[str],
+                       amount: float):
     if amount <= 0:
         await interaction.response.send_message(
-            "❗ Please enter a positive amount.",
-            ephemeral=True
-        )
+            "❗ Please enter a positive amount.", ephemeral=True)
         return
 
     devex_rate = 0.0038  # $0.0038 per Robux
@@ -3400,37 +3662,42 @@ async def roblox_devex(interaction: discord.Interaction, conversion_type: app_co
         usd = robux * devex_rate
         embed = discord.Embed(
             title="💎 DevEx Conversion: Robux → USD",
-            description=f"Converting **{robux:,} Robux** at the rate of **$0.0035/Robux**:",
-            color=discord.Color.green()
-        )
-        embed.add_field(name="Total USD Value", value=f"**${usd:.4f} USD**", inline=False)
+            description=
+            f"Converting **{robux:,} Robux** at the rate of **$0.0035/Robux**:",
+            color=discord.Color.green())
+        embed.add_field(name="Total USD Value",
+                        value=f"**${usd:.4f} USD**",
+                        inline=False)
     else:
         usd = amount
         robux = usd / devex_rate
         embed = discord.Embed(
             title="💎 DevEx Conversion: USD → Robux",
-            description=f"Converting **${usd:.4f} USD** at the rate of **$0.0035/Robux**:",
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
-        embed.add_field(name="Total Robux Value", value=f"**{int(robux):,} Robux**", inline=False)
+            description=
+            f"Converting **${usd:.4f} USD** at the rate of **$0.0035/Robux**:",
+            color=discord.Color.from_rgb(0, 0, 0))
+        embed.add_field(name="Total Robux Value",
+                        value=f"**{int(robux):,} Robux**",
+                        inline=False)
 
     embed.add_field(
         name="Note",
-        value="This is an estimate based on the current DevEx rate. Actual payout may vary.",
-        inline=False
-    )
+        value=
+        "This is an estimate based on the current DevEx rate. Actual payout may vary.",
+        inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
+
 
 def clean_for_match(text: str) -> str:
     """Keep only alphanumeric and spaces, then lowercase."""
     return re.sub(r'[^a-z0-9\s]', '', text.lower())
 
+
 @roblox_group.command(
     name="community",
-    description="Search and display info for any Roblox group by name or ID"
-)
+    description="Search and display info for any Roblox group by name or ID")
 @app_commands.describe(name="Name or ID")
 async def roblox_community(interaction: discord.Interaction, name: str):
     await interaction.response.defer()
@@ -3446,15 +3713,13 @@ async def roblox_community(interaction: discord.Interaction, name: str):
                     if resp.status != 200:
                         return await interaction.followup.send(
                             "❌ Failed to search groups. Try using a Group ID instead.",
-                            ephemeral=True
-                        )
+                            ephemeral=True)
                     data = await resp.json()
                     groups = data.get('data', [])
                     if not groups:
                         return await interaction.followup.send(
                             f"❌ No public group found with name: `{name}`",
-                            ephemeral=True
-                        )
+                            ephemeral=True)
                 # Clean user input for robust matching
                 clean_query = clean_for_match(name)
                 # Step 1: Look for exact semantic match (ignoring punctuation/case)
@@ -3470,23 +3735,26 @@ async def roblox_community(interaction: discord.Interaction, name: str):
                         if clean_query in clean_for_match(g['name'])
                     ]
                     if candidates:
-                        best_match = max(candidates, key=lambda g: g.get('memberCount', 0))
+                        best_match = max(candidates,
+                                         key=lambda g: g.get('memberCount', 0))
                     else:
                         best_match = groups[0]  # fallback
                 group_id = best_match['id']
         # Fetch full group info
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://groups.roblox.com/v1/groups/{group_id}") as response:
+            async with session.get(
+                    f"https://groups.roblox.com/v1/groups/{group_id}"
+            ) as response:
                 if response.status != 200:
                     return await interaction.followup.send(
-                        "❌ Group not found or is private.",
-                        ephemeral=True
-                    )
+                        "❌ Group not found or is private.", ephemeral=True)
                 group_data = await response.json()
             # Fetch icon
             icon_url = None
             try:
-                async with session.get(f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={group_id}&size=420x420&format=Png") as icon_resp:
+                async with session.get(
+                        f"https://thumbnails.roproxy.com/v1/groups/icons?groupIds={group_id}&size=420x420&format=Png"
+                ) as icon_resp:
                     if icon_resp.status == 200:
                         icon_data = await icon_resp.json()
                         if icon_data.get('data'):
@@ -3497,20 +3765,20 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(
             name="Group Name",
-            value=f"[{group_data['name']}](https://www.roblox.com/groups/{group_id})",
-            inline=False
-        )
-        embed.add_field(
-            name="Description",
-            value=group_data.get('description', 'No description') or "No description",
-            inline=False
-        )
-        embed.add_field(name="Group ID", value=str(group_data['id']), inline=True)
+            value=
+            f"[{group_data['name']}](https://www.roblox.com/groups/{group_id})",
+            inline=False)
+        embed.add_field(name="Description",
+                        value=group_data.get('description', 'No description')
+                        or "No description",
+                        inline=False)
+        embed.add_field(name="Group ID",
+                        value=str(group_data['id']),
+                        inline=True)
         owner = group_data.get('owner')
         owner_link = (
             f"[{owner['username']}](https://www.roblox.com/users/{owner['userId']}/profile)"
-            if owner else "No Owner"
-        )
+            if owner else "No Owner")
         embed.add_field(name="Owner", value=owner_link, inline=True)
         embed.add_field(name="Members", value=formatted_members, inline=True)
         if icon_url:
@@ -3519,15 +3787,13 @@ async def roblox_community(interaction: discord.Interaction, name: str):
         embed.timestamp = discord.utils.utcnow()
         await interaction.followup.send(embed=embed)
     except Exception as e:
-        await interaction.followup.send(
-            f"❌ An error occurred: {str(e)}",
-            ephemeral=True
-        )
+        await interaction.followup.send(f"❌ An error occurred: {str(e)}",
+                                        ephemeral=True)
+
 
 @roblox_group.command(
     name="avatar",
-    description="Get a Roblox user's full-body avatar by username or ID"
-)
+    description="Get a Roblox user's full-body avatar by username or ID")
 @app_commands.describe(user="Roblox username or user ID")
 async def roblox_avatar(interaction: discord.Interaction, user: str):
     await interaction.response.defer()
@@ -3539,9 +3805,12 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
             # Resolve username or ID
             if user.isdigit():
                 user_id = int(user)
-                async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
+                async with session.get(
+                        f"https://users.roblox.com/v1/users/{user_id}"
+                ) as resp:
                     if resp.status != 200:
-                        return await interaction.followup.send("❌ User not found.", ephemeral=True)
+                        return await interaction.followup.send(
+                            "❌ User not found.", ephemeral=True)
                     user_data = await resp.json()
                     username = user_data['name']
                     display_name = user_data['displayName']
@@ -3549,12 +3818,17 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
                 resolve_url = "https://users.roblox.com/v1/usernames/users"
                 payload = {"usernames": [user]}
                 headers = {"Content-Type": "application/json"}
-                async with session.post(resolve_url, json=payload, headers=headers) as resp:
+                async with session.post(resolve_url,
+                                        json=payload,
+                                        headers=headers) as resp:
                     if resp.status != 200:
-                        return await interaction.followup.send("❌ Could not find that Roblox user.", ephemeral=True)
+                        return await interaction.followup.send(
+                            "❌ Could not find that Roblox user.",
+                            ephemeral=True)
                     data = await resp.json()
                     if not data['data']:
-                        return await interaction.followup.send("❌ User not found.", ephemeral=True)
+                        return await interaction.followup.send(
+                            "❌ User not found.", ephemeral=True)
                     user_id = data['data'][0]['id']
                     username = data['data'][0]['name']
                     display_name = data['data'][0]['displayName']
@@ -3569,7 +3843,9 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
             # === Fetch Verified (public) ===
             verified = False
             try:
-                async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
+                async with session.get(
+                        f"https://users.roblox.com/v1/users/{user_id}"
+                ) as resp:
                     if resp.status == 200:
                         user_info = await resp.json()
                         verified = user_info.get('hasVerifiedBadge', False)
@@ -3582,9 +3858,8 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
                 try:
                     headers = {"Cookie": f".ROBLOSECURITY={cookie}"}
                     async with session.get(
-                        f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
-                        headers=headers
-                    ) as resp:
+                            f"https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership",
+                            headers=headers) as resp:
                         if resp.status == 200:
                             premium = await resp.json()
                 except:
@@ -3599,25 +3874,24 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
             embed = discord.Embed(
                 title=display_title,
                 url=f"https://www.roblox.com/users/{user_id}/profile",
-                color=discord.Color.from_rgb(0, 0, 0)
-            )
+                color=discord.Color.from_rgb(0, 0, 0))
             embed.set_image(url=image_url)
             embed.set_footer(text="Neroniel")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             await interaction.followup.send(embed=embed)
     except Exception as e:
-        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`", ephemeral=True)
+        await interaction.followup.send(f"❌ An error occurred: `{str(e)}`",
+                                        ephemeral=True)
+
 
 @roblox_group.command(
     name="tax",
-    description="Show Roblox tax calculations for a given Robux amount"
-)
+    description="Show Roblox tax calculations for a given Robux amount")
 @app_commands.describe(amount="The Robux amount to calculate tax for")
 async def roblox_tax(interaction: discord.Interaction, amount: int):
     if amount <= 0:
         await interaction.response.send_message(
-            "❗ Robux amount must be greater than zero.", ephemeral=True
-        )
+            "❗ Robux amount must be greater than zero.", ephemeral=True)
         return
     # Covered Tax (you want to receive X, must send X / 0.7)
     target_receive = amount
@@ -3625,53 +3899,41 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
     # Not Covered Tax (you send X, receive 70%)
     sent_not_covered = amount
     received_not_covered = math.floor(sent_not_covered * 0.7)
-    embed = discord.Embed(
-        title="Roblox Transaction Tax",
-        color=discord.Color.from_rgb(0, 0, 0)
-    )
+    embed = discord.Embed(title="Roblox Transaction Tax",
+                          color=discord.Color.from_rgb(0, 0, 0))
     # ✅ Covered Tax
-    embed.add_field(
-        name="⌖ Covered Tax",
-        value=(
-            f"**Price:** {required_to_send} Robux\n"
-            f"**To Received:** {target_receive} Robux"
-        ),
-        inline=False
-    )
+    embed.add_field(name="⌖ Covered Tax",
+                    value=(f"**Price:** {required_to_send} Robux\n"
+                           f"**To Received:** {target_receive} Robux"),
+                    inline=False)
     embed.add_field(
         name="Note",
-        value=(
-            "Roblox applies a 30% fee on transactions within its marketplace. To receive a specific amount, you must account for this deduction by sending more than your target."
-        ),
-        inline=False
-    )
+        value=
+        ("Roblox applies a 30% fee on transactions within its marketplace. To receive a specific amount, you must account for this deduction by sending more than your target."
+         ),
+        inline=False)
 
     embed.add_field(name="", value="", inline=False)
 
     # ❌ Not Covered Tax
-    embed.add_field(
-        name="⌖ Not Covered Tax",
-        value=(
-            f"**Price:** {sent_not_covered} Robux\n"
-            f"**To Received:** {received_not_covered} Robux"
-        ),
-        inline=False
-    )
+    embed.add_field(name="⌖ Not Covered Tax",
+                    value=(f"**Price:** {sent_not_covered} Robux\n"
+                           f"**To Received:** {received_not_covered} Robux"),
+                    inline=False)
     embed.add_field(
         name="Note",
-        value=(
-            "Roblox applies a 30% fee on transactions within its marketplace, including buying and selling items. This fee is deducted from the total transaction value."
-        ),
-        inline=False
-    )
+        value=
+        ("Roblox applies a 30% fee on transactions within its marketplace, including buying and selling items. This fee is deducted from the total transaction value."
+         ),
+        inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
 
+
 @roblox_group.command(
     name="icon",
-    description="Get the icon of a Roblox Game by Place ID or Game URL"
-)
+    description="Get the icon of a Roblox Game by Place ID or Game URL")
 @app_commands.describe(id="Place ID or full Roblox Game URL")
 async def roblox_icon(interaction: discord.Interaction, id: str):
     place_id = None
@@ -3685,8 +3947,7 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
         else:
             await interaction.response.send_message(
                 "❌ Invalid input. Please provide a valid Place ID (e.g., `123456789`) or a Roblox Game URL.",
-                ephemeral=True
-            )
+                ephemeral=True)
             return
 
     await interaction.response.defer()
@@ -3699,14 +3960,13 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
                 if icon_resp.status != 200:
                     raise Exception("Failed to fetch icon")
                 icon_data = await icon_resp.json()
-                if not icon_data.get('data') or not icon_data['data'][0].get('imageUrl'):
+                if not icon_data.get('data') or not icon_data['data'][0].get(
+                        'imageUrl'):
                     raise Exception("No icon available")
                 image = icon_data['data'][0]['imageUrl']
 
         # Create embed with only the image
-        embed = discord.Embed(
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
+        embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
         embed.set_image(url=image)
         embed.set_footer(text="Neroniel • /roblox icon")
         embed.timestamp = datetime.now(PH_TIMEZONE)
@@ -3714,27 +3974,24 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
 
     except Exception as e:
         await interaction.followup.send(
-            f"❌ Failed to fetch game icon: `{str(e)}`",
-            ephemeral=True
-        )
+            f"❌ Failed to fetch game icon: `{str(e)}`", ephemeral=True)
 
 
 @roblox_group.command(
     name="rank",
-    description="Promote a Roblox user to Rank 6 (〆 Contributor) in 1cy"
-)
+    description="Promote a Roblox user to Rank 6 (〆 Contributor) in 1cy")
 @app_commands.describe(username="Roblox username to promote")
 async def roblox_promote_rank(interaction: discord.Interaction, username: str):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command.", ephemeral=False
-        )
+            "❌ You don't have permission to use this command.",
+            ephemeral=False)
         return
     ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE:
         await interaction.response.send_message(
-            "❌ `ROBLOX_COOKIE` is not set in environment variables.", ephemeral=False
-        )
+            "❌ `ROBLOX_COOKIE` is not set in environment variables.",
+            ephemeral=False)
         return
     GROUP_ID = 5838002
     TARGET_RANK = 6
@@ -3745,42 +4002,52 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
         async with aiohttp.ClientSession() as session:
             # Step 1: Resolve username → user ID
             async with session.post(
-                "https://users.roblox.com/v1/usernames/users",
-                json={"usernames": [username], "excludeBannedUsers": True},
-                headers={"Content-Type": "application/json"}
-            ) as resp:
+                    "https://users.roblox.com/v1/usernames/users",
+                    json={
+                        "usernames": [username],
+                        "excludeBannedUsers": True
+                    },
+                    headers={"Content-Type": "application/json"}) as resp:
                 if resp.status != 200:
-                    await interaction.followup.send("❌ Failed to resolve username.", ephemeral=False)
+                    await interaction.followup.send(
+                        "❌ Failed to resolve username.", ephemeral=False)
                     return
                 data = await resp.json()
                 if not data.get("data"):
-                    await interaction.followup.send("❌ Roblox user not found.", ephemeral=False)
+                    await interaction.followup.send("❌ Roblox user not found.",
+                                                    ephemeral=False)
                     return
                 user_id = data["data"][0]["id"]
                 display_name = data["data"][0]["displayName"]
 
             # Step 2: Fetch group roles to get the correct roleId for "〆 Contributor"
-            async with session.get(f"https://groups.roblox.com/v1/groups/{GROUP_ID}/roles") as roles_resp:
+            async with session.get(
+                    f"https://groups.roblox.com/v1/groups/{GROUP_ID}/roles"
+            ) as roles_resp:
                 if roles_resp.status != 200:
-                    await interaction.followup.send("❌ Could not fetch group roles.", ephemeral=False)
+                    await interaction.followup.send(
+                        "❌ Could not fetch group roles.", ephemeral=False)
                     return
                 roles_info = await roles_resp.json()
             target_role_id = None
             for role in roles_info.get("roles", []):
-                if role.get("rank") == TARGET_RANK and role.get("name") == TARGET_ROLE_NAME:
+                if role.get("rank") == TARGET_RANK and role.get(
+                        "name") == TARGET_ROLE_NAME:
                     target_role_id = role["id"]
                     break
             if not target_role_id:
                 await interaction.followup.send(
                     f"❌ Could not find role with rank {TARGET_RANK} and name '{TARGET_ROLE_NAME}'.",
-                    ephemeral=False
-                )
+                    ephemeral=False)
                 return
 
             # Step 3: Check current group role
-            async with session.get(f"https://groups.roblox.com/v2/users/{user_id}/groups/roles") as resp:
+            async with session.get(
+                    f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
+            ) as resp:
                 if resp.status != 200:
-                    await interaction.followup.send("❌ Could not fetch group membership.", ephemeral=False)
+                    await interaction.followup.send(
+                        "❌ Could not fetch group membership.", ephemeral=False)
                     return
                 roles_data = await resp.json()
             current_role = None
@@ -3792,33 +4059,33 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
             if not current_role:
                 await interaction.followup.send(
                     f"❌ `{username}` is not in the 1cy Group. They must join first.",
-                    ephemeral=False
-                )
+                    ephemeral=False)
                 return
 
-            if current_role.get("rank") == TARGET_RANK and current_role.get("name") == TARGET_ROLE_NAME:
+            if current_role.get("rank") == TARGET_RANK and current_role.get(
+                    "name") == TARGET_ROLE_NAME:
                 embed = discord.Embed(
                     title="✅ Already 〆 Contributor",
-                    description=f"`{username}` ({display_name}) is already **〆 Contributor** in 1cy.",
-                    color=discord.Color.green()
+                    description=
+                    f"`{username}` ({display_name}) is already **〆 Contributor** in 1cy.",
+                    color=discord.Color.green())
+                embed.set_thumbnail(
+                    url=
+                    f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png"
                 )
-                embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
                 embed.set_footer(text="Neroniel")
                 embed.timestamp = datetime.now(PH_TIMEZONE)
                 await interaction.followup.send(embed=embed, ephemeral=False)
                 return
 
             # Step 4: Get X-CSRF-TOKEN
-            csrf_resp = await session.post(
-                "https://auth.roblox.com/v2/logout",
-                headers={"Cookie": ROBLOX_COOKIE}
-            )
+            csrf_resp = await session.post("https://auth.roblox.com/v2/logout",
+                                           headers={"Cookie": ROBLOX_COOKIE})
             xcsrf_token = csrf_resp.headers.get("x-csrf-token")
             if not xcsrf_token:
                 await interaction.followup.send(
                     "❌ Failed to retrieve X-CSRF-TOKEN. Cookie may be invalid or expired.",
-                    ephemeral=False
-                )
+                    ephemeral=False)
                 return
 
             # Step 5: Promote using correct roleId and X-CSRF-TOKEN
@@ -3828,42 +4095,48 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
                 "X-CSRF-TOKEN": xcsrf_token,
                 "Content-Type": "application/json"
             }
-            payload = {"roleId": target_role_id}  # ✅ Use real roleId, not rank number
-            async with session.patch(update_url, headers=headers, json=payload) as resp:
+            payload = {
+                "roleId": target_role_id
+            }  # ✅ Use real roleId, not rank number
+            async with session.patch(update_url, headers=headers,
+                                     json=payload) as resp:
                 if resp.status == 200:
                     embed = discord.Embed(
                         title="✅ Promoted to 〆 Contributor",
-                        description=f"`{username}` ({display_name}) has been set to **〆 Contributor** in 1cy.",
-                        color=discord.Color.green()
+                        description=
+                        f"`{username}` ({display_name}) has been set to **〆 Contributor** in 1cy.",
+                        color=discord.Color.green())
+                    embed.set_thumbnail(
+                        url=
+                        f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png"
                     )
-                    embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}&width=150&height=150&format=png")
                     embed.set_footer(text="Neroniel")
                     embed.timestamp = datetime.now(PH_TIMEZONE)
-                    await interaction.followup.send(embed=embed, ephemeral=False)
+                    await interaction.followup.send(embed=embed,
+                                                    ephemeral=False)
                 elif resp.status == 403:
                     await interaction.followup.send(
                         "❌ Permission denied. Your cookie may be invalid, expired, or lack group management rights.",
-                        ephemeral=False
-                    )
+                        ephemeral=False)
                 elif resp.status == 400:
                     await interaction.followup.send(
                         "❌ Invalid request. This usually means the roleId is wrong or the user isn’t in the group.",
-                        ephemeral=False
-                    )
+                        ephemeral=False)
                 else:
                     error_text = await resp.text()
                     await interaction.followup.send(
                         f"❌ Failed to update rank (HTTP {resp.status}): `{error_text}`",
-                        ephemeral=False
-                    )
+                        ephemeral=False)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=False)
         print(f"[ERROR] /roblox rank: {e}")
 
+
 @roblox_group.command(
     name="game",
-    description="Display detailed information about a Roblox game using Place ID or Game Link"
+    description=
+    "Display detailed information about a Roblox game using Place ID or Game Link"
 )
 @app_commands.describe(id="The Roblox Place ID (e.g., 123456789) or Game Link")
 async def roblox_game(interaction: discord.Interaction, id: str):
@@ -3883,8 +4156,7 @@ async def roblox_game(interaction: discord.Interaction, id: str):
     if not place_id or place_id <= 0:
         return await interaction.followup.send(
             "❌ Invalid input. Please provide a valid Place ID or Roblox Game URL.",
-            ephemeral=True
-        )
+            ephemeral=True)
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -3895,7 +4167,8 @@ async def roblox_game(interaction: discord.Interaction, id: str):
             universe_url = f"https://apis.roblox.com/universes/v1/places/{place_id}/universe"
             async with session.get(universe_url) as uni_resp:
                 if uni_resp.status != 200:
-                    raise Exception(f"HTTP {uni_resp.status}: Invalid or private Place ID")
+                    raise Exception(
+                        f"HTTP {uni_resp.status}: Invalid or private Place ID")
 
                 uni_data = await uni_resp.json()
                 universe_id = uni_data.get("universeId")
@@ -3908,7 +4181,8 @@ async def roblox_game(interaction: discord.Interaction, id: str):
             game_url = f"https://games.roblox.com/v1/games?universeIds={universe_id}"
             async with session.get(game_url) as resp:
                 if resp.status != 200:
-                    raise Exception(f"HTTP {resp.status}: Failed to fetch game info.")
+                    raise Exception(
+                        f"HTTP {resp.status}: Failed to fetch game info.")
 
                 data = await resp.json()
                 if not data.get("data"):
@@ -3970,8 +4244,10 @@ async def roblox_game(interaction: discord.Interaction, id: str):
             # 5️⃣ Convert Created / Updated to Discord Timestamps
             # ----------------------------------------------
             from dateutil.parser import isoparse
-            created_unix = int(isoparse(created_at).timestamp()) if created_at else 0
-            updated_unix = int(isoparse(updated_at).timestamp()) if updated_at else 0
+            created_unix = int(
+                isoparse(created_at).timestamp()) if created_at else 0
+            updated_unix = int(
+                isoparse(updated_at).timestamp()) if updated_at else 0
 
             # ----------------------------------------------
             # 6️⃣ Build Links
@@ -3992,17 +4268,16 @@ async def roblox_game(interaction: discord.Interaction, id: str):
             embed.add_field(name="Creator", value=creator_link, inline=True)
             embed.add_field(name="Playing", value=f"{playing:,}", inline=True)
             embed.add_field(name="Visits", value=f"{visits:,}", inline=True)
-            embed.add_field(
-                name="Likes | Dislikes | Favorites",
-                value=f"{likes:,} | {dislikes:,} | {favorites:,}",
-                inline=True
-            )
+            embed.add_field(name="Likes | Dislikes | Favorites",
+                            value=f"{likes:,} | {dislikes:,} | {favorites:,}",
+                            inline=True)
             embed.add_field(
                 name="Created | Updated",
                 value=f"<t:{created_unix}:f> | <t:{updated_unix}:f>",
-                inline=True
-            )
-            embed.add_field(name="Max Server Size", value=str(max_players), inline=True)
+                inline=True)
+            embed.add_field(name="Max Server Size",
+                            value=str(max_players),
+                            inline=True)
 
             if thumbnail_url:
                 embed.set_thumbnail(url=thumbnail_url)
@@ -4017,13 +4292,12 @@ async def roblox_game(interaction: discord.Interaction, id: str):
 
     except Exception as e:
         return await interaction.followup.send(
-            f"❌ Failed to fetch game info: `{str(e)}`",
-            ephemeral=True
-        )
+            f"❌ Failed to fetch game info: `{str(e)}`", ephemeral=True)
 
 
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
+
 
 # ===========================
 # Bot Events
@@ -4067,7 +4341,8 @@ async def on_ready():
                     channel = guild.get_channel(int(gw["channel_id"]))
                     if channel:
                         try:
-                            msg = await channel.fetch_message(int(gw["message_id"]))
+                            msg = await channel.fetch_message(
+                                int(gw["message_id"]))
                             view = PersistentGiveawayView(
                                 giveaway_id=gw["_id"],
                                 host_id=int(gw["host_id"]),
@@ -4075,8 +4350,8 @@ async def on_ready():
                                 end_time=gw["end_time"],
                                 winner_count=gw["winner_count"],
                                 required_roles=gw["required_roles"],
-                                message_requirement=gw.get("message_requirement")
-                            )
+                                message_requirement=gw.get(
+                                    "message_requirement"))
                             await msg.edit(view=view)
                         except Exception as e:
                             print(f"[GIVEAWAY] Failed to restore: {e}")
@@ -4117,5 +4392,6 @@ async def on_ready():
                         type=discord.ActivityType.watching, name="1cy"))
             # Wait 60 seconds before next update
             await asyncio.sleep(60)
+
 
 bot.run(os.getenv('DISCORD_TOKEN'))
