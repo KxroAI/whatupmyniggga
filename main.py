@@ -3582,7 +3582,7 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
                 title=f"{display_name}",
                 url=f"https://www.roblox.com/users/{user_id}/profile",
                 description=(
-                    f"**@{user}** {emoji} ({user_id})\n"
+                    f"**@{user} {emoji} ({user_id})**\n"
                     f"**Account Created:** <t:{created_unix}:f>\n\n"
                     f"```{description}```\n"
                     f"**Connections:** {friends}/{followers}/{followings}\n"
