@@ -2340,6 +2340,7 @@ async def listallcommands(interaction: discord.Interaction):
         ],
         "🛠️ Utility & Info": [
             "`/userinfo [user]` – View Discord user info",
+            "`/serverinfo` – View current server info",
             "`/avatar [user]` – Show Discord user’s avatar",
             "`/banner [user]` – Show Discord user’s banner",
             "`/weather <city>` – Get current weather info",
@@ -2370,21 +2371,25 @@ async def listallcommands(interaction: discord.Interaction):
             "`/purge <amount>` – Delete messages (mod/owner)",
             "`/createinvite` – Create 30-min invites for all servers (owner only)"
         ],
-        "🔧 Bot & Server":
-        ["`/listallcommands` – List all available commands (this command)"]
+        "🔧 Bot & Server": [
+            "`/listallcommands` – List all available commands (this command)"
+        ]
     }
     embeds = []
     for name, cmds in categories.items():
-        embed = discord.Embed(title=name,
-                              description="\n".join(cmds),
-                              color=discord.Color.from_rgb(0, 0, 0))
+        embed = discord.Embed(
+            title=name,
+            description="\n".join(cmds),
+            color=discord.Color.from_rgb(0, 0, 0)
+        )
         embed.set_footer(text="Neroniel • Use buttons to navigate")
         embed.timestamp = datetime.now(PH_TIMEZONE)
         embeds.append(embed)
+
     if not embeds:
-        await interaction.response.send_message("❌ No commands found.",
-                                                ephemeral=True)
+        await interaction.response.send_message("❌ No commands found.", ephemeral=True)
         return
+
     view = CommandPaginator(embeds)
     await interaction.response.send_message(embed=embeds[0], view=view)
     view.message = await interaction.original_response()
@@ -3574,10 +3579,10 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
                 followings = (await r3.json()).get("count", 0)
 
             embed = discord.Embed(
-                title=f"{display_name} ({user_id})",
+                title=f"{display_name}",
                 url=f"https://www.roblox.com/users/{user_id}/profile",
                 description=(
-                    f"**@{user}** {emoji}\n"
+                    f"**@{user}** {emoji} ({user_id})\n"
                     f"**Account Created:** <t:{created_unix}:f>\n\n"
                     f"```{description}```\n"
                     f"**Connections:** {friends}/{followers}/{followings}\n"
