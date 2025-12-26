@@ -46,6 +46,8 @@ bot.last_message_id = {}  # Store last message IDs for threaded replies
 bot.ai_threads = {}
 bot.giveaway_message_counts = defaultdict(lambda: defaultdict(
     int))  # Track giveaway message counts per user per channel
+bot.giveaway_invite_counts = defaultdict(lambda: defaultdict(int)) # Track per-giveaway active invites: {giveaway_id: {inviter_user_id_str: count}}
+bot.invited_user_map = {} # Map invited user → (giveaway_id, inviter_id) for leave tracking
 
 # ===========================
 # Flask Web Server to Keep Bot Alive
@@ -540,6 +542,61 @@ async def handle_ai_followup(message, user_id):
             await channel.send(f"❌ Error: {str(e)}")
             print(f"[EXCEPTION] follow-up: {e}")
 
+# Giveaway Counter
+@bot.event
+async def on_member_join(member):
+    if member.bot or not isinstance(member.guild, discord.TextChannel):
+        return
+    if giveaways_collection is None:
+        return
+
+    guild_id = str(member.guild.id)
+    user_id = str(member.id)
+    join_time = member.joined_at
+    if not join_time:
+        return
+
+    # Find active giveaways with invite_requirement in this guild
+    active_giveaways = giveaways_collection.find({
+        "guild_id": guild_id,
+        "ended": {"$ne": True},
+        "invite_requirement": {"$ne": None}
+    })
+
+    for gw in active_giveaways:
+        gw_id = str(gw["_id"])
+        gw_msg_id = int(gw["message_id"])
+        # Convert message ID to timestamp (Discord Snowflake)
+        msg_timestamp = ((gw_msg_id >> 22) + 1420070400000) / 1000
+        if join_time.timestamp() <= msg_timestamp:
+            continue  # Joined before giveaway → skip
+
+        # Best-effort invite attribution
+        try:
+            invites = await member.guild.invites()
+        except:
+            continue
+
+        for inv in invites:
+            if inv.uses > 0 and inv.inviter and not inv.inviter.bot:
+                inviter_id = str(inv.inviter.id)
+                bot.giveaway_invite_counts[gw_id][inviter_id] += 1
+                bot.invited_user_map[user_id] = (gw_id, inviter_id)
+                break
+
+
+@bot.event
+async def on_member_remove(member):
+    if member.bot:
+        return
+    user_id = str(member.id)
+    if user_id not in bot.invited_user_map:
+        return
+
+    gw_id, inviter_id = bot.invited_user_map[user_id]
+    if gw_id in bot.giveaway_invite_counts and inviter_id in bot.giveaway_invite_counts[gw_id]:
+        bot.giveaway_invite_counts[gw_id][inviter_id] = max(0, bot.giveaway_invite_counts[gw_id][inviter_id] - 1)
+    del bot.invited_user_map[user_id]
 
 @bot.event
 async def on_message(message):
@@ -982,9 +1039,8 @@ def parse_duration(duration_str: str) -> int:
 # Persistent Giveaway View (MUST be defined BEFORE command)
 # ===========================
 class PersistentGiveawayView(ui.View):
-
     def __init__(self, giveaway_id, host_id, prize, end_time, winner_count,
-                 required_roles, message_requirement):
+                 required_roles, message_requirement, invite_requirement=None):
         super().__init__(timeout=None)
         self.giveaway_id = giveaway_id
         self.host_id = host_id
@@ -993,42 +1049,42 @@ class PersistentGiveawayView(ui.View):
         self.winner_count = winner_count
         self.required_roles = required_roles
         self.message_requirement = message_requirement
+        self.invite_requirement = invite_requirement
 
-    @ui.button(label="Entry",
-               style=ButtonStyle.green,
-               emoji="✅",
-               custom_id="giveaway_entry")
-    async def entry_button(self, interaction: discord.Interaction,
-                           button: ui.Button):
+    @ui.button(label="Entry", style=ButtonStyle.green, emoji="✅", custom_id="giveaway_entry")
+    async def entry_button(self, interaction: discord.Interaction, button: ui.Button):
         if giveaways_collection is None:
-            await interaction.response.send_message("❌ Database unavailable.",
-                                                    ephemeral=True)
+            await interaction.response.send_message("❌ Database unavailable.", ephemeral=True)
             return
         user_id_str = str(interaction.user.id)
         giveaway = giveaways_collection.find_one({"_id": self.giveaway_id})
         if not giveaway or giveaway.get("ended"):
-            await interaction.response.send_message(
-                "❌ This giveaway has ended.", ephemeral=True)
+            await interaction.response.send_message("❌ This giveaway has ended.", ephemeral=True)
             return
 
         # Role check
         if self.required_roles:
             member = interaction.guild.get_member(interaction.user.id)
-            if not member or not any(r.id in self.required_roles
-                                     for r in member.roles):
+            if not member or not any(r.id in self.required_roles for r in member.roles):
                 roles = ", ".join(f"<@&{r}>" for r in self.required_roles)
-                await interaction.response.send_message(
-                    f"❌ You need one of these roles to enter: {roles}",
-                    ephemeral=True)
+                await interaction.response.send_message(f"❌ You need one of these roles to enter: {roles}", ephemeral=True)
                 return
 
-        # Message requirement check (GUILD-WIDE, per giveaway)
+        # Message requirement check
         if self.message_requirement:
-            user_msg_count = bot.giveaway_message_counts.get(
-                str(self.giveaway_id), {}).get(user_id_str, 0)
+            user_msg_count = bot.giveaway_message_counts.get(str(self.giveaway_id), {}).get(user_id_str, 0)
             if user_msg_count < self.message_requirement:
                 await interaction.response.send_message(
                     f"❌ You must send at least **{self.message_requirement} message(s)** in this server after the giveaway started to enter.",
+                    ephemeral=True)
+                return
+
+        # ✅ Invite requirement check (PER-GIVEAWAY, ACTIVE ONLY)
+        if self.invite_requirement:
+            user_invite_count = bot.giveaway_invite_counts.get(str(self.giveaway_id), {}).get(user_id_str, 0)
+            if user_invite_count < self.invite_requirement:
+                await interaction.response.send_message(
+                    f"❌ You need at least **{self.invite_requirement} active invite(s)** during this giveaway to enter.",
                     ephemeral=True)
                 return
 
@@ -1036,18 +1092,14 @@ class PersistentGiveawayView(ui.View):
         entries = giveaway.get("entries", [])
         if user_id_str not in entries:
             entries.append(user_id_str)
-            giveaways_collection.update_one({"_id": self.giveaway_id},
-                                            {"$set": {
-                                                "entries": entries
-                                            }})
-            # Update footer
+            giveaways_collection.update_one({"_id": self.giveaway_id}, {"$set": {"entries": entries}})
             embed = interaction.message.embeds[0]
-            embed.set_footer(
-                text=f"Entries {len(entries)} | ID: {str(self.giveaway_id)}")
+            embed.set_footer(text=f"Entries {len(entries)} | ID: {str(self.giveaway_id)}")
             embed.timestamp = datetime.now(PH_TIMEZONE)
             await interaction.message.edit(embed=embed)
-        await interaction.response.send_message(
-            "✅ You've entered the giveaway!", ephemeral=True)
+            await interaction.response.send_message("✅ You've entered the giveaway!", ephemeral=True)
+        else:
+            await interaction.response.send_message("✅ You're already entered!", ephemeral=True)
 
 
 # ===========================
@@ -1061,13 +1113,19 @@ async def end_giveaway_later(giveaway_id, delay):
 async def end_giveaway_now(giveaway_id):
     if giveaways_collection is None:
         return
+    gid_str = str(giveaway_id)
+
+    # ✅ CLEAN UP INVITE TRACKING FOR THIS GIVEAWAY
+    if gid_str in bot.giveaway_invite_counts:
+        del bot.giveaway_invite_counts[gid_str]
+    to_remove = [uid for uid, (gw, _) in bot.invited_user_map.items() if gw == gid_str]
+    for uid in to_remove:
+        del bot.invited_user_map[uid]
+
     giveaway = giveaways_collection.find_one({"_id": giveaway_id})
     if not giveaway or giveaway.get("ended"):
         return
-    giveaways_collection.update_one({"_id": giveaway_id},
-                                    {"$set": {
-                                        "ended": True
-                                    }})
+    giveaways_collection.update_one({"_id": giveaway_id}, {"$set": {"ended": True}})
     guild = bot.get_guild(int(giveaway["guild_id"]))
     if not guild:
         return
@@ -1085,14 +1143,12 @@ async def end_giveaway_now(giveaway_id):
     end_time = giveaway["end_time"]
     end_unix = int(end_time.timestamp())
 
-    # Build updated embed
     host_mention = f"<@{giveaway['host_id']}>"
     embed = discord.Embed(
         title=f"**:gift: {prize}**",
-        color=discord.Color.green() if entries else discord.Color.red())
-    embed.add_field(name=":alarm_clock: Ends",
-                    value=f"<t:{end_unix}:f> (<t:{end_unix}:R>)",
-                    inline=False)
+        color=discord.Color.green() if entries else discord.Color.red()
+    )
+    embed.add_field(name=":alarm_clock: Ends", value=f"<t:{end_unix}:f> (<t:{end_unix}:R>)", inline=False)
     if entries:
         winners = random.sample(entries, min(len(entries), winner_count))
         winner_mentions = ", ".join(f"<@{w}>" for w in winners)
@@ -1103,13 +1159,10 @@ async def end_giveaway_now(giveaway_id):
     embed.add_field(name="Hosted by", value=host_mention, inline=False)
     embed.set_footer(text=f"Entries {len(entries)} | ID: {str(giveaway_id)}")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
-    # ✅ CRITICAL FIX: Actually edit the original message and remove button
     await message.edit(embed=embed, view=None)
     if entries:
         winner_mentions = ", ".join(f"<@{w}>" for w in winners)
-        await message.reply(
-            content=f":trophy: **Winner(s)**: {winner_mentions}")
+        await message.reply(content=f":trophy: **Winner(s)**: {winner_mentions}")
 
 
 # ===========================
@@ -1121,15 +1174,17 @@ async def end_giveaway_now(giveaway_id):
     duration="Duration (e.g., 30s, 10m, 2h, 1d)",
     winner_count="Number of winners",
     required_roles="Mention roles required to enter (optional)",
-    message_requirement="Min. messages user must send after start to enter (optional)"
+    message_requirement="Min. messages user must send after start to enter (optional)",
+    invite_requirement="Min. active invites during this giveaway (optional)"
 )
 async def giveaway(
     interaction: discord.Interaction,
     prize: str,
     duration: str,
-    winner_count: int,  
+    winner_count: int,
     required_roles: str = None,
-    message_requirement: int = None  
+    message_requirement: int = None,
+    invite_requirement: int = None
 ):
     is_admin = interaction.user.guild_permissions.manage_guild
     is_owner = interaction.user.id == BOT_OWNER_ID
@@ -1145,73 +1200,81 @@ async def giveaway(
             raise ValueError()
         if message_requirement is not None and message_requirement <= 0:
             raise ValueError("Message requirement must be positive.")
+        if invite_requirement is not None and invite_requirement <= 0:
+            raise ValueError("Invite requirement must be positive.")
     except:
         await interaction.response.send_message(
-            "❌ Invalid duration, winner count, or message requirement. Use: `10s`, `5m`, `2h`, or `1d`.", ephemeral=True
+            "❌ Invalid duration, winner count, message or invite requirement. Use: `10s`, `5m`, `2h`, or `1d`.", ephemeral=True
         )
         return
 
     # ✅ Compute end time in PH (for user display)
     end_time_ph = datetime.now(PH_TIMEZONE) + timedelta(seconds=total_seconds)
-    # ✅ Convert to UTC for reliable storage and comparisons
     end_time_utc = end_time_ph.astimezone(pytz.UTC)
-    # ✅ Use PH time for embed timestamp (user-friendly)
     end_unix = int(end_time_ph.timestamp())
 
     required_role_ids = []
     if required_roles:
         required_role_ids = [int(rid) for rid in re.findall(r'<@&(\d+)>', required_roles)]
-    # Build embed using PH time
-    embed = discord.Embed(
-        title=f"**:gift: {prize}**",
-        color=discord.Color.gold()
-    )
+
+    # Build embed
+    embed = discord.Embed(title=f"**:gift: {prize}**", color=discord.Color.gold())
     embed.add_field(name=":alarm_clock: Ends", value=f"<t:{end_unix}:f> (<t:{end_unix}:R>)", inline=False)
     embed.add_field(name=":trophy: Winners", value=str(winner_count), inline=False)
     if required_role_ids:
         embed.add_field(name="Required Roles", value=', '.join(f"<@&{r}>" for r in required_role_ids), inline=False)
     if message_requirement:
         embed.add_field(name="Message Requirement", value=f"{message_requirement} message(s) required", inline=False)
+    if invite_requirement:
+        embed.add_field(name="Invite Requirement", value=f"{invite_requirement} active invite(s) required during this giveaway", inline=False)
     embed.add_field(name="Hosted by", value=interaction.user.mention, inline=False)
-    embed.set_footer(text=f"Entries 0 | ID: {str(None)}")  # Will be replaced after DB insert
+    embed.set_footer(text=f"Entries 0 | ID: {str(None)}")
     embed.timestamp = datetime.now(PH_TIMEZONE)
+
     await interaction.response.send_message(embed=embed)
     msg = await interaction.original_response()
-    # Save to DB using UTC time
+
+    # Save to DB
     giveaway_data = {
         "guild_id": str(interaction.guild.id),
         "channel_id": str(interaction.channel.id),
         "message_id": str(msg.id),
         "host_id": str(interaction.user.id),
         "prize": prize,
-        "end_time": end_time_utc,  # ✅ STORE IN UTC
+        "end_time": end_time_utc,
         "winner_count": winner_count,
         "required_roles": required_role_ids,
-        "message_requirement": message_requirement,  
+        "message_requirement": message_requirement,
+        "invite_requirement": invite_requirement,
         "entries": [],
         "ended": False,
         "created_at": datetime.now(PH_TIMEZONE)
     }
+
     if giveaways_collection is not None:
         result = giveaways_collection.insert_one(giveaway_data)
         giveaway_id = result.inserted_id
     else:
         return await interaction.followup.send("❌ Database error – giveaway not saved.", ephemeral=True)
+
     # Update footer with real ID
     embed.set_footer(text=f"Entries 0 | ID: {str(giveaway_id)}")
     await msg.edit(embed=embed)
-    # Attach persistent view (pass PH time for display consistency in button logic)
+
+    # Attach view
     view = PersistentGiveawayView(
         giveaway_id=giveaway_id,
         host_id=str(interaction.user.id),
         prize=prize,
-        end_time=end_time_ph,  # ✅ Use PH time here to match embed display
+        end_time=end_time_ph,
         winner_count=winner_count,
         required_roles=required_role_ids,
-        message_requirement=message_requirement 
+        message_requirement=message_requirement,
+        invite_requirement=invite_requirement
     )
     await msg.edit(view=view)
-    # Schedule end using total_seconds (no need to recompute)
+
+    # Schedule end
     asyncio.create_task(end_giveaway_later(giveaway_id, total_seconds))
 
 
