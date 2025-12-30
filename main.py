@@ -2972,9 +2972,9 @@ async def roblox_stocks(interaction: discord.Interaction):
     # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
-    ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")  # Sheboyngo uses MC cookie
+    ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")  
     ROBLOX_COOKIE_BSM = os.getenv(
-        "ROBLOX_COOKIE2")  # BSM uses MC cookie (ROBLOX_COOKIE2)
+        "ROBLOX_COOKIE2")  
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv(
         "ROBLOX_STOCKS_ID") else None
