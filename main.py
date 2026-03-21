@@ -3113,6 +3113,7 @@ async def roblox_stocks(interaction: discord.Interaction):
     embed.add_field(name="**⌖ __Sheboyngo__ Community Funds | Pending Robux**", value=f"{fmt('sb_funds')} | {fmt('sb_pending')}", inline=False)
     embed.add_field(name="**⌖ __Brazilian Spyder Market__ Community Funds | Pending Robux**", value=f"{fmt('bsm_funds')} | {fmt('bsm_pending')}", inline=False)
     embed.add_field(name="**⌖ __MPG Studios__ Community Funds | Pending Robux**", value=f"{fmt('mpg_funds')} | {fmt('mpg_pending')}", inline=False)
+    embed.add_field(name="**⌖ __Content Deleted__ Community Funds | Pending Robux**", value=f"{fmt('cd_funds')} | {fmt('cd_pending')}", inline=False)
 
     # Daily sales rows
     embed.add_field(name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**", value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}", inline=False)
