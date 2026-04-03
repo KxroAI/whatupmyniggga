@@ -2953,25 +2953,22 @@ async def roblox_group_info(interaction: discord.Interaction):
 @roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
-
     # Group IDs
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
     GROUP_ID_SB = 35341321
     GROUP_ID_BSM = 42939987
     GROUP_ID_MPG = 365820076
-    GROUP_ID_CD = 7411911  
-
+    GROUP_ID_CD = 7411911
     # Cookies
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_BSM = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_MPG = os.getenv("ROBLOX_COOKIE2")
-    ROBLOX_COOKIE_CD = os.getenv("ROBLOX_COOKIE2")  
+    ROBLOX_COOKIE_CD = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
-
     # Validate environment variables
     missing = []
     if not ROBLOX_COOKIE_1CY: missing.append("ROBLOX_COOKIE")
@@ -2981,19 +2978,17 @@ async def roblox_stocks(interaction: discord.Interaction):
     if missing:
         await interaction.followup.send(f"❌ Missing env vars: {', '.join(missing)}")
         return
-
     # Initialize data
     data = {
-        '1cy_funds': 0, '1cy_pending': 0, '1cy_daily': 0,
-        'mc_funds': 0, 'mc_pending': 0, 'mc_daily': 0,
-        'sb_funds': 0, 'sb_pending': 0, 'sb_daily': 0,
-        'bsm_funds': 0, 'bsm_pending': 0, 'bsm_daily': 0,
-        'mpg_funds': 0, 'mpg_pending': 0, 'mpg_daily': 0,
-        'cd_funds': 0, 'cd_pending': 0, 'cd_daily': 0,  
+        '1cy_funds': 0, '1cy_pending': 0,
+        'mc_funds': 0, 'mc_pending': 0,
+        'sb_funds': 0, 'sb_pending': 0,
+        'bsm_funds': 0, 'bsm_pending': 0,
+        'mpg_funds': 0, 'mpg_pending': 0,
+        'cd_funds': 0, 'cd_pending': 0,
         'account_balance': 0
     }
     visible = {k: False for k in data}
-
     async with aiohttp.ClientSession() as session:
         # --- 1cy ---
         try:
@@ -3002,15 +2997,12 @@ async def roblox_stocks(interaction: discord.Interaction):
                 res = await r.json()
                 data['1cy_funds'] = res.get('robux', 0)
                 visible['1cy_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_1CY})
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_1CY})
             if r.status == 200:
                 res = await r.json()
                 data['1cy_pending'] = res.get('pendingRobux', 0)
-                data['1cy_daily'] = res.get('itemSaleRobux', 0)
                 visible['1cy_pending'] = True
-                visible['1cy_daily'] = True
         except: pass
-
         # --- Modded Corporations ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency", headers={"Cookie": ROBLOX_COOKIE_MC})
@@ -3018,15 +3010,12 @@ async def roblox_stocks(interaction: discord.Interaction):
                 res = await r.json()
                 data['mc_funds'] = res.get('robux', 0)
                 visible['mc_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_MC})
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_MC})
             if r.status == 200:
                 res = await r.json()
                 data['mc_pending'] = res.get('pendingRobux', 0)
-                data['mc_daily'] = res.get('itemSaleRobux', 0)
                 visible['mc_pending'] = True
-                visible['mc_daily'] = True
         except: pass
-
         # --- Sheboyngo ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/currency", headers={"Cookie": ROBLOX_COOKIE_SB})
@@ -3034,15 +3023,12 @@ async def roblox_stocks(interaction: discord.Interaction):
                 res = await r.json()
                 data['sb_funds'] = res.get('robux', 0)
                 visible['sb_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_SB})
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_SB})
             if r.status == 200:
                 res = await r.json()
                 data['sb_pending'] = res.get('pendingRobux', 0)
-                data['sb_daily'] = res.get('itemSaleRobux', 0)
                 visible['sb_pending'] = True
-                visible['sb_daily'] = True
         except: pass
-
         # --- Brazilian Spyder Market ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/currency", headers={"Cookie": ROBLOX_COOKIE_BSM})
@@ -3050,15 +3036,12 @@ async def roblox_stocks(interaction: discord.Interaction):
                 res = await r.json()
                 data['bsm_funds'] = res.get('robux', 0)
                 visible['bsm_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_BSM})
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_BSM})
             if r.status == 200:
                 res = await r.json()
                 data['bsm_pending'] = res.get('pendingRobux', 0)
-                data['bsm_daily'] = res.get('itemSaleRobux', 0)
                 visible['bsm_pending'] = True
-                visible['bsm_daily'] = True
         except: pass
-
         # --- MPG Studios ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MPG}/currency", headers={"Cookie": ROBLOX_COOKIE_MPG})
@@ -3066,15 +3049,12 @@ async def roblox_stocks(interaction: discord.Interaction):
                 res = await r.json()
                 data['mpg_funds'] = res.get('robux', 0)
                 visible['mpg_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MPG}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_MPG})
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MPG}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_MPG})
             if r.status == 200:
                 res = await r.json()
                 data['mpg_pending'] = res.get('pendingRobux', 0)
-                data['mpg_daily'] = res.get('itemSaleRobux', 0)
                 visible['mpg_pending'] = True
-                visible['mpg_daily'] = True
         except: pass
-
         # --- Content Deleted ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_CD}/currency", headers={"Cookie": ROBLOX_COOKIE_CD})
@@ -3082,15 +3062,12 @@ async def roblox_stocks(interaction: discord.Interaction):
                 res = await r.json()
                 data['cd_funds'] = res.get('robux', 0)
                 visible['cd_funds'] = True
-            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_CD}/revenue/summary/daily", headers={"Cookie": ROBLOX_COOKIE_CD})
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_CD}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_CD})
             if r.status == 200:
                 res = await r.json()
                 data['cd_pending'] = res.get('pendingRobux', 0)
-                data['cd_daily'] = res.get('itemSaleRobux', 0)
                 visible['cd_pending'] = True
-                visible['cd_daily'] = True
         except: pass
-
         # --- Account Balance ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency", headers={"Cookie": ROBLOX_STOCKS})
@@ -3099,14 +3076,10 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['account_balance'] = res.get('robux', 0)
                 visible['account_balance'] = True
         except: pass
-
     robux_emoji = "<:robux:1438835687741853709>"
-
     def fmt(key):
         return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
-
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
-
     # Individual group funds + pending
     embed.add_field(name="**⌖ __1cy__ Community Funds | Pending Robux**", value=f"{fmt('1cy_funds')} | {fmt('1cy_pending')}", inline=False)
     embed.add_field(name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**", value=f"{fmt('mc_funds')} | {fmt('mc_pending')}", inline=False)
@@ -3114,15 +3087,8 @@ async def roblox_stocks(interaction: discord.Interaction):
     embed.add_field(name="**⌖ __Brazilian Spyder Market__ Community Funds | Pending Robux**", value=f"{fmt('bsm_funds')} | {fmt('bsm_pending')}", inline=False)
     embed.add_field(name="**⌖ __MPG Studios__ Community Funds | Pending Robux**", value=f"{fmt('mpg_funds')} | {fmt('mpg_pending')}", inline=False)
     embed.add_field(name="**⌖ __Content Deleted__ Community Funds | Pending Robux**", value=f"{fmt('cd_funds')} | {fmt('cd_pending')}", inline=False)
-
-    # Daily sales rows
-    embed.add_field(name="**⌖ __1cy__ & __Modded Corporations__ Daily Sales**", value=f"{fmt('1cy_daily')} | {fmt('mc_daily')}", inline=False)
-    embed.add_field(name="**⌖ __Sheboyngo__ & __Brazilian Spyder Market__ Community Daily Sales**", value=f"{fmt('sb_daily')} | {fmt('bsm_daily')}", inline=False)
-    embed.add_field(name="**⌖ __MPG Studios__ & __Content Deleted__ Community Daily Sales**", value=f"{fmt('mpg_daily')} | {fmt('cd_daily')}", inline=False)
-
     # Account balance
     embed.add_field(name="**⌖ Neroniel Account Balance**", value=fmt('account_balance'), inline=False)
-
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
