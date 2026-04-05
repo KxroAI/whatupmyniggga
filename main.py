@@ -3735,36 +3735,39 @@ async def roblox_devex(interaction: discord.Interaction,
         await interaction.response.send_message(
             "❗ Please enter a positive amount.", ephemeral=True)
         return
-
+    
     devex_rate = 0.0038  # $0.0038 per Robux
+
+    # Helper to format numbers cleanly (removes trailing .0 or .0000)
+    def fmt(n):
+        if n.is_integer():
+            return f"{int(n):,}"
+        return f"{n:,.4f}".rstrip('0').rstrip('.')
+
     if conversion_type.value == "robux":
         robux = amount
         usd = robux * devex_rate
         embed = discord.Embed(
             title="💎 DevEx Conversion: Robux → USD",
-            description=
-            f"Converting **{robux:,} Robux** at the rate of **$0.0035/Robux**:",
+            description=f"Converting **{fmt(robux)} Robux** at the rate of **$0.0038/Robux**:",
             color=discord.Color.green())
         embed.add_field(name="Total USD Value",
-                        value=f"**${usd:.4f} USD**",
+                        value=f"**$ {fmt(usd)}**",
                         inline=False)
     else:
         usd = amount
         robux = usd / devex_rate
         embed = discord.Embed(
             title="💎 DevEx Conversion: USD → Robux",
-            description=
-            f"Converting **${usd:.4f} USD** at the rate of **$0.0035/Robux**:",
+            description=f"Converting **${fmt(usd)} USD** at the rate of **$0.0038/Robux**:",
             color=discord.Color.from_rgb(0, 0, 0))
         embed.add_field(name="Total Robux Value",
-                        value=f"**{int(robux):,} Robux**",
+                        value=f"{ROBUX_EMOJI} **{fmt(robux)}**",
                         inline=False)
-
-    embed.add_field(
-        name="Note",
-        value=
-        "This is an estimate based on the current DevEx rate. Actual payout may vary.",
-        inline=False)
+        embed.add_field(
+            name="Note",
+            value="This is an estimate based on the current DevEx rate. Actual payout may vary.",
+            inline=False)
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
     await interaction.response.send_message(embed=embed)
