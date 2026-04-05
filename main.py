@@ -2898,7 +2898,7 @@ roblox_group = app_commands.Group(name="roblox",
     description="Display information about multiple Roblox Groups owned by Neroniel"
 )
 async def roblox_group_info(interaction: discord.Interaction):
-    GROUP_IDS = [5838002, 1081179215, 35341321, 42939987, 365820076, 7411911]  # All group IDs
+    GROUP_IDS = [5838002, 1081179215, 35341321, 42939987, 365820076, 7411911, 11136234]  # All group IDs
 
     await interaction.response.defer()
 
@@ -2953,23 +2953,35 @@ async def roblox_group_info(interaction: discord.Interaction):
 @roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
 async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
+
+    # ===========================
     # Group IDs
+    # ===========================
     GROUP_ID_1CY = 5838002
     GROUP_ID_MC = 1081179215
     GROUP_ID_SB = 35341321
     GROUP_ID_BSM = 42939987
     GROUP_ID_MPG = 365820076
     GROUP_ID_CD = 7411911
+    GROUP_ID_NERONIEL = 11136234
+
+    # ===========================
     # Cookies
+    # ===========================
     ROBLOX_COOKIE_1CY = os.getenv("ROBLOX_COOKIE")
     ROBLOX_COOKIE_MC = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_SB = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_BSM = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_MPG = os.getenv("ROBLOX_COOKIE2")
     ROBLOX_COOKIE_CD = os.getenv("ROBLOX_COOKIE2")
+    ROBLOX_COOKIE_NERONIEL = os.getenv("ROBLOX_COOKIE")
+
     ROBLOX_STOCKS = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = int(os.getenv("ROBLOX_STOCKS_ID")) if os.getenv("ROBLOX_STOCKS_ID") else None
+
+    # ===========================
     # Validate environment variables
+    # ===========================
     missing = []
     if not ROBLOX_COOKIE_1CY: missing.append("ROBLOX_COOKIE")
     if not ROBLOX_COOKIE_MC: missing.append("ROBLOX_COOKIE2")
@@ -2978,7 +2990,10 @@ async def roblox_stocks(interaction: discord.Interaction):
     if missing:
         await interaction.followup.send(f"❌ Missing env vars: {', '.join(missing)}")
         return
+
+    # ===========================
     # Initialize data
+    # ===========================
     data = {
         '1cy_funds': 0, '1cy_pending': 0,
         'mc_funds': 0, 'mc_pending': 0,
@@ -2986,10 +3001,16 @@ async def roblox_stocks(interaction: discord.Interaction):
         'bsm_funds': 0, 'bsm_pending': 0,
         'mpg_funds': 0, 'mpg_pending': 0,
         'cd_funds': 0, 'cd_pending': 0,
+        'neroniel_funds': 0, 'neroniel_pending': 0,
         'account_balance': 0
     }
     visible = {k: False for k in data}
+
+    # ===========================
+    # Fetch data via API
+    # ===========================
     async with aiohttp.ClientSession() as session:
+
         # --- 1cy ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_1CY}/currency", headers={"Cookie": ROBLOX_COOKIE_1CY})
@@ -3003,6 +3024,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['1cy_pending'] = res.get('pendingRobux', 0)
                 visible['1cy_pending'] = True
         except: pass
+
         # --- Modded Corporations ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MC}/currency", headers={"Cookie": ROBLOX_COOKIE_MC})
@@ -3016,6 +3038,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['mc_pending'] = res.get('pendingRobux', 0)
                 visible['mc_pending'] = True
         except: pass
+
         # --- Sheboyngo ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_SB}/currency", headers={"Cookie": ROBLOX_COOKIE_SB})
@@ -3029,6 +3052,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['sb_pending'] = res.get('pendingRobux', 0)
                 visible['sb_pending'] = True
         except: pass
+
         # --- Brazilian Spyder Market ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_BSM}/currency", headers={"Cookie": ROBLOX_COOKIE_BSM})
@@ -3042,6 +3066,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['bsm_pending'] = res.get('pendingRobux', 0)
                 visible['bsm_pending'] = True
         except: pass
+
         # --- MPG Studios ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_MPG}/currency", headers={"Cookie": ROBLOX_COOKIE_MPG})
@@ -3055,6 +3080,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['mpg_pending'] = res.get('pendingRobux', 0)
                 visible['mpg_pending'] = True
         except: pass
+
         # --- Content Deleted ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_CD}/currency", headers={"Cookie": ROBLOX_COOKIE_CD})
@@ -3068,6 +3094,21 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['cd_pending'] = res.get('pendingRobux', 0)
                 visible['cd_pending'] = True
         except: pass
+
+        # --- Neroniel ---
+        try:
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_NERONIEL}/currency", headers={"Cookie": ROBLOX_COOKIE_NERONIEL})
+            if r.status == 200:
+                res = await r.json()
+                data['neroniel_funds'] = res.get('robux', 0)
+                visible['neroniel_funds'] = True
+            r = await session.get(f"https://economy.roblox.com/v1/groups/{GROUP_ID_NERONIEL}/revenue/summary/total", headers={"Cookie": ROBLOX_COOKIE_NERONIEL})
+            if r.status == 200:
+                res = await r.json()
+                data['neroniel_pending'] = res.get('pendingRobux', 0)
+                visible['neroniel_pending'] = True
+        except: pass
+
         # --- Account Balance ---
         try:
             r = await session.get(f"https://economy.roblox.com/v1/users/{roblox_user_id}/currency", headers={"Cookie": ROBLOX_STOCKS})
@@ -3076,10 +3117,20 @@ async def roblox_stocks(interaction: discord.Interaction):
                 data['account_balance'] = res.get('robux', 0)
                 visible['account_balance'] = True
         except: pass
+
+    # ===========================
+    # Format helper
+    # ===========================
     robux_emoji = "<:robux:1438835687741853709>"
+
     def fmt(key):
         return f"{robux_emoji} {data[key]:,}" if visible[key] else "||HIDDEN||"
+
+    # ===========================
+    # Build embed
+    # ===========================
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
+
     # Individual group funds + pending
     embed.add_field(name="**⌖ __1cy__ Community Funds | Pending Robux**", value=f"{fmt('1cy_funds')} | {fmt('1cy_pending')}", inline=False)
     embed.add_field(name="**⌖ __Modded Corporations__ Community Funds | Pending Robux**", value=f"{fmt('mc_funds')} | {fmt('mc_pending')}", inline=False)
@@ -3087,8 +3138,11 @@ async def roblox_stocks(interaction: discord.Interaction):
     embed.add_field(name="**⌖ __Brazilian Spyder Market__ Community Funds | Pending Robux**", value=f"{fmt('bsm_funds')} | {fmt('bsm_pending')}", inline=False)
     embed.add_field(name="**⌖ __MPG Studios__ Community Funds | Pending Robux**", value=f"{fmt('mpg_funds')} | {fmt('mpg_pending')}", inline=False)
     embed.add_field(name="**⌖ __Content Deleted__ Community Funds | Pending Robux**", value=f"{fmt('cd_funds')} | {fmt('cd_pending')}", inline=False)
+    embed.add_field(name="**⌖ __Neroniel__ Community Funds | Pending Robux**", value=f"{fmt('neroniel_funds')} | {fmt('neroniel_pending')}", inline=False)  
+
     # Account balance
     embed.add_field(name="**⌖ Neroniel Account Balance**", value=fmt('account_balance'), inline=False)
+
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
     await interaction.followup.send(embed=embed)
 
@@ -3100,7 +3154,7 @@ async def roblox_stocks(interaction: discord.Interaction):
 @app_commands.describe(username="Roblox username")
 async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=False)
-
+    
     # Group config
     groups = {
         "1cy": {
@@ -3133,14 +3187,20 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
             "name": "MPG Studios",
             "url": "https://www.roblox.com/groups/365820076"
         },
-        "cd": {  
+        "cd": {
             "id": "7411911",
             "cookie_env": "ROBLOX_COOKIE2",
             "name": "Content Deleted",
             "url": "https://www.roblox.com/groups/7411911"
+        },
+        "neroniel": {
+            "id": "11136234",
+            "cookie_env": "ROBLOX_COOKIE",  
+            "name": "Neroniel",
+            "url": "https://www.roblox.com/groups/11136234"
         }
     }
-
+    
     # Load cookies
     cookies = {}
     missing_cookies = []
@@ -3149,7 +3209,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         if not cookie:
             missing_cookies.append(info["cookie_env"])
         cookies[key] = cookie
-
+        
     if missing_cookies:
         await interaction.followup.send(
             f"❌ Missing required cookies in environment: `{', '.join(set(missing_cookies))}`",
@@ -3159,7 +3219,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-
+    
     # Step 1: Resolve username → user_id + display_name
     try:
         async with aiohttp.ClientSession() as session:
@@ -3205,7 +3265,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         cookie = cookies[key]
         group_display = info['name']
         group_url = info['url']
-
+        
         if key not in user_groups:
             status_text = "<:Unverified:1446796507931082906> Not In Group"
         else:
@@ -3226,21 +3286,20 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                             status_text = "⚠️ API Error"
             except Exception as e:
                 status_text = "⚠️ Check Failed"
-
+                
         # Make group name clickable
         clickable_group = f"[{group_display}]({group_url})"
         status_lines.append(f"**⌖ {clickable_group}** — **{status_text}**")
 
     # Build description with blank line after username
     description_lines = [f"**`{username}` ({display_name})**", "", *status_lines]
-
+    
     # Only add Group Rank if user is in 1cy
     if onecy_role_name:
         description_lines.append(f"**Group Rank:** {onecy_role_name}")
-
+        
     embed.description = "\n".join(description_lines)
     await interaction.followup.send(embed=embed)
-
 
 CLOUD_API_KEY = os.getenv("CLOUD_API")
 WH = os.getenv("WH")
