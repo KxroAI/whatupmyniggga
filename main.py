@@ -170,6 +170,11 @@ DEFAULT_RATES = {
 ROBUX_EMOJI = "<:robux:1438835687741853709>"
 PHP_EMOJI = "<:PHP:1438894048222908416>"
 
+# ===========================
+# Command Logging
+# ===========================
+LOG_CHANNEL_ID = 1492164409240457446
+
 
 # Helper function for formatting PHP values
 def format_php(value: float) -> str:
@@ -2596,11 +2601,56 @@ async def invite(interaction: discord.Interaction):
 bot.start_time = datetime.now(PH_TIMEZONE)
 bot.command_count = 0
 
+async def log_command_usage(interaction: discord.Interaction):
+    try:
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        if not log_channel:
+            log_channel = await bot.fetch_channel(LOG_CHANNEL_ID)
+        if not log_channel:
+            return
+
+        # Build full command name
+        cmd_name = interaction.command.name if interaction.command else "Unknown"
+        if hasattr(interaction.command, 'parent') and interaction.command.parent:
+            cmd_name = f"{interaction.command.parent.name} {cmd_name}"
+
+        # Extract ALL arguments 
+        args_list = []
+        if interaction.command:
+            for param in interaction.command.parameters:
+                val = getattr(interaction.namespace, param.name, None)
+                if val is not None:
+                    args_list.append(f"{param.name}: `{val}`")
+        args_str = ", ".join(args_list) if args_list else "None"
+
+        # Safely get channel & server info
+        channel_name = getattr(interaction.channel, 'name', 'Direct Message')
+        server_name = interaction.guild.name if interaction.guild else "Direct Message"
+        server_id = interaction.guild.id if interaction.guild else "N/A"
+
+        embed = discord.Embed(
+            title="📝 Command Used",
+            description=(
+                f"**Command:** `/{cmd_name}`\n"
+                f"**User:** {interaction.user.mention} (`{interaction.user.id}`)\n"
+                f"**Server:** {server_name} (`{server_id}`)\n"
+                f"**Channel:** {channel_name} (`{interaction.channel.id}`)\n"
+                f"**Arguments:** {args_str}"
+            ),
+            color=discord.Color.from_rgb(0, 0, 0),
+            timestamp=datetime.now(PH_TIMEZONE)
+        )
+        embed.set_footer(text="Neroniel • Command Logger")
+        await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"[LOG ERROR] {e}")
+
 
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     if interaction.type == discord.InteractionType.application_command:
         bot.command_count += 1
+        await log_command_usage(interaction)
 
 
 @bot.tree.command(
@@ -4065,7 +4115,7 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
     description="Promote a Roblox user to Rank 6 (〆 Contributor) in 1cy")
 @app_commands.describe(username="Roblox username to promote")
 async def roblox_promote_rank(interaction: discord.Interaction, username: str):
-    if interaction.user.id != BOT_OWNER_ID:
+    if interaction.user.id not in [BOT_OWNER_ID, 960333210666037278]:
         await interaction.response.send_message(
             "❌ You don't have permission to use this command.",
             ephemeral=False)
