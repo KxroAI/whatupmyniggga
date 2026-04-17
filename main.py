@@ -226,47 +226,65 @@ async def dm(interaction: discord.Interaction, user: discord.User,
 
 @bot.tree.command(
     name="dmall",
-    description="Send a direct message to all members in the server")
-@app_commands.describe(message="The message you want to send to all members")
-async def dmall(interaction: discord.Interaction, message: str):
+    description="Send a direct message to all members in the server or across all servers")
+@app_commands.describe(message="The message you want to send to all members",
+                       all_servers="Send to all servers the bot is in? (Default: Server only)")
+@app_commands.choices(all_servers=[
+    app_commands.Choice(name="YES", value="all"),
+    app_commands.Choice(name="NO", value="server")
+])
+async def dmall(interaction: discord.Interaction, message: str, all_servers: app_commands.Choice[str] = None):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
             "❌ You don't have permission to use this command.", ephemeral=True)
         return
 
-    guild = interaction.guild
-    if guild is None:
-        await interaction.response.send_message(
-            "❌ This command must be used in a server.", ephemeral=True)
-        return
-
-    # Defer response (since fetching members may take time)
+    scope = "server" if all_servers is None else all_servers.value
     await interaction.response.defer(ephemeral=True)
-
-    # Fetch all members if not already chunked
-    if not guild.chunked:
-        try:
-            await guild.chunk()  # This loads all members
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to fetch members: {e}",
-                                            ephemeral=True)
-            return
 
     success_count = 0
     fail_count = 0
 
-    for member in guild.members:
-        if member.bot:
-            continue  # Skip bots
-
-        try:
-            await member.send(message)
-            success_count += 1
-        except discord.Forbidden:
-            fail_count += 1
-        except Exception as e:
-            print(f"[!] Failed to send DM to {member} ({member.id}): {str(e)}")
-            fail_count += 1
+    if scope == "server":
+        guild = interaction.guild
+        if guild is None:
+            await interaction.followup.send("❌ This command must be used in a server.", ephemeral=True)
+            return
+        if not guild.chunked:
+            try:
+                await guild.chunk()
+            except Exception as e:
+                await interaction.followup.send(f"❌ Failed to fetch members: {e}", ephemeral=True)
+                return
+        for member in guild.members:
+            if member.bot: continue
+            try:
+                await member.send(message)
+                success_count += 1
+            except discord.Forbidden:
+                fail_count += 1
+            except Exception as e:
+                print(f"[!] Failed to send DM to {member} ({member.id}): {str(e)}")
+                fail_count += 1
+            await asyncio.sleep(1.5)  # ⏳ Delay to avoid rate limits
+    else:
+        for guild in bot.guilds:
+            try:
+                if not guild.chunked:
+                    await guild.chunk()
+            except Exception:
+                pass
+            for member in guild.members:
+                if member.bot: continue
+                try:
+                    await member.send(message)
+                    success_count += 1
+                except discord.Forbidden:
+                    fail_count += 1
+                except Exception as e:
+                    print(f"[!] Failed to send DM to {member} ({member.id}): {str(e)}")
+                    fail_count += 1
+                await asyncio.sleep(1.5)  # ⏳ Delay to avoid rate limits
 
     await interaction.followup.send(
         f"✅ Successfully sent DM to **{success_count}** members. "
