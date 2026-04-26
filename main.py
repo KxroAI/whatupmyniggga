@@ -3157,7 +3157,7 @@ async def roblox_stocks(interaction: discord.Interaction):
 @app_commands.describe(username="Roblox username")
 async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=False)
-
+    
     # Group config
     groups = {
         "1cy": {"id": "5838002", "cookie_env": "ROBLOX_COOKIE", "name": "1cy", "url": "https://www.roblox.com/groups/5838002"},
@@ -3179,7 +3179,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         else:
             if not cookie.startswith(".ROBLOSECURITY="):
                 cookie = f".ROBLOSECURITY={cookie}"
-        cookies[key] = cookie
+            cookies[key] = cookie
 
     if missing_cookies:
         await interaction.followup.send(
@@ -3205,13 +3205,15 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                 user_info = (await resp.json())['data'][0]
                 user_id = user_info['id']
                 display_name = user_info['displayName']
+                
                 avatar_url = None
                 try:
-                    thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&isCircular=false"
-                    async with session.get(thumb_url) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            avatar_url = data["data"][0]["imageUrl"]
+                    async with aiohttp.ClientSession() as session:
+                        thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+                        async with session.get(thumb_url) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                avatar_url = data["data"][0]["imageUrl"]
                 except:
                     pass
     except Exception as e:
@@ -3220,37 +3222,16 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
         await interaction.followup.send(embed=embed)
         return
 
-    # Step 2: Fetch group roles to check 1cy rank and membership
-    user_groups = set()
-    onecy_role_name = None
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f'https://groups.roblox.com/v1/users/{user_id}/groups/roles'
-            ) as resp:
-                if resp.status == 200:
-                    roles_data = await resp.json()
-                    for entry in roles_data.get('data', []):
-                        gid = str(entry['group']['id'])
-                        for gkey, ginfo in groups.items():
-                            if gid == ginfo['id']:
-                                user_groups.add(gkey)
-                                if gkey == "1cy":
-                                    onecy_role_name = entry['role']['name']
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch group roles: {e}")
-
     status_lines = []
-
+    community_role_name = None  # Store the 1cy role name here
+    
     def get_eligibility_status(join_date_str: str):
         if not join_date_str:
             return "<:Unverified:1446796507931082906> Not In Group"
-
         try:
             join_date = isoparse(join_date_str).replace(tzinfo=None)
             now_utc = datetime.utcnow()
             eligibility_date = join_date + timedelta(days=14)
-
             if now_utc >= eligibility_date:
                 return "<:RobloxVerified:1400310297184702564> Eligible"
             else:
@@ -3262,57 +3243,169 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
             return "<:Unverified:1446796507931082906> Not Currently Eligible"
 
     HEADERS_BASE = {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     }
-
+    
     async with aiohttp.ClientSession(headers=HEADERS_BASE) as session:
         for key, info in groups.items():
             group_id = info['id']
             cookie = cookies[key]
             group_display = info['name']
             group_url = info['url']
+            
+            is_member = False
+            current_role_name = None
 
-            is_member = key in user_groups
+            # Fetch roles to check membership and get role name
+            try:
+                async with session.get(f'https://groups.roblox.com/v1/users/{user_id}/groups/roles') as roles_resp:
+                    if roles_resp.status == 200:
+                        roles_data = await roles_resp.json()
+                        for entry in roles_data.get('data', []):
+                            group_info = entry.get('group', {})
+                            if group_info and str(group_info.get('id')) == group_id:
+                                is_member = True
+                                current_role_name = entry.get('role', {}).get('name')
+                                # If this is the 1cy group, save the role name for the footer
+                                if key == "1cy":
+                                    community_role_name = current_role_name
+                                break
+            except:
+                pass
 
             eligibility_status_text = "<:Unverified:1446796507931082906> Not Currently Eligible"
-
-            try:
-                url = f'https://economy.roblox.com/v1/groups/{group_id}/users-payout-eligibility?userIds={user_id}'
-                async with session.get(url, headers={'Cookie': cookie}) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        eligibility = data.get("usersGroupPayoutEligibility", {}).get(str(user_id))
-                        is_eligible_api = eligibility if isinstance(eligibility, bool) else str(eligibility).lower() in ['true', 'eligible']
-
-                        if is_eligible_api:
-                            eligibility_status_text = "<:RobloxVerified:1400310297184702564> Eligible"
-                        else:
-                            eligibility_status_text = "<:Unverified:1446796507931082906> Not Currently Eligible"
-                    else:
-                        eligibility_status_text = "⚠️ API Error"
-            except:
-                eligibility_status_text = "⚠️ Check Failed"
-
+            
             if not is_member:
                 eligibility_status_text = "<:Unverified:1446796507931082906> Not In Group"
+            else:
+                try:
+                    url = f'https://economy.roblox.com/v1/groups/{group_id}/users-payout-eligibility?userIds={user_id}'
+                    async with session.get(url, headers={'Cookie': cookie}) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            eligibility = data.get("usersGroupPayoutEligibility", {}).get(str(user_id))
+                            is_eligible_api = eligibility if isinstance(eligibility, bool) else str(eligibility).lower() in ['true', 'eligible']
+                            
+                            if is_eligible_api:
+                                eligibility_status_text = "<:RobloxVerified:1400310297184702564> Eligible"
+                            else:
+                                # If API says not eligible, check join date for specific message
+                                join_date_str = None
+                                found_join_log = False
+                                cursor = None
+                                audit_base = f'https://groups.roblox.com/v1/groups/{group_id}/audit-log'
+                                
+                                while not found_join_log:
+                                    params = {
+                                        'actionType': 'JoinGroup',
+                                        'limit': 100,
+                                        'sortOrder': 'Desc',
+                                    }
+                                    if cursor:
+                                        params['cursor'] = cursor
+                                    
+                                    async with session.get(audit_base, params=params, headers={'Cookie': cookie}) as audit_resp:
+                                        if audit_resp.status != 200:
+                                            break
+                                        audit_data = await audit_resp.json()
+                                        logs = audit_data.get('data', [])
+                                        if not logs:
+                                            break
+                                        
+                                        for log in logs:
+                                            actor_user = log.get('actor', {}).get('user', {}) or {}
+                                            actor_uid = actor_user.get('userId') or actor_user.get('id')
+                                            if actor_uid == user_id:
+                                                join_date_str = log.get('created')
+                                                found_join_log = True
+                                                break
+                                        
+                                        # Optimization: If logs are older than 15 days, stop searching
+                                        created_str = log.get('created')
+                                        if created_str:
+                                            try:
+                                                log_date = isoparse(created_str).replace(tzinfo=None)
+                                                if log_date < (datetime.utcnow() - timedelta(days=15)):
+                                                    found_join_log = True
+                                                    break
+                                            except:
+                                                pass
+                                        
+                                        cursor = audit_data.get('nextPageCursor')
+                                        if not cursor or found_join_log:
+                                            break
+
+                                if join_date_str:
+                                    eligibility_status_text = get_eligibility_status(join_date_str)
+                                else:
+                                    # Fallback to member list if audit log fails
+                                    found_in_members = False
+                                    m_cursor = None
+                                    cutoff_date = datetime.utcnow() - timedelta(days=15)
+                                    
+                                    while not found_in_members:
+                                        params = {'sortOrder': 'Desc', 'limit': 100}
+                                        if m_cursor:
+                                            params['cursor'] = m_cursor
+                                        
+                                        async with session.get(f'https://groups.roblox.com/v1/groups/{group_id}/users', params=params) as members_resp:
+                                            if members_resp.status != 200:
+                                                break
+                                            members_data = await members_resp.json()
+                                            members = members_data.get('data', [])
+                                            if not members:
+                                                break
+                                            
+                                            for member in members:
+                                                user_obj = member.get('user', {})
+                                                if user_obj and user_obj.get('id') == user_id:
+                                                    join_date_str = member.get('created')
+                                                    found_in_members = True
+                                                    break
+                                                
+                                                created_str = member.get('created')
+                                                if created_str:
+                                                    try:
+                                                        member_join_date = isoparse(created_str).replace(tzinfo=None)
+                                                        if member_join_date < cutoff_date:
+                                                            found_in_members = True
+                                                            break
+                                                    except:
+                                                        pass
+                                            
+                                            m_cursor = members_data.get('nextPageCursor')
+                                            if not m_cursor or found_in_members:
+                                                break
+                                    
+                                    if join_date_str:
+                                        eligibility_status_text = get_eligibility_status(join_date_str)
+                                    else:
+                                        eligibility_status_text = "<:Unverified:1446796507931082906> Not Currently Eligible"
+                        else:
+                            eligibility_status_text = "⚠️ API Error"
+                except:
+                    eligibility_status_text = "⚠️ Check Failed"
 
             clickable_group = f"[{group_display}]({group_url})"
+            # Format: ⌖ GroupName — Status 
             status_lines.append(f"**⌖ {clickable_group}** — **{eligibility_status_text}**")
 
-    # Final embed description
-    description_lines = [f"**`{username}` ({display_name})**"]
+    # Build Description
+    # Format: `Username` (DisplayName)
+    header_line = f"**`{username}` ({display_name})**"
+    
+    description_parts = [header_line, ""] + status_lines
+    
+    # Add Community Role if available (from 1cy group)
+    if community_role_name:
+        description_parts.append("")
+        description_parts.append(f"**𑣲 Community Role** — `{community_role_name}`")
 
-    # Only add Group Rank if user is in 1cy
-    if onecy_role_name:
-        description_lines.append(f"**Group Rank:** {onecy_role_name}")
-
-    description_lines.extend(["", *status_lines])
-
-    embed.description = "\n".join(description_lines)
+    embed.description = "\n".join(description_parts)
 
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
-
+        
     await interaction.followup.send(embed=embed)
 
 
