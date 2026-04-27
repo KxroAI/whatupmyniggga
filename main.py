@@ -3157,7 +3157,7 @@ async def roblox_stocks(interaction: discord.Interaction):
 @app_commands.describe(username="Roblox username")
 async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=False)
-    
+
     # Group config
     groups = {
         "1cy": {"id": "5838002", "cookie_env": "ROBLOX_COOKIE", "name": "1cy", "url": "https://www.roblox.com/groups/5838002"},
@@ -3205,7 +3205,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                 user_info = (await resp.json())['data'][0]
                 user_id = user_info['id']
                 display_name = user_info['displayName']
-                
+
                 avatar_url = None
                 try:
                     async with aiohttp.ClientSession() as session:
@@ -3224,7 +3224,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
 
     status_lines = []
     community_role_name = None  # Store the 1cy role name here
-    
+
     def get_eligibility_status(join_date_str: str):
         if not join_date_str:
             return "<:Unverified:1446796507931082906> Not In Group"
@@ -3237,7 +3237,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
             else:
                 days_left = (eligibility_date - now_utc).days
                 if days_left <= 0:
-                    return "<:RobloxVerified:1400310297184702564> Eligible Today"
+                    return "<:Unverified:1446796507931082906> Not Currently Eligible (Eligible Today)"
                 return f"<:Unverified:1446796507931082906> Not Currently Eligible (Eligible in {days_left} day{'s' if days_left != 1 else ''})"
         except:
             return "<:Unverified:1446796507931082906> Not Currently Eligible"
@@ -3245,14 +3245,14 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
     HEADERS_BASE = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     }
-    
+
     async with aiohttp.ClientSession(headers=HEADERS_BASE) as session:
         for key, info in groups.items():
             group_id = info['id']
             cookie = cookies[key]
             group_display = info['name']
             group_url = info['url']
-            
+
             is_member = False
             current_role_name = None
 
@@ -3274,7 +3274,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                 pass
 
             eligibility_status_text = "<:Unverified:1446796507931082906> Not Currently Eligible"
-            
+
             if not is_member:
                 eligibility_status_text = "<:Unverified:1446796507931082906> Not In Group"
             else:
@@ -3285,7 +3285,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                             data = await response.json()
                             eligibility = data.get("usersGroupPayoutEligibility", {}).get(str(user_id))
                             is_eligible_api = eligibility if isinstance(eligibility, bool) else str(eligibility).lower() in ['true', 'eligible']
-                            
+
                             if is_eligible_api:
                                 eligibility_status_text = "<:RobloxVerified:1400310297184702564> Eligible"
                             else:
@@ -3294,7 +3294,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                 found_join_log = False
                                 cursor = None
                                 audit_base = f'https://groups.roblox.com/v1/groups/{group_id}/audit-log'
-                                
+
                                 while not found_join_log:
                                     params = {
                                         'actionType': 'JoinGroup',
@@ -3303,7 +3303,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                     }
                                     if cursor:
                                         params['cursor'] = cursor
-                                    
+
                                     async with session.get(audit_base, params=params, headers={'Cookie': cookie}) as audit_resp:
                                         if audit_resp.status != 200:
                                             break
@@ -3311,7 +3311,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                         logs = audit_data.get('data', [])
                                         if not logs:
                                             break
-                                        
+
                                         for log in logs:
                                             actor_user = log.get('actor', {}).get('user', {}) or {}
                                             actor_uid = actor_user.get('userId') or actor_user.get('id')
@@ -3319,7 +3319,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                                 join_date_str = log.get('created')
                                                 found_join_log = True
                                                 break
-                                        
+
                                         # Optimization: If logs are older than 15 days, stop searching
                                         created_str = log.get('created')
                                         if created_str:
@@ -3330,7 +3330,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                                     break
                                             except:
                                                 pass
-                                        
+
                                         cursor = audit_data.get('nextPageCursor')
                                         if not cursor or found_join_log:
                                             break
@@ -3342,12 +3342,12 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                     found_in_members = False
                                     m_cursor = None
                                     cutoff_date = datetime.utcnow() - timedelta(days=15)
-                                    
+
                                     while not found_in_members:
                                         params = {'sortOrder': 'Desc', 'limit': 100}
                                         if m_cursor:
                                             params['cursor'] = m_cursor
-                                        
+
                                         async with session.get(f'https://groups.roblox.com/v1/groups/{group_id}/users', params=params) as members_resp:
                                             if members_resp.status != 200:
                                                 break
@@ -3355,14 +3355,14 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                             members = members_data.get('data', [])
                                             if not members:
                                                 break
-                                            
+
                                             for member in members:
                                                 user_obj = member.get('user', {})
                                                 if user_obj and user_obj.get('id') == user_id:
                                                     join_date_str = member.get('created')
                                                     found_in_members = True
                                                     break
-                                                
+
                                                 created_str = member.get('created')
                                                 if created_str:
                                                     try:
@@ -3372,11 +3372,11 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
                                                             break
                                                     except:
                                                         pass
-                                            
+
                                             m_cursor = members_data.get('nextPageCursor')
                                             if not m_cursor or found_in_members:
                                                 break
-                                    
+
                                     if join_date_str:
                                         eligibility_status_text = get_eligibility_status(join_date_str)
                                     else:
@@ -3391,12 +3391,12 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
             status_lines.append(f"**⌖ {clickable_group}** — **{eligibility_status_text}**")
 
     # Build Description
-    # Format: `Username` (DisplayName)
-    header_line = f"**`{username}` ({display_name})**"
-    
+    profile_url = f"https://www.roblox.com/users/{user_id}/profile"
+    header_line = f"**`{username}` ([{display_name}]({profile_url}))**"
+
     description_parts = [header_line, ""] + status_lines
-    
-    # Add Community Role if available (from 1cy group)
+
+    # Add Community Role if available
     if community_role_name:
         description_parts.append("")
         description_parts.append(f"**𑣲 Community Role** — `{community_role_name}`")
@@ -3405,7 +3405,7 @@ async def roblox_checkpayout(interaction: discord.Interaction, username: str):
 
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
-        
+
     await interaction.followup.send(embed=embed)
 
 
