@@ -147,24 +147,24 @@ async def check_reminders():
 def get_current_rates(guild_id: str):
     # Check if MongoDB is disabled
     if rates_collection is None:
-        return {"payout": 330.0, "gift": 300.0, "nct": 280.0, "ct": 400.0}
+        return {"payout": 330.0, "gift": 290.0, "nct": 240.0, "ct": 340.0}
 
     guild_id = str(guild_id)
     result = rates_collection.find_one({"guild_id": guild_id})
 
     return {
         "payout": result.get("payout_rate", 330.0) if result else 330.0,
-        "gift": result.get("gift_rate", 300.0) if result else 300.0,
-        "nct": result.get("nct_rate", 280.0) if result else 280.0,
-        "ct": result.get("ct_rate", 400.0) if result else 400.0
+        "gift": result.get("gift_rate", 290.0) if result else 290.0,
+        "nct": result.get("nct_rate", 240.0) if result else 240.0,
+        "ct": result.get("ct_rate", 340.0) if result else 340.0
     }
 
 
 DEFAULT_RATES = {
     "payout_rate": 330.0,
-    "gift_rate": 300.0,
-    "nct_rate": 280.0,
-    "ct_rate": 400.0
+    "gift_rate": 290.0,
+    "nct_rate": 240.0,
+    "ct_rate": 340.0
 }
 
 # Currency emoji constants
@@ -1656,9 +1656,9 @@ async def forceresetallrates(interaction: discord.Interaction):
             guild_id = doc["guild_id"]
             current = {
                 "payout_rate": doc.get("payout_rate", 330.0),
-                "gift_rate": doc.get("gift_rate", 300.0),
-                "nct_rate": doc.get("nct_rate", 280.0),
-                "ct_rate": doc.get("ct_rate", 400.0)
+                "gift_rate": doc.get("gift_rate", 290.0),
+                "nct_rate": doc.get("nct_rate", 240.0),
+                "ct_rate": doc.get("ct_rate", 340.0)
             }
 
             # Only update fields that are BELOW default
@@ -1732,17 +1732,17 @@ async def viewrates(interaction: discord.Interaction):
         embed.add_field(
             name="• Gift Rate",
             value=
-            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('gift_rate', 300.0))}",
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('gift_rate', 290.0))}",
             inline=False)
         embed.add_field(
             name="• NCT Rate",
             value=
-            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('nct_rate', 280.0))}",
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('nct_rate', 240.0))}",
             inline=False)
         embed.add_field(
             name="• CT Rate",
             value=
-            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('ct_rate', 400.0))}",
+            f"{robux_emoji} {robux_formatted} → {php_emoji} {format_php(doc.get('ct_rate', 340.0))}",
             inline=False)
         updated_at = doc.get("updated_at")
         if updated_at:
