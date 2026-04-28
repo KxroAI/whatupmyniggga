@@ -2396,75 +2396,75 @@ class CommandPaginator(ui.View):
 
 def _build_command_embeds() -> list[discord.Embed]:
     categories = {
-    "🤖 AI Assistant": [
-        "`/ask <prompt>` – Chat with the Llama 3 AI assistant (supports auto-threading)",
-        "`/clearhistory` – Wipe your AI conversation memory and reset active threads"
-    ],
-    "🧱 Roblox Tools (`/roblox` group)": [
-        "`/roblox group` – Display information about multiple Roblox Groups owned by Neroniel",
-        "`/roblox community <name|ID>` – Search public Roblox groups by Name or exact ID",
-        "`/roblox profile <username|ID>` – View a player’s profile, online status, friends & creation date",
-        "`/roblox avatar <username|ID>` – Display a player’s full-body avatar image",
-        "`/roblox icon <place_id|URL>` – Fetch a game’s official icon using Place ID or Game URL",
-        "`/roblox game <place_id|URL>` – Get detailed game info (visits, likes, creator, server size, etc.)",
-        "`/roblox stocks` – Check current Robux balances & pending funds across all managed groups",
-        "`/roblox checkpayout <username>` – Verify payout eligibility across all supported groups",
-        "`/roblox login <cookie>` – Securely view private account details using a `.ROBLOSECURITY` cookie",
-        "`/roblox gamepass <ID|link>` – Generate a direct public Roblox Gamepass link using an ID or Creator Dashboard URL",
-        "`/roblox devex <type> <amount>` – Convert Robux ↔ USD using the official DevEx rate ($0.0038/R$)",
-        "`/roblox tax <amount>` – Calculate Roblox’s 30% marketplace tax (covered vs. non-covered)",
-        "`/roblox rank <username>` – Promote a Roblox User to Rank 6 (〆 Contributor) in 1cy (Owner/Admin only)"
-    ],
-    "💱 Currency & Conversion": [
-        "`/payout <type> <amount>` – Convert Robux ↔ PHP using the Group Payout rate",
-        "`/gift <type> <amount>` – Convert Robux ↔ PHP using the InGame Gift rate",
-        "`/nct <type> <amount>` – Convert Robux ↔ PHP using the Not Covered Tax rate",
-        "`/ct <type> <amount>` – Convert Robux ↔ PHP using the Covered Tax rate",
-        "`/allrates <type> <amount>` – Compare PHP/Robux values across all 4 conversion rates",
-        "`/convertcurrency <amount> <from> <to>` – Convert between real-world currencies (USD, PHP, EUR, etc.)",
-        "`/setrate <rate> <value>` – Update server-specific conversion rates (Admin only)",
-        "`/resetrate <rate>` – Restore selected rates back to their default values (Admin only)",
-        "`/forceresetallrates` – Auto-reset any server rates that fell below minimum defaults (Owner only)",
-        "`/viewrates` – Display all custom conversion rates saved across servers (Owner only)"
-    ],
-    "🛠️ Utility & Info": [
-        "`/userinfo [user]` – View Discord account details, join date, roles & activity",
-        "`/serverinfo` – Display server stats: member count, boosts, channels & creation date",
-        "`/avatar [user]` – View a user’s Discord profile picture (defaults to your own)",
-        "`/banner [user]` – View a user’s Discord banner (global or server-specific)",
-        "`/weather <city>` – Get live weather data (temp, humidity, wind & conditions)",
-        "`/calculator <num1> <op> <num2>` – Quickly perform basic math (+, -, ×, ÷)",
-        "`/mexc` – View top cryptocurrencies by 24h trading volume on MEXC exchange",
-        "`/snipe` – Recover the last deleted message in the current channel (text & attachments)",
-        "`/payment <method>` – Display official payment details for Gcash, PayMaya, or GoTyme",
-        "`/status` – Check bot health: uptime, server count, command usage & system stats",
-        "`/invite` – Get the official invite link to add the bot to your server",
-        "`/giveaway <prize> <duration> <winners> [roles] [reqs]` – Start a timed giveaway with optional entry requirements",
-        "`/giveawayend <id>` – Force-end an active giveaway early and announce winners",
-        "`/giveawayreroll <id>` – Pick new winner(s) for a giveaway that has already ended"
-    ],
-    "📢 Messaging & Announcements": [
-        "`/announcement` – Send a rich, media-supported announcement to any channel (Owner/Admin)",
-        "`/say <message>` – Make the bot repeat your message (blocks @everyone/@here for safety)",
-        "`/donate <user> <amount>` – Playfully simulate donating Robux to a user (cosmetic only)",
-        "`/poll <question> <duration> <unit>` – Create a timed 👍/👎 poll with automatic results",
-        "`/remindme <minutes> <note>` – Set a personal reminder that will ping you in this channel"
-    ],
-    "📱 Social Media": [
-        "`/tiktok <link> [spoiler]` – Download and share a TikTok video directly in Discord",
-        "`/instagram <link>` – Convert an Instagram post/reel into an embeddable preview link"
-    ],
-    "🛡️ Owner & Admin": [
-        "`/dm <user> <message>` – Send a direct message to any Discord user (Owner only)",
-        "`/dmall <message> [scope]` – Broadcast a DM to all members in-server or across all servers (Owner only)",
-        "`/purge <amount>` – Bulk-delete recent messages in the current channel (Owner/Admin)",
-        "`/createinvite` – Generate 30-minute invite links for every server the bot is in (Owner only)"
-    ],
-    "🔧 Bot & Server": [
-        "`/listallcommands` – Display this interactive, paginated guide to all available commands"
-    ]
-}
-
+        "🤖 AI Assistant": [
+            "`/ask <prompt>` – Chat with the Llama 3 AI assistant (supports auto-threading)",
+            "`/clearhistory` – Wipe your AI conversation memory and reset active threads"
+        ],
+        "🧱 Roblox Tools (`/roblox` group)": [
+            "`/roblox group` – Display information about multiple Roblox Groups owned by Neroniel",
+            "`/roblox community <name|ID>` – Search public Roblox groups by Name or exact ID",
+            "`/roblox profile <username|ID>` – View a player’s profile, online status, friends & creation date",
+            "`/roblox avatar <username|ID>` – Display a player’s full-body avatar image",
+            "`/roblox icon <place_id|URL>` – Fetch a game’s official icon using Place ID or Game URL",
+            "`/roblox game <place_id|URL>` – Get detailed game info (visits, likes, creator, server size, etc.)",
+            "`/roblox asset <asset_id>` – Fetch full Roblox asset info (Image, Shirt, Pants, etc.)",
+            "`/roblox stocks` – Check current Robux balances & pending funds across all managed groups",
+            "`/roblox checkpayout <username>` – Verify payout eligibility across all supported groups",
+            "`/roblox login <cookie>` – Securely view private account details using a `.ROBLOSECURITY` cookie",
+            "`/roblox gamepass <ID|link>` – Generate a direct public Roblox Gamepass link using an ID or Creator Dashboard URL",
+            "`/roblox devex <type> <amount>` – Convert Robux ↔ USD using the official DevEx rate ($0.0038/R$)",
+            "`/roblox tax <amount>` – Calculate Roblox’s 30% marketplace tax (covered vs. non-covered)",
+            "`/roblox rank <username>` – Promote a Roblox User to Rank 6 (〆 Contributor) in 1cy (Owner/Admin only)"
+        ],
+        "💱 Currency & Conversion": [
+            "`/payout <type> <amount>` – Convert Robux ↔ PHP using the Group Payout rate",
+            "`/gift <type> <amount>` – Convert Robux ↔ PHP using the InGame Gift rate",
+            "`/nct <type> <amount>` – Convert Robux ↔ PHP using the Not Covered Tax rate",
+            "`/ct <type> <amount>` – Convert Robux ↔ PHP using the Covered Tax rate",
+            "`/allrates <type> <amount>` – Compare PHP/Robux values across all 4 conversion rates",
+            "`/convertcurrency <amount> <from> <to>` – Convert between real-world currencies (USD, PHP, EUR, etc.)",
+            "`/setrate <rate> <value>` – Update server-specific conversion rates (Admin only)",
+            "`/resetrate <rate>` – Restore selected rates back to their default values (Admin only)",
+            "`/forceresetallrates` – Auto-reset any server rates that fell below minimum defaults (Owner only)",
+            "`/viewrates` – Display all custom conversion rates saved across servers (Owner only)"
+        ],
+        "🛠️ Utility & Info": [
+            "`/userinfo [user]` – View Discord account details, join date, roles & activity",
+            "`/serverinfo` – Display server stats: member count, boosts, channels & creation date",
+            "`/avatar [user]` – View a user’s Discord profile picture (defaults to your own)",
+            "`/banner [user]` – View a user’s Discord banner (global or server-specific)",
+            "`/weather <city>` – Get live weather data (temp, humidity, wind & conditions)",
+            "`/calculator <num1> <op> <num2>` – Quickly perform basic math (+, -, ×, ÷)",
+            "`/mexc` – View top cryptocurrencies by 24h trading volume on MEXC exchange",
+            "`/snipe` – Recover the last deleted message in the current channel (text & attachments)",
+            "`/payment <method>` – Display official payment details for Gcash, PayMaya, or GoTyme",
+            "`/status` – Check bot health: uptime, server count, command usage & system stats",
+            "`/invite` – Get the official invite link to add the bot to your server",
+            "`/giveaway <prize> <duration> <winners> [roles] [reqs]` – Start a timed giveaway with optional entry requirements",
+            "`/giveawayend <id>` – Force-end an active giveaway early and announce winners",
+            "`/giveawayreroll <id>` – Pick new winner(s) for a giveaway that has already ended"
+        ],
+        "📢 Messaging & Announcements": [
+            "`/announcement` – Send a rich, media-supported announcement to any channel (Owner/Admin)",
+            "`/say <message>` – Make the bot repeat your message (blocks @everyone/@here for safety)",
+            "`/donate <user> <amount>` – Playfully simulate donating Robux to a user (cosmetic only)",
+            "`/poll <question> <duration> <unit>` – Create a timed 👍/👎 poll with automatic results",
+            "`/remindme <minutes> <note>` – Set a personal reminder that will ping you in this channel"
+        ],
+        "📱 Social Media": [
+            "`/tiktok <link> [spoiler]` – Download and share a TikTok video directly in Discord",
+            "`/instagram <link>` – Convert an Instagram post/reel into an embeddable preview link"
+        ],
+        "🛡️ Owner & Admin": [
+            "`/dm <user> <message>` – Send a direct message to any Discord user (Owner only)",
+            "`/dmall <message> [scope]` – Broadcast a DM to all members in-server or across all servers (Owner only)",
+            "`/purge <amount>` – Bulk-delete recent messages in the current channel (Owner/Admin)",
+            "`/createinvite` – Generate 30-minute invite links for every server the bot is in (Owner only)"
+        ],
+        "🔧 Bot & Server": [
+            "`/listallcommands` – Display this interactive, paginated guide to all available commands"
+        ]
+    }
     now = datetime.now(PH_TIMEZONE)
     # Build all embeds in a single, clean list comprehension
     return [
@@ -4484,6 +4484,172 @@ async def roblox_game(interaction: discord.Interaction, id: str):
     except Exception as e:
         return await interaction.followup.send(
             f"❌ Failed to fetch game info: `{str(e)}`", ephemeral=True)
+
+ASSET_TYPE_MAP = {
+    1: "Image", 2: "T-Shirt", 3: "Audio", 4: "Mesh", 5: "Lua",
+    6: "HTML", 7: "Text", 8: "Hat", 9: "Place", 10: "Model",
+    11: "Shirt", 12: "Pants", 13: "Decal", 17: "Head", 18: "Face",
+    19: "Gear", 21: "Badge", 22: "Group Emblem", 24: "Animation",
+    27: "Torso", 28: "Right Arm", 29: "Left Arm", 30: "Left Leg",
+    31: "Right Leg", 32: "Package", 34: "Game Pass", 35: "Plugin",
+    38: "MeshPart", 39: "Hair Accessory", 40: "Face Accessory",
+    41: "Neck Accessory", 42: "Shoulder Accessory", 43: "Front Accessory",
+    44: "Back Accessory", 45: "Waist Accessory", 46: "Climb Animation",
+    47: "Death Animation", 48: "Fall Animation", 49: "Idle Animation",
+    50: "Jump Animation", 51: "Run Animation", 52: "Swim Animation",
+    53: "Walk Animation", 54: "Pose Animation", 55: "Emote Animation",
+    56: "Video", 61: "Animation Clip",
+}
+
+
+@roblox_group.command(
+    name="asset",
+    description="Fetch full Roblox asset info"
+)
+@app_commands.describe(asset_id="Roblox Asset ID")
+async def roblox_asset(interaction: discord.Interaction, asset_id: int):
+    await interaction.response.defer()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json",
+            }
+
+            # ===========================
+            # 1. Fetch metadata
+            # ===========================
+            async with session.get(
+                f"https://economy.roblox.com/v2/assets/{asset_id}/details",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return await interaction.followup.send(
+                        f"❌ Asset not found (HTTP {resp.status}).", ephemeral=True
+                    )
+                data = await resp.json()
+
+            name = data.get("Name", f"Asset {asset_id}")
+            description = (data.get("Description") or "").strip()
+            asset_type_id = data.get("AssetTypeId", 0)
+            asset_type = ASSET_TYPE_MAP.get(asset_type_id, f"Type {asset_type_id}")
+            template_asset_id = data.get("TemplateAssetId")
+
+            created_at = data.get("Created")
+            updated_at = data.get("Updated")
+
+            creator_data = data.get("Creator", {}) or {}
+            creator_name = creator_data.get("Name", "Unknown")
+            creator_type = str(creator_data.get("CreatorType", "User")).lower()
+            creator_id = creator_data.get("CreatorTargetId") or creator_data.get("Id")
+            has_verified = creator_data.get("HasVerifiedBadge", False)
+
+            verified_badge = " <:RobloxVerified:1400310297184702564>" if has_verified else ""
+
+            if creator_id:
+                if creator_type == "group":
+                    creator_value = f"[{creator_name}{verified_badge}](https://www.roblox.com/groups/{creator_id})"
+                else:
+                    creator_value = f"[{creator_name}{verified_badge}](https://www.roblox.com/users/{creator_id}/profile)"
+            else:
+                creator_value = f"{creator_name}{verified_badge}"
+
+            # ===========================
+            # 2. AssetDelivery 
+            # ===========================
+            if asset_type_id in [11, 12, 2] and template_asset_id:
+                delivery_id = template_asset_id
+            else:
+                delivery_id = asset_id
+
+            delivery_url = f"https://assetdelivery.roblox.com/v1/asset/?id={delivery_id}"
+
+            # ===========================
+            # 3. Try AssetDelivery preview
+            # ===========================
+            image_url = None
+
+            try:
+                async with session.head(delivery_url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as head_resp:
+                    content_type = head_resp.headers.get("Content-Type", "")
+                    
+                    # If it's an actual image, use it
+                    if "image" in content_type:
+                        image_url = delivery_url
+            except:
+                pass
+
+            # ===========================
+            # 4. Fallback to thumbnails if needed
+            # ===========================
+            if not image_url:
+                try:
+                    thumb_id = delivery_id
+
+                    async with session.get(
+                        f"https://thumbnails.roblox.com/v1/assets?assetIds={thumb_id}&size=512x512&format=Png&isCircular=false",
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as thumb_resp:
+                        if thumb_resp.status == 200:
+                            tj = await thumb_resp.json()
+                            if tj.get("data") and tj["data"][0].get("imageUrl"):
+                                image_url = tj["data"][0]["imageUrl"]
+                except:
+                    pass
+
+            # ===========================
+            # 5. Build embed
+            # ===========================
+            embed = discord.Embed(color=discord.Color.from_rgb(0, 0, 0))
+
+            name_link = f"[{name}](https://www.roblox.com/catalog/{asset_id})"
+            embed.add_field(name="", value=f"**{name_link}**", inline=False)
+
+            if description:
+                desc_text = description if len(description) <= 400 else description[:397] + "..."
+                embed.add_field(name="Description", value=desc_text, inline=False)
+
+            embed.add_field(name="Creator", value=creator_value, inline=True)
+            embed.add_field(name="Asset Type", value=asset_type, inline=True)
+            embed.add_field(name="Original ID", value=str(asset_id), inline=True)
+
+            # 🔥 Asset file (main feature)
+            embed.add_field(
+                name="Asset File",
+                value=f"[Download / View Raw]({delivery_url})",
+                inline=False
+            )
+
+            if template_asset_id:
+                template_link = f"[{template_asset_id}](https://create.roblox.com/store/asset/{template_asset_id})"
+                embed.add_field(name="Template ID", value=template_link, inline=True)
+
+            if created_at and updated_at:
+                try:
+                    c_unix = int(isoparse(created_at).timestamp())
+                    u_unix = int(isoparse(updated_at).timestamp())
+                    embed.add_field(
+                        name="Created | Updated",
+                        value=f"<t:{c_unix}:f> | <t:{u_unix}:f>",
+                        inline=True,
+                    )
+                except:
+                    pass
+
+            # ✅ Always shows something now
+            if image_url:
+                embed.set_image(url=image_url)
+
+            embed.set_footer(text="Neroniel • /roblox asset")
+            embed.timestamp = datetime.now(PH_TIMEZONE)
+
+            await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: `{str(e)}`", ephemeral=True)
 
 # Register the subcommand group
 bot.tree.add_command(roblox_group)
