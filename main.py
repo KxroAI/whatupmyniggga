@@ -3752,7 +3752,7 @@ async def roblox_profile(interaction: discord.Interaction, user: str):
             if verified:
                 emoji += "<:RobloxVerified:1400310297184702564>"
             if premium:
-                emoji += "<:RobloxPremium:1438836163816198245>"
+                emoji += "<:RobloxPremium:1499454821642666084>"
 
             async with session.get(f"https://friends.roblox.com/v1/users/{user_id}/friends/count") as r1, \
                        session.get(f"https://friends.roblox.com/v1/users/{user_id}/followers/count") as r2, \
@@ -4060,7 +4060,7 @@ async def roblox_avatar(interaction: discord.Interaction, user: str):
             if verified:
                 emoji += "<:RobloxVerified:1400310297184702564>"
             if premium:
-                emoji += "<:RobloxPremium:1438836163816198245>"
+                emoji += "<:RobloxPremium:1499454821642666084>"
             display_title = f"{username} {emoji}".strip()
             embed = discord.Embed(
                 title=display_title,
